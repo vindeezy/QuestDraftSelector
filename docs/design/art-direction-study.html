@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Battle Bots — Art Direction Study</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #07090d; color: #c9d2de;
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 22px 16px 40px;
+  }
+  h1 {
+    font-size: 15px; letter-spacing: .22em; text-transform: uppercase;
+    font-weight: 600; color: #6d7b8d; margin: 0 0 4px;
+  }
+  .sub { font-size: 13px; color: #4d5a6b; margin: 0 0 18px; }
+  .stage-wrap {
+    position: relative; border: 1px solid #1b2430; border-radius: 10px;
+    overflow: hidden; box-shadow: 0 30px 80px -20px #000, 0 0 0 1px #0e141c;
+    max-width: 100%;
+  }
+  canvas { display: block; width: 100%; height: auto; }
+  .legend {
+    margin-top: 20px; max-width: 1160px; width: 100%;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 10px;
+  }
+  .card {
+    background: #0d1118; border: 1px solid #1a2230; border-radius: 8px; padding: 11px 13px;
+  }
+  .card b { display: block; color: #e2e8f0; font-size: 12.5px; margin-bottom: 3px;
+            letter-spacing: .03em; }
+  .card span { font-size: 12px; color: #63718a; line-height: 1.45; }
+  .bar { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button {
+    background: #131a25; color: #9fb0c6; border: 1px solid #222e3e; border-radius: 6px;
+    padding: 7px 14px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  button:hover { background: #1a2432; color: #dbe5f0; }
+  button.on { background: #1f2f45; color: #7fd4ff; border-color: #2f4a68; }
+</style>
+</head>
+<body>
+
+<h1>Battle Bots &mdash; Art Direction Study</h1>
+<p class="sub">Live, unscripted. Bots are actually colliding and damaging each other.</p>
+
+<div class="stage-wrap">
+  <canvas id="stage" width="1160" height="640"></canvas>
+</div>
+
+<div class="bar">
+  <button id="btnRestart">Restart Round</button>
+  <button id="btnSlow" class="on">Slow-mo on Kill</button>
+  <button id="btnShake" class="on">Screen Shake</button>
+  <button id="btnScuff" class="on">Floor Scarring</button>
+  <button id="btnGlow" class="on">Highlight My Bot</button>
+</div>
+
+<div class="legend">
+  <div class="card"><b>Machined bodies</b><span>Gradient metal, panel seams, corner bolts, specular streak, and a cast shadow that implies real height off the floor.</span></div>
+  <div class="card"><b>Weapon motion blur</b><span>Spinners render as a swept gradient arc, not a drawn blade &mdash; reads as speed at a glance.</span></div>
+  <div class="card"><b>Impact language</b><span>Spark burst, expanding shockwave ring, white damage flash, and knockback proportional to real impact velocity.</span></div>
+  <div class="card"><b>Floor scarring</b><span>Tire scuffs, scrape marks, and scorch craters accumulate permanently. The arena tells the story of the fight.</span></div>
+  <div class="card"><b>Health arcs</b><span>Ring around each bot, with a pale ghost bar that drains a beat behind &mdash; so you feel the size of a hit.</span></div>
+  <div class="card"><b>Your bot glows</b><span>The member watching gets a pulsing ring and name tag on their own machine. Render-only, never affects the result.</span></div>
+</div>
+
+<script>
+(() => {
+const cvs = document.getElementById('stage');
+const ctx = cvs.getContext('2d');
+
+const W = 900, H = 640, PANEL_X = 900, PANEL_W = 260;
+const CX = 448, CY = 322, ARENA_R = 286;
+
+const opt = { slow: true, shake: true, scuff: true, glow: true };
+
+// Persistent floor-damage layer
+const scuffCvs = document.createElement('canvas');
+scuffCvs.width = W; scuffCvs.height = H;
+const sctx = scuffCvs.getContext('2d');
+
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[(Math.random() * a.length) | 0];
+const TAU = Math.PI * 2;
+
+function shade(hex, amt) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.min(255, (n >> 16) + amt));
+  const g = Math.max(0, Math.min(255, ((n >> 8) & 255) + amt));
+  const b = Math.max(0, Math.min(255, (n & 255) + amt));
+  return `rgb(${r},${g},${b})`;
+}
+
+const ROSTER = [
+  { name: 'VINCE',  col: '#ff6a3d', shape: 'tower',   wep: 'spinner' },
+  { name: 'DEREK',  col: '#3ddc84', shape: 'square',  wep: 'saw'     },
+  { name: 'MARCUS', col: '#4aa8ff', shape: 'diamond', wep: 'spinner' },
+  { name: 'JULES',  col: '#c77dff', shape: 'circle',  wep: 'hammer'  },
+  { name: 'RAY',    col: '#ffd23d', shape: 'square',  wep: 'saw'     },
+  { name: 'TOBY',   col: '#ff4d8d', shape: 'tower',   wep: 'spinner' },
+];
+
+const PITS = [0.7, 2.2, 3.85, 5.35].map(a => ({
+  x: CX + Math.cos(a) * 158, y: CY + Math.sin(a) * 158, r: 33
+}));
+
+let bots = [], parts = [], waves = [], feed = [], shake = 0, slowT = 0;
+let acc = 0, roundOver = 0, flashT = 0;
+
+function reset() {
+  sctx.clearRect(0, 0, W, H);
+  parts = []; waves = []; feed = []; shake = 0; slowT = 0; roundOver = 0; flashT = 0;
+  bots = ROSTER.map((b, i) => {
+    const a = (i / ROSTER.length) * TAU + 0.35;
+    const r = b.shape === 'tower' ? 21 : b.shape === 'square' ? 19 : 17;
+    return {
+      ...b, x: CX + Math.cos(a) * 218, y: CY + Math.sin(a) * 218,
+      vx: 0, vy: 0, ang: a + Math.PI, r, mass: r * r * 0.01,
+      hp: 100, maxHp: 100, ghost: 100, spin: Math.random() * TAU,
+      alive: true, flash: 0, fall: 0, cool: 0
+    };
+  });
+}
+
+function spark(x, y, n, col, power) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * TAU, s = rnd(0.6, 1) * power;
+    parts.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: rnd(14, 34), max: 34, size: rnd(1.1, 2.9),
+      col: Math.random() < 0.65 ? '#fff3c4' : col
+    });
+  }
+}
+
+function killed(b, cause) {
+  b.alive = false; b.fall = cause === 'pit' ? 1 : 0;
+  spark(b.x, b.y, 46, b.col, 5.2);
+  waves.push({ x: b.x, y: b.y, r: 4, max: 118, life: 34, w: 3.5, col: b.col });
+  if (opt.shake) shake = 15;
+  if (opt.slow) slowT = 52;
+  flashT = 10;
+  if (opt.scuff) {
+    const g = sctx.createRadialGradient(b.x, b.y, 2, b.x, b.y, 44);
+    g.addColorStop(0, 'rgba(0,0,0,.72)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    sctx.fillStyle = g; sctx.beginPath(); sctx.arc(b.x, b.y, 44, 0, TAU); sctx.fill();
+  }
+  feed.unshift({ name: b.name, col: b.col, cause, t: 0 });
+  if (feed.length > 7) feed.pop();
+}
+
+function update() {
+  const alive = bots.filter(b => b.alive);
+
+  for (const b of bots) {
+    if (!b.alive) { if (b.fall > 0 && b.fall < 22) b.fall++; continue; }
+    b.spin += b.wep === 'spinner' ? 0.62 : b.wep === 'saw' ? 0.46 : 0.13;
+    b.cool = Math.max(0, b.cool - 1);
+    if (b.flash > 0) b.flash--;
+    b.ghost += (b.hp - b.ghost) * 0.07;
+
+    // Utility AI, simplified: close on the weakest reachable target
+    let tgt = null, best = 1e9;
+    for (const o of alive) {
+      if (o === b) continue;
+      const d = Math.hypot(o.x - b.x, o.y - b.y) + o.hp * 1.7;
+      if (d < best) { best = d; tgt = o; }
+    }
+    if (tgt) {
+      let dx = tgt.x - b.x, dy = tgt.y - b.y;
+      const d = Math.hypot(dx, dy) || 1;
+      dx /= d; dy /= d;
+      // steer away from pits
+      for (const p of PITS) {
+        const px = b.x - p.x, py = b.y - p.y, pd = Math.hypot(px, py);
+        if (pd < p.r + 52) { dx += (px / pd) * 1.9; dy += (py / pd) * 1.9; }
+      }
+      const dl = Math.hypot(dx, dy) || 1;
+      b.vx += (dx / dl) * 0.19; b.vy += (dy / dl) * 0.19;
+    }
+
+    const sp = Math.hypot(b.vx, b.vy), MAX = 3.5;
+    if (sp > MAX) { b.vx *= MAX / sp; b.vy *= MAX / sp; }
+    b.vx *= 0.965; b.vy *= 0.965;
+    b.x += b.vx; b.y += b.vy;
+    if (sp > 0.4) {
+      const want = Math.atan2(b.vy, b.vx);
+      let dd = ((want - b.ang + Math.PI * 3) % TAU) - Math.PI;
+      b.ang += dd * 0.16;
+    }
+
+    // Floor scarring
+    if (opt.scuff && sp > 0.7) {
+      sctx.fillStyle = `rgba(0,0,0,${0.035 + sp * 0.012})`;
+      sctx.beginPath(); sctx.ellipse(b.x, b.y, b.r * 0.72, b.r * 0.42, b.ang, 0, TAU); sctx.fill();
+    }
+
+    // Hazard perimeter
+    const dc = Math.hypot(b.x - CX, b.y - CY);
+    if (dc > ARENA_R - b.r) {
+      const nx = (b.x - CX) / dc, ny = (b.y - CY) / dc;
+      b.x = CX + nx * (ARENA_R - b.r); b.y = CY + ny * (ARENA_R - b.r);
+      b.vx -= nx * 2.4; b.vy -= ny * 2.4;
+      b.hp -= 0.75; b.flash = 3;
+      spark(b.x, b.y, 3, '#ff8a3c', 2.6);
+      if (b.hp <= 0) { killed(b, 'wall'); continue; }
+    }
+
+    // Pits
+    for (const p of PITS) {
+      if (Math.hypot(b.x - p.x, b.y - p.y) < p.r - 3) { killed(b, 'pit'); break; }
+    }
+  }
+
+  // Bot-vs-bot collisions
+  for (let i = 0; i < bots.length; i++) {
+    for (let j = i + 1; j < bots.length; j++) {
+      const a = bots[i], b = bots[j];
+      if (!a.alive || !b.alive) continue;
+      let dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy), min = a.r + b.r;
+      if (d >= min || d === 0) continue;
+      const nx = dx / d, ny = dy / d, ov = min - d;
+      a.x -= nx * ov * 0.5; a.y -= ny * ov * 0.5;
+      b.x += nx * ov * 0.5; b.y += ny * ov * 0.5;
+
+      const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
+      const rel = rvx * nx + rvy * ny;
+      if (rel > 0) continue;
+      const imp = -(1.55 * rel) / (1 / a.mass + 1 / b.mass);
+      a.vx -= (imp * nx) / a.mass; a.vy -= (imp * ny) / a.mass;
+      b.vx += (imp * nx) / b.mass; b.vy += (imp * ny) / b.mass;
+
+      const force = Math.abs(rel);
+      if (force > 0.8 && (a.cool === 0 || b.cool === 0)) {
+        const cxp = a.x + nx * a.r, cyp = a.y + ny * a.r;
+        // Weapon alignment: are you hitting them with your front?
+        const aAim = Math.cos(Math.atan2(ny, nx) - a.ang);
+        const bAim = Math.cos(Math.atan2(-ny, -nx) - b.ang);
+        const dmgA = force * 3.4 * Math.max(0.18, (bAim + 1) / 2);
+        const dmgB = force * 3.4 * Math.max(0.18, (aAim + 1) / 2);
+        a.hp -= dmgA; b.hp -= dmgB;
+        a.flash = 4; b.flash = 4; a.cool = 7; b.cool = 7;
+        spark(cxp, cyp, 8 + (force * 5) | 0, aAim > bAim ? a.col : b.col, 1.4 + force);
+        waves.push({ x: cxp, y: cyp, r: 2, max: 26 + force * 20, life: 18, w: 2,
+                     col: '#ffe9b0' });
+        if (opt.shake) shake = Math.max(shake, Math.min(9, force * 3.1));
+        if (opt.scuff && force > 1.8) {
+          sctx.fillStyle = 'rgba(0,0,0,.2)';
+          sctx.beginPath(); sctx.arc(cxp, cyp, 6 + force, 0, TAU); sctx.fill();
+        }
+        if (a.hp <= 0) killed(a, 'combat');
+        if (b.hp <= 0) killed(b, 'combat');
+      }
+    }
+  }
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.93; p.vy *= 0.93; p.life--;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const w = waves[i];
+    w.r += (w.max - w.r) * 0.19; w.life--;
+    if (w.life <= 0) waves.splice(i, 1);
+  }
+  for (const f of feed) f.t++;
+  if (shake > 0) shake *= 0.86;
+  if (slowT > 0) slowT--;
+  if (flashT > 0) flashT--;
+
+  if (bots.filter(b => b.alive).length <= 1) {
+    if (++roundOver > 190) reset();
+  }
+}
+
+function shapePath(g, shape, r) {
+  g.beginPath();
+  if (shape === 'circle') g.arc(0, 0, r, 0, TAU);
+  else if (shape === 'square') g.rect(-r, -r * 0.86, r * 2, r * 1.72);
+  else if (shape === 'diamond') {
+    g.moveTo(r * 1.15, 0); g.lineTo(0, r * 0.9); g.lineTo(-r * 1.05, 0); g.lineTo(0, -r * 0.9);
+    g.closePath();
+  } else { // tower — hexagonal
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * TAU;
+      const px = Math.cos(a) * r * 1.08, py = Math.sin(a) * r * 0.92;
+      i ? g.lineTo(px, py) : g.moveTo(px, py);
+    }
+    g.closePath();
+  }
+}
+
+function drawBot(b) {
+  const dying = !b.alive;
+  let scale = 1, alpha = 1;
+  if (dying) {
+    if (b.fall > 0) { scale = 1 - b.fall / 22; alpha = 1 - b.fall / 22; }
+    else return;
+  }
+  if (scale <= 0.02) return;
+
+  // Cast shadow — implies height off the floor
+  ctx.save();
+  ctx.globalAlpha = 0.42 * alpha;
+  ctx.fillStyle = '#000';
+  ctx.translate(b.x + 5, b.y + 7); ctx.rotate(b.ang); ctx.scale(scale, scale);
+  ctx.filter = 'blur(3px)';
+  shapePath(ctx, b.shape, b.r * 1.02); ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(b.x, b.y); ctx.rotate(b.ang); ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+
+  // Weapon: swept motion-blur arc, drawn under the chassis
+  if (b.wep !== 'hammer') {
+    const rr = b.r + (b.wep === 'spinner' ? 13 : 9);
+    for (let k = 0; k < 7; k++) {
+      const a0 = b.spin - k * 0.2;
+      ctx.beginPath();
+      ctx.arc(b.r * 0.55, 0, rr, a0, a0 + 0.42);
+      ctx.strokeStyle = `rgba(210,232,255,${0.4 - k * 0.052})`;
+      ctx.lineWidth = b.wep === 'spinner' ? 6.5 : 4.5;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+    }
+  }
+
+  // Chassis: gradient metal
+  const g = ctx.createLinearGradient(-b.r, -b.r, b.r, b.r);
+  g.addColorStop(0, shade(b.col, 62));
+  g.addColorStop(0.44, b.col);
+  g.addColorStop(1, shade(b.col, -78));
+  ctx.fillStyle = b.flash > 0 ? '#ffffff' : g;
+  shapePath(ctx, b.shape, b.r); ctx.fill();
+
+  ctx.clip();
+  // Panel seams
+  ctx.strokeStyle = 'rgba(0,0,0,.34)'; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(-b.r, -b.r * 0.3); ctx.lineTo(b.r, -b.r * 0.3);
+  ctx.moveTo(-b.r, b.r * 0.34); ctx.lineTo(b.r, b.r * 0.34); ctx.stroke();
+  // Specular streak
+  ctx.globalAlpha = 0.2 * alpha; ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.ellipse(-b.r * 0.3, -b.r * 0.5, b.r * 0.8, b.r * 0.24, -0.5, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = alpha;
+  ctx.restore();
+
+  // Outline + bolts + forward indicator
+  ctx.save();
+  ctx.translate(b.x, b.y); ctx.rotate(b.ang); ctx.scale(scale, scale);
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = shade(b.col, 96); ctx.lineWidth = 1.7;
+  shapePath(ctx, b.shape, b.r); ctx.stroke();
+  ctx.fillStyle = 'rgba(12,16,22,.85)';
+  for (const [ox, oy] of [[-0.6, -0.55], [0.6, -0.55], [-0.6, 0.55], [0.6, 0.55]]) {
+    ctx.beginPath(); ctx.arc(b.r * ox, b.r * oy, 1.9, 0, TAU); ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.fillRect(b.r * 0.45, -2, b.r * 0.5, 4);
+  ctx.restore();
+}
+
+function drawHealth(b) {
+  if (!b.alive) return;
+  const R = b.r + 9;
+  ctx.lineWidth = 3.4; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(b.x, b.y, R, -TAU / 4, -TAU / 4 + TAU * 0.999);
+  ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.stroke();
+  // Ghost bar drains a beat behind the real one
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, R, -TAU / 4, -TAU / 4 + TAU * Math.max(0, b.ghost / b.maxHp));
+  ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, R, -TAU / 4, -TAU / 4 + TAU * Math.max(0, b.hp / b.maxHp));
+  ctx.strokeStyle = b.hp / b.maxHp < 0.28 ? '#ff4a4a' : b.col;
+  ctx.stroke();
+}
+
+function draw() {
+  ctx.fillStyle = '#07090d'; ctx.fillRect(0, 0, cvs.width, cvs.height);
+
+  ctx.save();
+  if (opt.shake && shake > 0.4) ctx.translate(rnd(-shake, shake), rnd(-shake, shake));
+
+  // Arena floor
+  ctx.save();
+  ctx.beginPath(); ctx.arc(CX, CY, ARENA_R, 0, TAU); ctx.clip();
+  const fg = ctx.createRadialGradient(CX - 70, CY - 90, 30, CX, CY, ARENA_R);
+  fg.addColorStop(0, '#222c3a'); fg.addColorStop(0.6, '#161d27'); fg.addColorStop(1, '#0c1118');
+  ctx.fillStyle = fg; ctx.fillRect(CX - ARENA_R, CY - ARENA_R, ARENA_R * 2, ARENA_R * 2);
+  // Floor plates
+  ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1;
+  for (let x = CX - ARENA_R; x < CX + ARENA_R; x += 46) {
+    ctx.beginPath(); ctx.moveTo(x, CY - ARENA_R); ctx.lineTo(x, CY + ARENA_R); ctx.stroke();
+  }
+  for (let y = CY - ARENA_R; y < CY + ARENA_R; y += 46) {
+    ctx.beginPath(); ctx.moveTo(CX - ARENA_R, y); ctx.lineTo(CX + ARENA_R, y); ctx.stroke();
+  }
+  if (opt.scuff) ctx.drawImage(scuffCvs, 0, 0);
+  ctx.restore();
+
+  // Pits
+  for (const p of PITS) {
+    const pg = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, p.r);
+    pg.addColorStop(0, '#000'); pg.addColorStop(0.72, '#04060a'); pg.addColorStop(1, '#101722');
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,140,60,.22)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.stroke();
+  }
+
+  // Hazard perimeter — animated warning stripes
+  ctx.save();
+  ctx.lineWidth = 9; ctx.setLineDash([17, 13]);
+  ctx.lineDashOffset = -(performance.now() / 34) % 30;
+  ctx.strokeStyle = 'rgba(255,106,61,.34)';
+  ctx.beginPath(); ctx.arc(CX, CY, ARENA_R + 5, 0, TAU); ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(150,180,220,.16)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(CX, CY, ARENA_R, 0, TAU); ctx.stroke();
+
+  // Highlight ring on the viewing member's bot
+  const me = bots[0];
+  if (opt.glow && me.alive) {
+    const pulse = 0.55 + Math.sin(performance.now() / 260) * 0.28;
+    ctx.save();
+    ctx.shadowColor = me.col; ctx.shadowBlur = 26;
+    ctx.strokeStyle = `rgba(255,255,255,${pulse * 0.5})`; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.arc(me.x, me.y, me.r + 17, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+
+  for (const b of bots) drawBot(b);
+  for (const b of bots) drawHealth(b);
+
+  if (opt.glow && me.alive) {
+    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(7,9,13,.8)';
+    ctx.fillRect(me.x - 24, me.y - me.r - 37, 48, 16);
+    ctx.fillStyle = '#fff'; ctx.fillText('YOU', me.x, me.y - me.r - 25);
+  }
+
+  // Sparks — additive
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    ctx.globalAlpha = Math.min(1, p.life / p.max) * 0.95;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill();
+  }
+  for (const w of waves) {
+    ctx.globalAlpha = (w.life / 34) * 0.55;
+    ctx.strokeStyle = w.col; ctx.lineWidth = w.w;
+    ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, TAU); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.restore();
+
+  // Vignette
+  const vg = ctx.createRadialGradient(CX, CY, 190, CX, CY, 560);
+  vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.72)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+
+  // Kill-feed panel
+  ctx.fillStyle = '#090c11'; ctx.fillRect(PANEL_X, 0, PANEL_W, H);
+  ctx.fillStyle = '#141c27'; ctx.fillRect(PANEL_X, 0, 1, H);
+  ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'left'; ctx.fillStyle = '#4c5a6d';
+  ctx.fillText('E L I M I N A T I O N S', PANEL_X + 20, 34);
+
+  const remaining = bots.filter(b => b.alive).length;
+  ctx.font = '700 40px ui-sans-serif, system-ui, sans-serif';
+  ctx.fillStyle = '#e8eef6'; ctx.fillText(String(remaining), PANEL_X + 20, 84);
+  ctx.font = '500 11px ui-sans-serif, system-ui, sans-serif';
+  ctx.fillStyle = '#55637a'; ctx.fillText('BOTS REMAINING', PANEL_X + 48, 84);
+
+  const CAUSE = { combat: 'destroyed in combat', pit: 'fell into the pit',
+                  wall: 'burned on the perimeter' };
+  feed.forEach((f, i) => {
+    const y = 128 + i * 42;
+    const slide = Math.min(1, f.t / 9);
+    ctx.globalAlpha = 0.35 + 0.65 * slide - i * 0.07;
+    ctx.fillStyle = f.name === 'VINCE' && opt.glow ? '#131c28' : '#0d1219';
+    ctx.fillRect(PANEL_X + 14 + (1 - slide) * 22, y - 17, PANEL_W - 30, 34);
+    ctx.fillStyle = f.col;
+    ctx.fillRect(PANEL_X + 14 + (1 - slide) * 22, y - 17, 3, 34);
+    ctx.font = '700 12px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = '#dbe4ef';
+    ctx.fillText(f.name, PANEL_X + 26 + (1 - slide) * 22, y - 2);
+    ctx.font = '400 10.5px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = '#5d6b81';
+    ctx.fillText(CAUSE[f.cause], PANEL_X + 26 + (1 - slide) * 22, y + 12);
+    ctx.globalAlpha = 1;
+  });
+
+  if (flashT > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${flashT / 10 * 0.13})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+  if (slowT > 0) {
+    ctx.font = '600 10px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(127,212,255,.75)'; ctx.textAlign = 'left';
+    ctx.fillText('S L O W   M O T I O N', 26, 34);
+  }
+
+  const last = bots.filter(b => b.alive);
+  if (last.length === 1 && roundOver > 22) {
+    ctx.textAlign = 'center';
+    ctx.font = '600 11px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = '#5b6a80'; ctx.fillText('L A S T   B O T   S T A N D I N G', CX, CY - 218);
+    ctx.font = '800 40px ui-sans-serif, system-ui, sans-serif';
+    ctx.fillStyle = last[0].col; ctx.fillText(last[0].name, CX, CY - 176);
+  }
+}
+
+function loop() {
+  acc += slowT > 0 && opt.slow ? 0.26 : 1;
+  let guard = 0;
+  while (acc >= 1 && guard++ < 4) { update(); acc -= 1; }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+const toggle = (id, key) => {
+  const el = document.getElementById(id);
+  el.onclick = () => { opt[key] = !opt[key]; el.classList.toggle('on', opt[key]); };
+};
+toggle('btnSlow', 'slow'); toggle('btnShake', 'shake');
+toggle('btnScuff', 'scuff'); toggle('btnGlow', 'glow');
+document.getElementById('btnRestart').onclick = reset;
+
+reset();
+loop();
+})();
+</script>
+</body>
+</html>

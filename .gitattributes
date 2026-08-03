@@ -1,0 +1,12 @@
+# Normalize line endings to LF in the repository.
+# Prevents CRLF churn between Windows editing and CI/hosting.
+* text=auto eol=lf
+
+# Binary assets — never touch these
+*.png binary
+*.jpg binary
+*.webp binary
+*.mp3 binary
+*.ogg binary
+*.wav binary
+*.blend binary
