@@ -9,6 +9,7 @@ import { createBot, DEFAULT_BOT, type Bot } from './bot';
 import { resolveHit } from './combat';
 import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
+import { buildSpiralOrder, updateCollapse } from './collapse';
 
 export type EliminationCause = 'destroyed' | 'fell';
 
@@ -52,6 +53,8 @@ export interface Match {
    * pure physics-and-stats record.
    */
   aiStates: Map<string, AiState>;
+  /** Tile indices in outside-in spiral order, consumed by the endgame collapse. */
+  collapseOrder: number[];
 }
 
 export interface MatchResult {
@@ -158,7 +161,9 @@ export function createMatch(config: MatchConfig): Match {
     aiStates.set(bot.body.id, createAiState(personalities[i]!));
   });
 
-  return { config, arena, world, bots, eliminations: [], done: false, rng, aiStates };
+  const collapseOrder = buildSpiralOrder(arena.grid);
+
+  return { config, arena, world, bots, eliminations: [], done: false, rng, aiStates, collapseOrder };
 }
 
 /**
@@ -193,6 +198,8 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
 
 export function advanceMatch(match: Match): void {
   if (match.done) return;
+
+  updateCollapse(match);
 
   for (const bot of match.bots) {
     if (!bot.alive) continue;
