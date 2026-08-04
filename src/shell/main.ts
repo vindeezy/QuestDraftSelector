@@ -2,8 +2,34 @@ import { DEFAULT_BOARD } from '../sim/plinko/board';
 import { DEFAULT_PLINKO, advance, createPlinkoRun } from '../sim/plinko/plinko';
 import { createPlinkoRenderer, type PlinkoRenderer } from '../render/plinko-renderer';
 import { DEFAULT_ARENA } from '../sim/arena/arena';
-import { DEFAULT_MATCH, advanceMatch, createMatch } from '../sim/arena/match';
+import { DEFAULT_MATCH, advanceMatch, createMatch, type Match } from '../sim/arena/match';
 import { createArenaRenderer, type ArenaRenderer } from '../render/arena-renderer';
+
+/**
+ * Three-letter personality tags for the renderer's on-bot labels.
+ *
+ * Lives in the shell, not the renderer, because the renderer must not import the AI or
+ * personality modules — it only knows about a `Map<string, string>` it is handed.
+ */
+const PERSONALITY_TAGS: Record<string, string> = {
+  aggressive: 'AGG',
+  defensive: 'DEF',
+  hitAndRun: 'H&R',
+  thirdParty: '3RD',
+  chaos: 'CHA',
+  showman: 'SHO',
+  instigator: 'INS',
+};
+
+/** Builds the bot-id -> tag map the renderer draws under each living bot. */
+function buildPersonalityTags(match: Match): Map<string, string> {
+  const tags = new Map<string, string>();
+  for (const bot of match.bots) {
+    const personality = match.aiStates.get(bot.body.id)?.personality;
+    if (personality) tags.set(bot.body.id, PERSONALITY_TAGS[personality] ?? personality);
+  }
+  return tags;
+}
 
 /**
  * A workbench for experimenting with the board, not the finished viewer.
@@ -234,7 +260,8 @@ function mountArena(container: HTMLElement): () => void {
     stage.innerHTML = '';
 
     const match = createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed });
-    arenaRenderer = await createArenaRenderer(stage, match, 0);
+    const personalityTags = buildPersonalityTags(match);
+    arenaRenderer = await createArenaRenderer(stage, match, 0, personalityTags);
 
     const loop = (): void => {
       // 1x: one simulation tick per animation frame, matching the Forge.
@@ -242,9 +269,17 @@ function mountArena(container: HTMLElement): () => void {
 
       arenaRenderer!.draw(match);
       const alive = match.bots.filter((b) => b.alive).length;
-      status.textContent = match.done
-        ? `finished at tick ${match.world.tick} — ${alive} left standing`
-        : `tick ${match.world.tick} — ${alive} alive`;
+
+      if (match.done) {
+        const winnerIndex = match.bots.findIndex((b) => b.alive);
+        const winner = winnerIndex === -1 ? null : match.bots[winnerIndex]!;
+        const winnerTag = winner ? match.aiStates.get(winner.body.id)?.personality : null;
+        status.textContent = winner
+          ? `finished at tick ${match.world.tick} — bot #${winnerIndex + 1} (${winnerTag}) wins`
+          : `finished at tick ${match.world.tick} — no survivors`;
+      } else {
+        status.textContent = `tick ${match.world.tick} — ${alive} alive`;
+      }
 
       if (!match.done) arenaFrame = requestAnimationFrame(loop);
     };
