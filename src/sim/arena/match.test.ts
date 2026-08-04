@@ -145,3 +145,27 @@ describe('runMatch', () => {
     expect(new Set(firstBotX).size).toBeGreaterThan(10);
   });
 });
+
+describe('personalities', () => {
+  it('assigns a personality to every bot', () => {
+    const m = createMatch({ ...config, seed: 1, botCount: 10 });
+    for (const bot of m.bots) {
+      expect(m.aiStates.get(bot.body.id)).toBeDefined();
+    }
+  });
+
+  it('does not correlate personality with bot index across seeds', () => {
+    const first: string[] = [];
+    for (let seed = 1; seed <= 40; seed++) {
+      const m = createMatch({ ...config, seed, botCount: 10 });
+      first.push(m.aiStates.get(m.bots[0]!.body.id)!.personality);
+    }
+    expect(new Set(first).size).toBeGreaterThan(3);
+  });
+
+  it('uses every personality when there are at least seven bots', () => {
+    const m = createMatch({ ...config, seed: 3, botCount: 10 });
+    const used = new Set([...m.aiStates.values()].map((s) => s.personality));
+    expect(used.size).toBe(7);
+  });
+});

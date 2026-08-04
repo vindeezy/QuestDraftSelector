@@ -1,14 +1,14 @@
 import { createRng, type Rng } from '../rng';
 import { createWorld, step, type World } from '../world';
 import { hashNumbers } from '../checksum';
-import { ANGLE_STEPS, cosOf, sinOf } from '../trig';
+import { ANGLE_STEPS } from '../trig';
 
-/** Floor on throttle, so a badly misaligned bot still creeps while it rotates. */
-const MIN_THROTTLE = 0.15;
 import { buildArena, type Arena, type ArenaConfig } from './arena';
 import { isOverHole } from './tiles';
-import { applyGrip, applyThrust, createBot, steerToward, DEFAULT_BOT, type Bot } from './bot';
+import { createBot, DEFAULT_BOT, type Bot } from './bot';
 import { resolveHit } from './combat';
+import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
+import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 
 export type EliminationCause = 'destroyed' | 'fell';
 
@@ -47,6 +47,11 @@ export interface Match {
    * this one generator instead of creating a second source of truth.
    */
   rng: Rng;
+  /**
+   * AI state per bot, keyed by `bot.body.id`. Kept off the `Bot` type so `Bot` stays a
+   * pure physics-and-stats record.
+   */
+  aiStates: Map<string, AiState>;
 }
 
 export interface MatchResult {
@@ -109,6 +114,29 @@ function spawnBots(arena: Arena, count: number, rng: Rng): Bot[] {
   return bots;
 }
 
+/**
+ * Assigns a personality to every bot.
+ *
+ * Cycles through `PERSONALITY_NAMES` until there are `botCount` entries, then shuffles
+ * with the seeded PRNG so personality never correlates with bot index — the same
+ * fairness rule spawn position and the Plinko board needed.
+ */
+function assignPersonalities(botCount: number, rng: Rng): PersonalityName[] {
+  const assignment: PersonalityName[] = [];
+  for (let i = 0; i < botCount; i++) {
+    assignment.push(PERSONALITY_NAMES[i % PERSONALITY_NAMES.length]!);
+  }
+
+  for (let i = assignment.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    const swap = assignment[i]!;
+    assignment[i] = assignment[j]!;
+    assignment[j] = swap;
+  }
+
+  return assignment;
+}
+
 export function createMatch(config: MatchConfig): Match {
   const arena = buildArena(config.arena);
   const rng = createRng(config.seed);
@@ -124,64 +152,24 @@ export function createMatch(config: MatchConfig): Match {
   const bots = spawnBots(arena, config.botCount, rng);
   for (const bot of bots) world.bodies.push(bot.body);
 
-  return { config, arena, world, bots, eliminations: [], done: false, rng };
+  const personalities = assignPersonalities(config.botCount, rng);
+  const aiStates = new Map<string, AiState>();
+  bots.forEach((bot, i) => {
+    aiStates.set(bot.body.id, createAiState(personalities[i]!));
+  });
+
+  return { config, arena, world, bots, eliminations: [], done: false, rng, aiStates };
 }
 
 /**
- * Placeholder AI: drive at the nearest living bot.
- *
- * Deliberately throwaway. It exists so movement and combat can be watched before the
- * real utility-based AI is designed. Do not build on it.
+ * A bot that just landed a hit and leans heavily toward disengaging breaks off instead
+ * of committing further. This is what makes Hit-and-Run strike and back away.
  */
-/**
- * Throttle as a function of how squarely the bot faces where it wants to go.
- *
- * This is not a refinement — without it, pursuit does not work at all. A bot at constant
- * full throttle has a fixed minimum turn radius of speed / angular-velocity, about 101
- * units at these stats. Two identical bots chasing each other settle into a mutual orbit
- * at that radius and never touch again: measured at seed 1, two survivors circled 140
- * units apart at full speed for 15,000 ticks with zero contacts.
- *
- * Backing off the throttle when the target is off-axis shrinks the turn radius, which is
- * exactly how a real driver corners. Facing the target means full power; badly misaligned
- * means crawl and rotate.
- */
-function throttleFor(bot: Bot, dx: number, dy: number): number {
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return MIN_THROTTLE;
-  const inv = 1 / Math.sqrt(lenSq);
-  const dot = cosOf(bot.heading) * dx * inv + sinOf(bot.heading) * dy * inv;
-  if (dot <= 0) return MIN_THROTTLE;
-  return MIN_THROTTLE + (1 - MIN_THROTTLE) * dot;
-}
-
-function driveStub(match: Match, bot: Bot): void {
-  let target: Bot | null = null;
-  let bestSq = Number.POSITIVE_INFINITY;
-
-  for (const other of match.bots) {
-    if (other === bot || !other.alive) continue;
-    const dx = other.body.x - bot.body.x;
-    const dy = other.body.y - bot.body.y;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < bestSq) {
-      bestSq = distSq;
-      target = other;
-    }
+function maybeDisengage(match: Match, attacker: Bot): void {
+  const state = match.aiStates.get(attacker.body.id);
+  if (state && state.weights.disengage > 0.7) {
+    lockAction(state, 'disengage', match.world.tick, DISENGAGE_TICKS);
   }
-
-  if (!target) return;
-
-  // Intercept, not pursuit. Steering straight at a target moving at the same speed
-  // produces a stable mutual orbit that never closes — measured at seed 1, two bots
-  // circled 140 units apart at full speed for 15,000 ticks with zero contacts. Aiming
-  // at where the target WILL be collapses that orbit into a converging spiral.
-  const lead = Math.sqrt(bestSq) / DEFAULT_BOT.maxSpeed;
-  const targetX = target.body.x + target.body.vx * lead - bot.body.x;
-  const targetY = target.body.y + target.body.vy * lead - bot.body.y;
-  steerToward(bot, targetX, targetY);
-  applyThrust(bot, throttleFor(bot, targetX, targetY));
-  applyGrip(bot);
 }
 
 function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string | null): void {
@@ -193,7 +181,13 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
 
   if (byId !== null) {
     const killer = match.bots.find((other) => other.body.id === byId);
-    if (killer) killer.kills++;
+    if (killer) {
+      killer.kills++;
+      const killerState = match.aiStates.get(killer.body.id);
+      if (killerState && killerState.weights.celebrate > 0.5) {
+        lockAction(killerState, 'celebrate', match.world.tick, CELEBRATE_TICKS);
+      }
+    }
   }
 }
 
@@ -201,7 +195,8 @@ export function advanceMatch(match: Match): void {
   if (match.done) return;
 
   for (const bot of match.bots) {
-    if (bot.alive) driveStub(match, bot);
+    if (!bot.alive) continue;
+    driveWithAi(match, bot, match.aiStates.get(bot.body.id)!);
   }
 
   step(match.world);
@@ -220,11 +215,13 @@ export function advanceMatch(match: Match): void {
     b.lastContactTick = match.world.tick;
     b.lastContactId = a.body.id;
 
-    if (resolveHit(a, b, contact.speed) > 0 && b.health === 0) {
-      eliminate(match, b, 'destroyed', a.body.id);
+    if (resolveHit(a, b, contact.speed) > 0) {
+      maybeDisengage(match, a);
+      if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
     }
-    if (b.alive && resolveHit(b, a, contact.speed) > 0 && a.health === 0) {
-      eliminate(match, a, 'destroyed', b.body.id);
+    if (b.alive && resolveHit(b, a, contact.speed) > 0) {
+      maybeDisengage(match, b);
+      if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);
     }
   }
 
