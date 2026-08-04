@@ -47,9 +47,18 @@ npm install
 npm run dev
 ```
 
-Enter a seed, hit Run, watch ten balls fall. The same seed always produces the same
-result. Ball 1 is highlighted, standing in for "the member watching" until real
-league data exists.
+Enter a seed, hit Run, watch ten balls fall. Ball 1 is highlighted, standing in for
+"the member watching" until real league data exists.
+
+**A seed reproduces an event only when the configuration is held fixed.** The seed
+selects the random number sequence — the release jitter and shuffle order — not the
+outcome. The outcome is what the physics does with that sequence, so changing max
+speed, ball count, or slot count produces a genuinely different event from the same
+seed. The simulation is chaotic: perturbing gravity by 0.4% changes every landing.
+
+That sensitivity is the point. It is what makes the golden record test in
+`tests/determinism.test.ts` a reliable tripwire against silent physics drift.
+The playback dial is the one control that cannot affect the result.
 
 Other commands:
 

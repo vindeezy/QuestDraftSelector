@@ -62,8 +62,8 @@ controls.innerHTML = `
     <input id="speed" type="range" min="1.5" max="${MAX_SPEED_CEILING}" step="0.5" value="5.5">
   </label>
 
-  <label class="dial"><span>Playback <b class="val" id="playVal">2x</b></span>
-    <input id="play" type="range" min="1" max="6" step="1" value="2">
+  <label class="dial"><span>Playback <b class="val" id="playVal">1x</b></span>
+    <input id="play" type="range" min="1" max="6" step="1" value="1">
   </label>
 
   <label class="dial"><span>Balls <b class="val" id="ballsVal">10</b></span>
@@ -100,8 +100,14 @@ const slotsInput = $<HTMLInputElement>('slots');
 
 let renderer: PlinkoRenderer | null = null;
 let frame = 0;
-/** Read live inside the loop, so playback speed can be changed mid-drop. */
-let ticksPerFrame = 2;
+/**
+ * Read live inside the loop, so playback speed can be changed mid-drop.
+ *
+ * 1x is the chosen default: one sim tick per animation frame puts a drop at roughly
+ * 10 seconds, which reads as dramatic rather than hurried. Higher values are for
+ * iterating quickly, not for viewing.
+ */
+let ticksPerFrame = 1;
 
 function syncLabels(): void {
   $('speedVal').textContent = Number(speedInput.value).toFixed(1);
@@ -170,7 +176,7 @@ $('random').addEventListener('click', () => {
 $('reset').addEventListener('click', () => {
   seedInput.value = '4242';
   speedInput.value = String(DEFAULT_PLINKO.maxSpeed);
-  playInput.value = '2';
+  playInput.value = '1';
   ballsInput.value = String(DEFAULT_PLINKO.ballCount);
   slotsInput.value = String(DEFAULT_BOARD.slotCount);
   void start();
