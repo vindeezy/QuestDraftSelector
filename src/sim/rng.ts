@@ -1,10 +1,9 @@
-/**
- * The only source of randomness in the simulation.
- *
- * Built entirely from 32-bit integer operations (`|0`, `>>>`, `Math.imul`), which
- * ECMAScript specifies exactly. The output sequence is therefore bit-identical on
- * every JavaScript engine, which is what makes seed-based replay possible.
- */
+// The only source of randomness in the simulation.
+//
+// Built entirely from 32-bit integer operations (`|0`, `>>>`, `Math.imul`), which
+// ECMAScript specifies exactly. The output sequence is therefore bit-identical on
+// every JavaScript engine, which is what makes seed-based replay possible.
+
 export interface Rng {
   /** Next value in [0, 1). */
   next(): number;
@@ -26,6 +25,15 @@ function splitmix32(seed: number): () => number {
   };
 }
 
+/**
+ * Creates a generator for one simulation run.
+ *
+ * `seed` must be a 32-bit integer. It is coerced with `| 0`, so non-integer, NaN,
+ * or out-of-range values silently alias onto other seeds — 1.5 produces the same
+ * stream as 1, and 2**32 produces the same stream as 0. A recorded event is
+ * identified by its seed, so an aliased seed is a corrupted record. Callers
+ * generating seeds must stay within [-2**31, 2**31).
+ */
 export function createRng(seed: number): Rng {
   const gen = splitmix32(seed);
   let a = gen(), b = gen(), c = gen(), d = gen();
@@ -41,7 +49,8 @@ export function createRng(seed: number): Rng {
     return (t >>> 0) / 4294967296;
   };
 
-  // Discard the first values so the initial state is well mixed.
+  // Must not be removed: sfc32's 128-bit state starts poorly diffused, so without
+  // this warmup, nearby seeds produce visibly correlated early output.
   for (let i = 0; i < 12; i++) next();
 
   return {
