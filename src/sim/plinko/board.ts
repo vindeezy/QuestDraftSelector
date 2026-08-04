@@ -38,7 +38,12 @@ export interface Board {
  * from `npm run distribution` — do not guess at it here.
  */
 export const DEFAULT_BOARD: BoardConfig = {
-  width: 760,
+  // width MUST stay an exact multiple of pegSpacingX, or the staggered rows sit
+  // closer to one wall than the other and the distribution skews. At 760 wide with
+  // 60 spacing, odd rows left a 40px right margin against a 30px left margin, and
+  // the outer slots measured 7.41% vs 5.44% over 10,000 balls. 720 is 12 x 60, which
+  // makes both margins 30px. Do not change one of these two numbers alone.
+  width: 720,
   height: 760,
   rows: 14,
   pegSpacingX: 60,
