@@ -143,6 +143,28 @@ everything in Phase 4 depends on it working.
 
 Health reaching zero eliminates a bot. So does falling (§5.1).
 
+### 7.1 Weapon model — three components (Phase 4)
+
+The greybox formula above treats every bot as having one generic impact weapon. Watching
+real matches established that the finished model needs three separate damage components,
+because different weapon types behave fundamentally differently:
+
+| Component | Applies to | Behaviour |
+|---|---|---|
+| **Collision** | Every bot, always | A small amount of damage on any contact, regardless of weapon. Scales with impact speed. Spikes, wedges and ramps — where ramming *is* the attack — multiply this heavily. |
+| **Passive contact** | Spinners, saws | Continuous damage per tick while in contact, independent of closing speed. A spun-up blade hurts whatever touches it. |
+| **Active** | Hammers, flamethrowers | Damage only while the weapon is actually being used. A discrete action with a cooldown, triggered by the AI when a target is in range and arc. |
+
+Two consequences worth noting now:
+
+- The universal collision component is what prevents a shoving match from lasting forever.
+  A purely impact-velocity model does nothing when two bots grind together at near-zero
+  relative speed.
+- The active component makes weapon timing an AI decision, not a passive stat. That is
+  what will make a hammer bot read differently from a saw bot on screen.
+
+Greybox keeps the single generic formula. This table is the Phase 4 target.
+
 ## 8. Engagement model
 
 Each tick the simulation derives a lightweight picture of who is fighting whom. Two bots
@@ -159,6 +181,29 @@ busy).
 
 ## 9. AI
 
+### 9.0 Required driving behaviours
+
+Three properties every personality must have, established by watching the greybox. The
+first two look like AI problems but are geometric, and will recur in the real AI if not
+carried over.
+
+**Throttle modulation.** A bot at constant full throttle has a fixed minimum turn radius
+of `speed / angular velocity` — about 101 units at greybox stats. Throttle must fall as
+the target goes off-axis, which shrinks the turn radius, exactly as a real driver brakes
+into a corner. Adding this alone cut deaths-by-falling from 45% to 24%, because bots
+stopped overshooting their turns into pits.
+
+**Intercept, not pursuit.** Steering straight at a target moving at the same speed is a
+stable mutual orbit that never closes, regardless of throttle. Measured at seed 1, two
+bots circled 140 units apart at full speed for 15,000 ticks with zero contacts — which
+reads on screen as two bots locked together doing nothing. Aiming at where the target
+*will* be collapses the orbit into a converging spiral. Adding this took matches resolving
+before the time cap from 40% to 60%.
+
+**Target switching.** The greybox stub locks onto the nearest bot and never reconsiders,
+which produces duels rather than a battle royale. Personalities must re-evaluate their
+target periodically, and weight variety, so fights break up and reform unpredictably.
+
 ### 9.1 Utility scoring
 
 Each tick, a bot scores its available actions and takes the highest:
@@ -174,6 +219,13 @@ Each tick, a bot scores its available actions and takes the highest:
 
 Personality is a weight vector over these. Danger avoidance being scored like any other
 action is what makes hazard awareness personality-dependent without special cases.
+
+**Hazard avoidance must be genuinely competent.** The greybox stub has none at all, and
+bots drive straight into pits — 24% of all deaths even after the throttle fix. A bot
+should not kill itself on a stationary hole it has had seconds to see. Personality
+governs how much risk a bot accepts near a hazard while fighting, not whether it can see
+one. Deaths by hazard should come from being *shoved* in, or from a deliberate risk taken
+mid-fight, not from routine navigation.
 
 ### 9.2 Action states
 
