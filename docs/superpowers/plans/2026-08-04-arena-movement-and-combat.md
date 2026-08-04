@@ -312,8 +312,15 @@ it('matches the locked reference table', () => {
 
 - [ ] **Step 6: Prove the lock bites**
 
-Temporarily change the last Taylor coefficient in `polySin` from `1 / 6227020800` to
-`1 / 6227020801`.
+Temporarily change the x^11 coefficient in `polySin` from `-1 / 39916800` to
+`-1 / 39916801`.
+
+Pick that coefficient deliberately. Perturbing the *highest* term instead — the x^13
+coefficient by one — changes the result by roughly 5e-18, which is below double
+precision, so it rounds to identical bits and **nothing fails**. The x^11 term is large
+enough that a one-part-in-4e7 change moves the result by about 9e-14: invisible to the
+`Math.cos` oracle at 1e-8 tolerance, but caught exactly by a bit-for-bit reference check.
+That contrast is the whole point of the exercise.
 
 Run: `npm test -- trig`
 Expected: the locked reference test FAILS. The unit-vector, symmetry, and `Math.cos`
