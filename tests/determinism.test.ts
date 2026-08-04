@@ -51,8 +51,8 @@ describe('deterministic replay', () => {
   // DO NOT paste in new numbers to make the test green.
   it('reproduces the locked golden record for seed 987654', () => {
     const result = runPlinko({ ...base, seed: 987654 });
-    expect(result.checksum).toBe('0894b2bd');
-    expect(result.ticks).toBe(619);
-    expect(result.landings.map((l) => l.slot)).toEqual([6, 5, 8, 1, 7, 2, 3, 0, 6, 2]);
+    expect(result.checksum).toBe('c6190ef6');
+    expect(result.ticks).toBe(623);
+    expect(result.landings.map((l) => l.slot)).toEqual([0, 3, 5, 3, 6, 0, 2, 6, 8, 8]);
   }, 30000);
 });

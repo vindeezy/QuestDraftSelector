@@ -1,5 +1,5 @@
 import { createBody, type Body } from '../body';
-import { createRng } from '../rng';
+import { createRng, type Rng } from '../rng';
 import { createWorld, step, isSettled, type World } from '../world';
 import { hashWorld } from '../checksum';
 import { slotForX, buildBoard, type Board, type BoardConfig } from './board';
@@ -88,6 +88,16 @@ export const DEFAULT_PLINKO: Omit<PlinkoConfig, 'board' | 'seed'> = {
   maxTicks: 20000,
 };
 
+/** Fisher-Yates, driven by the seeded PRNG so the ordering replays identically. */
+function shuffle(values: number[], rng: Rng): void {
+  for (let i = values.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    const swap = values[i]!;
+    values[i] = values[j]!;
+    values[j] = swap;
+  }
+}
+
 export function createPlinkoRun(config: PlinkoConfig): PlinkoRun {
   const board = buildBoard(config.board);
   const rng = createRng(config.seed);
@@ -109,38 +119,38 @@ export function createPlinkoRun(config: PlinkoConfig): PlinkoRun {
   const bandLeft = (config.board.width - bandWidth) / 2;
   const slice = bandWidth / config.ballCount;
 
-  // One release position per ball: its own slice of the band, at its own height.
-  const positions: { x: number; y: number }[] = [];
-  for (let i = 0; i < config.ballCount; i++) {
-    positions.push({
-      x: bandLeft + slice * (i + 0.5),
-      y: -config.ballRadius - i * config.releaseStagger,
-    });
-  }
-
-  // Fisher-Yates, seeded. This step is fairness-critical, not cosmetic.
+  // Release slices across the band, and release heights, are generated separately and
+  // shuffled INDEPENDENTLY. Both shuffles are load-bearing and they fix two different
+  // problems.
   //
-  // A symmetric random walk preserves the expected value of its starting position, so
-  // a ball released on the left lands left on average no matter how many peg rows it
-  // falls through — extra rows widen the spread but never move the mean. Assigning
-  // release positions by ball index therefore hands each member a permanently
-  // different distribution. Measured over 5,000 balls before this shuffle existed:
-  // ball 0 averaged slot 1.72 and ball 9 averaged slot 5.64, a 3.9-slot bias on a
-  // 9-slot board. Randomising the assignment is the only thing that removes it.
-  for (let i = positions.length - 1; i > 0; i--) {
-    const j = Math.floor(rng.next() * (i + 1));
-    const swap = positions[i]!;
-    positions[i] = positions[j]!;
-    positions[j] = swap;
+  // Shuffling at all is what makes the board fair between members. A symmetric random
+  // walk preserves the expected value of its starting position, so a ball released on
+  // the left lands left on average no matter how many peg rows it falls through —
+  // extra rows widen the spread but never move the mean. Assigning slices by ball
+  // index therefore hands each member a permanently different distribution. Measured
+  // over 5,000 balls before any shuffle existed: ball 0 averaged slot 1.72 and ball 9
+  // averaged slot 5.64, a 3.9-slot bias on a 9-slot board.
+  //
+  // Shuffling the two arrays independently, rather than shuffling paired (x, y)
+  // positions, is what keeps the board itself left-right symmetric. If the leftmost
+  // slice is always the one released lowest, the left side always drops first into a
+  // clear board while the right side always falls into a crowded one. That skewed the
+  // outer slots to 8.77% versus 6.53% over 3,000 balls even with paired shuffling.
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let i = 0; i < config.ballCount; i++) {
+    xs.push(bandLeft + slice * (i + 0.5));
+    ys.push(-config.ballRadius - i * config.releaseStagger);
   }
+  shuffle(xs, rng);
+  shuffle(ys, rng);
 
   const balls: PlinkoBall[] = [];
   for (let i = 0; i < config.ballCount; i++) {
-    const slot = positions[i]!;
     const body = createBody({
       id: `ball-${i}`,
-      x: slot.x + rng.range(-slice * 0.3, slice * 0.3),
-      y: slot.y,
+      x: xs[i]! + rng.range(-slice * 0.3, slice * 0.3),
+      y: ys[i]!,
       radius: config.ballRadius,
       mass: 1,
       vx: rng.range(-0.15, 0.15),
