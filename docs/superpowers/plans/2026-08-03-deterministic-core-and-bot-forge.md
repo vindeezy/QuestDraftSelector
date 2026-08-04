@@ -248,10 +248,34 @@ describe('createRng', () => {
     for (let i = 0; i < n; i++) {
       buckets[Math.floor(rng.next() * 10)]!++;
     }
-    // Each bucket should hold ~10% of samples. Allow 8%-12%.
+    // Each bucket should hold ~10% of samples. At n=100000, p=0.1, one standard
+    // deviation is about 95, so this is roughly a 4-sigma bound. The seed is fixed
+    // and the generator deterministic, so these counts are the same integers on
+    // every run forever — a tight bound here has zero flake risk.
     for (const count of buckets) {
-      expect(count).toBeGreaterThan(n * 0.08);
-      expect(count).toBeLessThan(n * 0.12);
+      expect(count).toBeGreaterThan(n * 0.0962);
+      expect(count).toBeLessThan(n * 0.1038);
+    }
+  });
+
+  it('aliases non-integer seeds onto their truncation', () => {
+    // Documented, deliberate behaviour: `seed | 0` coerces to int32. Pinned here
+    // so the aliasing stays a known property rather than an accident.
+    const a = createRng(1.5);
+    const b = createRng(1);
+    expect(Array.from({ length: 10 }, () => a.next()))
+      .toEqual(Array.from({ length: 10 }, () => b.next()));
+  });
+
+  it('accepts seed 0 and negative seeds', () => {
+    for (const seed of [0, -1, -987654]) {
+      const rng = createRng(seed);
+      const values = Array.from({ length: 20 }, () => rng.next());
+      for (const v of values) {
+        expect(v).toBeGreaterThanOrEqual(0);
+        expect(v).toBeLessThan(1);
+      }
+      expect(new Set(values).size).toBeGreaterThan(1);
     }
   });
 });
@@ -295,6 +319,15 @@ function splitmix32(seed: number): () => number {
   };
 }
 
+/**
+ * Creates a generator for one simulation run.
+ *
+ * `seed` must be a 32-bit integer. It is coerced with `| 0`, so non-integer, NaN,
+ * or out-of-range values silently alias onto other seeds — 1.5 produces the same
+ * stream as 1, and 2**32 produces the same stream as 0. A recorded event is
+ * identified by its seed, so an aliased seed is a corrupted record. Callers
+ * generating seeds must stay within [-2**31, 2**31).
+ */
 export function createRng(seed: number): Rng {
   const gen = splitmix32(seed);
   let a = gen(), b = gen(), c = gen(), d = gen();
@@ -310,7 +343,8 @@ export function createRng(seed: number): Rng {
     return (t >>> 0) / 4294967296;
   };
 
-  // Discard the first values so the initial state is well mixed.
+  // sfc32's 128-bit state starts poorly diffused, so without this warmup nearby
+  // seeds produce correlated early output. Do not delete this loop.
   for (let i = 0; i < 12; i++) next();
 
   return {
@@ -325,7 +359,51 @@ export function createRng(seed: number): Rng {
 Run: `npm test -- rng`
 Expected: PASS, 5 tests passed.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Lock the reference vector**
+
+Every test above compares the generator against *itself*, which proves consistency but
+not correctness. A different PRNG algorithm passes all of them. Since a recorded event is
+replayed by re-running this exact sequence, a silent algorithm change would invalidate
+every record while the suite stayed green. This step closes that hole.
+
+Write a throwaway script that constructs **one** `createRng(12345)` and pulls 8 values
+from it in sequence (all from the same instance — a new instance per value would return
+the same number 8 times), printing them at full precision. Do the same for `createRng(0)`.
+Paste the measured values into these tests, then delete the script.
+
+```ts
+// These arrays lock the generator's output. They are not arbitrary samples: recorded
+// events are replayed by re-running this exact sequence, so changing these numbers
+// invalidates every event ever recorded.
+//
+// If one of these fails, the generator changed. Revert the change.
+// DO NOT regenerate these arrays to make the test pass.
+it('matches the locked reference sequence for seed 12345', () => {
+  const rng = createRng(12345);
+  expect(Array.from({ length: 8 }, () => rng.next())).toEqual([
+    /* the 8 values you measured for seed 12345 */
+  ]);
+});
+
+it('matches the locked reference sequence for seed 0', () => {
+  const rng = createRng(0);
+  expect(Array.from({ length: 8 }, () => rng.next())).toEqual([
+    /* the 8 values you measured for seed 0 */
+  ]);
+});
+```
+
+- [ ] **Step 6: Prove the golden vectors actually bite**
+
+Temporarily change one shift amount in `next()` — `b >>> 9` to `b >>> 8`.
+
+Run: `npm test -- rng`
+Expected: both golden vector tests FAIL. The other tests still pass, which is exactly
+the point — they cannot detect this.
+
+Revert the change and re-run. Expected: all tests pass.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/sim/rng.ts src/sim/rng.test.ts
@@ -1846,16 +1924,59 @@ describe('deterministic replay', () => {
 });
 ```
 
-- [ ] **Step 2: Run the test**
+Every test above compares the simulation against *itself* within one process. That proves
+internal consistency but not that the result is the same one recorded last month — a
+changed constant in the physics would pass all four. Step 2 adds the test that does catch it.
+
+- [ ] **Step 2: Lock a golden record**
+
+Run this once and note the printed values:
+
+```bash
+npx vite-node -e "import('./src/sim/plinko/plinko.ts').then(async (p) => { const b = await import('./src/sim/plinko/board.ts'); const r = p.runPlinko({ ...p.DEFAULT_PLINKO, board: b.DEFAULT_BOARD, seed: 987654 }); console.log(JSON.stringify({ checksum: r.checksum, ticks: r.ticks, slots: r.landings.map(l => l.slot) })); })"
+```
+
+Paste the measured values into this test, appended to the same `describe` block:
+
+```ts
+  // This is a golden record. It pins the simulation's actual output, not merely its
+  // self-consistency. Any change to the physics constants, collision maths, board
+  // geometry, or PRNG will break it — which is the point, because any of those changes
+  // would silently turn every previously recorded event into a different event.
+  //
+  // If this fails, decide deliberately whether the change was intended. If it was,
+  // every existing recording must be re-recorded. DO NOT paste in new numbers to make
+  // the test green.
+  it('reproduces the locked golden record for seed 987654', () => {
+    const result = runPlinko({ ...base, seed: 987654 });
+    expect(result.checksum).toBe('' /* measured checksum */);
+    expect(result.ticks).toBe(0 /* measured tick count */);
+    expect(result.landings.map((l) => l.slot)).toEqual([
+      /* measured slot array */
+    ]);
+  });
+```
+
+- [ ] **Step 3: Prove the golden record bites**
+
+Temporarily change `gravity` in `DEFAULT_PLINKO` from `0.24` to `0.241`.
 
 Run: `npm test -- determinism`
-Expected: PASS, 4 tests passed.
+Expected: the golden record test FAILS. The other four still pass — which is exactly why
+the golden record is needed.
 
-If the third test fails because two seeds collide, that is acceptable only if the
-*landings* differ — a 32-bit hash has a small birthday-collision chance. Investigate
+Revert the change and re-run. Expected: all 5 tests pass.
+
+- [ ] **Step 4: Run the full file**
+
+Run: `npm test -- determinism`
+Expected: PASS, 5 tests passed.
+
+If the distinct-checksum test fails because two seeds collide, that is acceptable only if
+the *landings* differ — a 32-bit hash has a small birthday-collision chance. Investigate
 before relaxing it; a genuine collision at 200 samples is very unlikely.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add tests/determinism.test.ts
@@ -2211,6 +2332,10 @@ git commit -m "feat(shell): add Bot Forge viewer page with seed control"
 ## Definition of done
 
 - [ ] `npm test` passes, including the determinism suite
+- [ ] The golden vector (Task 2) and golden record (Task 11) tests exist, and each was
+      demonstrated to fail when the underlying algorithm was deliberately perturbed.
+      Self-comparative tests alone do not satisfy this — they cannot detect a changed
+      algorithm, which is the failure mode that would silently invalidate every recording.
 - [ ] `npm run lint` passes with the sim guard rules active
 - [ ] `npx tsc --noEmit` reports no errors
 - [ ] `npm run dev` shows ten balls dropping and settling into slots
