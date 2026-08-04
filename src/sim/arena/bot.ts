@@ -18,6 +18,12 @@ export interface Bot {
   weaponArc: number;
   weaponDamage: number;
   armour: number;
+  /** Tick of this bot's most recent contact with another bot. -1 if never. */
+  lastContactTick: number;
+  /** Id of the bot it last touched. Null if never. */
+  lastContactId: string | null;
+  /** Eliminations this bot has caused. Drives the "leader" target. */
+  kills: number;
 }
 
 export interface BotInit {
@@ -71,6 +77,9 @@ export function createBot(init: BotInit): Bot {
     weaponArc: DEFAULT_BOT.weaponArc,
     weaponDamage: DEFAULT_BOT.weaponDamage,
     armour: DEFAULT_BOT.armour,
+    lastContactTick: -1,
+    lastContactId: null,
+    kills: 0,
   };
 }
 

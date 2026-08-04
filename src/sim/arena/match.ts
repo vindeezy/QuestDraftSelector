@@ -184,6 +184,11 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
   bot.body.vx = 0;
   bot.body.vy = 0;
   match.eliminations.push({ botId: bot.body.id, cause, tick: match.world.tick, byId });
+
+  if (byId !== null) {
+    const killer = match.bots.find((other) => other.body.id === byId);
+    if (killer) killer.kills++;
+  }
 }
 
 export function advanceMatch(match: Match): void {
@@ -203,6 +208,11 @@ export function advanceMatch(match: Match): void {
     const a = match.bots.find((bot) => bot.body.id === contact.a);
     const b = match.bots.find((bot) => bot.body.id === contact.b);
     if (!a || !b || !a.alive || !b.alive) continue;
+
+    a.lastContactTick = match.world.tick;
+    a.lastContactId = b.body.id;
+    b.lastContactTick = match.world.tick;
+    b.lastContactId = a.body.id;
 
     if (resolveHit(a, b, contact.speed) > 0 && b.health === 0) {
       eliminate(match, b, 'destroyed', a.body.id);
