@@ -41,6 +41,12 @@ export interface Match {
   bots: Bot[];
   eliminations: Elimination[];
   done: boolean;
+  /**
+   * The match's seeded random stream. Stored here so anything that needs randomness
+   * during a match — the AI's target lottery, the Agent of Chaos reroll — draws from
+   * this one generator instead of creating a second source of truth.
+   */
+  rng: Rng;
 }
 
 export interface MatchResult {
@@ -118,7 +124,7 @@ export function createMatch(config: MatchConfig): Match {
   const bots = spawnBots(arena, config.botCount, rng);
   for (const bot of bots) world.bodies.push(bot.body);
 
-  return { config, arena, world, bots, eliminations: [], done: false };
+  return { config, arena, world, bots, eliminations: [], done: false, rng };
 }
 
 /**
