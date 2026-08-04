@@ -924,6 +924,27 @@ export function resolveCircleSegment(body: Body, seg: Segment): number {
 Run: `npm test -- collision`
 Expected: PASS, 13 tests passed.
 
+- [ ] **Step 4b: Close the mutation gaps**
+
+The 13 tests above look thorough but leave six mutants alive. Verified: taking the
+*higher* restitution instead of the lower, deleting the `t` clamp, deleting either
+`rel > 0` separating-guard, and deleting the two-static-body guard all pass the full
+suite. The momentum-conservation test is worse than useless — the impulse is applied as
+`± j * invMass`, so `mass * Δv` is `± j` for **any** `j`, and the assertion passes with
+the entire impulse calculation replaced by a constant.
+
+The cause is that every dynamic-dynamic test uses `mass: 1` and equal restitution, where
+several different implementations produce identical numbers.
+
+See `src/sim/collision.test.ts` for the resulting 19 tests — that file is authoritative.
+The additions are: lower-restitution selection, unequal-mass elastic impact (pinning the
+impulse rather than asserting vacuous conservation), heavy-vs-light positional split,
+restitution 0, both separating-guards, two static bodies, and a rewritten endpoint test
+that distinguishes clamped from unclamped `t`.
+
+Verify each addition kills its mutant before moving on. A test that has never been
+observed to fail is not evidence of anything.
+
 - [ ] **Step 5: Commit**
 
 ```bash
