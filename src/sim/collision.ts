@@ -40,12 +40,13 @@ export function resolveCircleCircle(a: Body, b: Body): number {
   const ny = dy / dist;
   const invMassSum = a.invMass + b.invMass;
 
-  // Positional separation, distributed by inverse mass.
-  const overlap = (minDist - dist) * SEPARATION_BIAS;
-  a.x -= nx * overlap * (a.invMass / invMassSum);
-  a.y -= ny * overlap * (a.invMass / invMassSum);
-  b.x += nx * overlap * (b.invMass / invMassSum);
-  b.y += ny * overlap * (b.invMass / invMassSum);
+  // Positional separation, distributed by inverse mass. Note this is the correction
+  // applied, not the overlap itself — SEPARATION_BIAS deliberately leaves a residual.
+  const correction = (minDist - dist) * SEPARATION_BIAS;
+  a.x -= nx * correction * (a.invMass / invMassSum);
+  a.y -= ny * correction * (a.invMass / invMassSum);
+  b.x += nx * correction * (b.invMass / invMassSum);
+  b.y += ny * correction * (b.invMass / invMassSum);
 
   // Impulse along the normal.
   const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
@@ -99,12 +100,16 @@ export function resolveCircleSegment(body: Body, seg: Segment): number {
   const nx = dx / dist;
   const ny = dy / dist;
 
+  // Penetration is corrected in full here, unlike circle-circle which under-corrects.
+  // A segment cannot be pushed back, so there is no stack to destabilise.
   body.x += nx * (body.radius - dist);
   body.y += ny * (body.radius - dist);
 
   const rel = body.vx * nx + body.vy * ny;
   if (rel > 0) return 0;
 
+  // No mass division here, unlike the circle-circle impulse above. Segments are
+  // immovable, so the body simply reflects. This is deliberate — do not "fix" it.
   const j = -(1 + body.restitution) * rel;
   body.vx += j * nx;
   body.vy += j * ny;
