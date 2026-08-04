@@ -714,11 +714,13 @@ Run: `npm test -- personality` → FAIL.
  */
 
 export interface Weights {
-  /** Go after whoever is closest. */
+  // The three chase weights select WHO a bot targets, not what it does. There is one
+  // `chase` action; these bias the weighted draw in `resolveTarget`.
+  /** Preference for closer targets. */
   chaseNearest: number;
-  /** Go after whoever has the least health. */
+  /** Preference for wounded targets. */
   chaseWeakest: number;
-  /** Go after whoever has the most kills. */
+  /** Preference for whoever has the most kills. */
   chaseLeader: number;
   /** Attack two bots already fighting each other. */
   attackEngaged: number;
