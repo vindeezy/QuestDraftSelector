@@ -1,7 +1,10 @@
 import { createRng, type Rng } from '../rng';
 import { createWorld, step, type World } from '../world';
 import { hashNumbers } from '../checksum';
-import { ANGLE_STEPS } from '../trig';
+import { ANGLE_STEPS, cosOf, sinOf } from '../trig';
+
+/** Floor on throttle, so a badly misaligned bot still creeps while it rotates. */
+const MIN_THROTTLE = 0.15;
 import { buildArena, type Arena, type ArenaConfig } from './arena';
 import { isOverHole } from './tiles';
 import { applyGrip, applyThrust, createBot, steerToward, DEFAULT_BOT, type Bot } from './bot';
@@ -124,11 +127,31 @@ export function createMatch(config: MatchConfig): Match {
  * Deliberately throwaway. It exists so movement and combat can be watched before the
  * real utility-based AI is designed. Do not build on it.
  */
+/**
+ * Throttle as a function of how squarely the bot faces where it wants to go.
+ *
+ * This is not a refinement — without it, pursuit does not work at all. A bot at constant
+ * full throttle has a fixed minimum turn radius of speed / angular-velocity, about 101
+ * units at these stats. Two identical bots chasing each other settle into a mutual orbit
+ * at that radius and never touch again: measured at seed 1, two survivors circled 140
+ * units apart at full speed for 15,000 ticks with zero contacts.
+ *
+ * Backing off the throttle when the target is off-axis shrinks the turn radius, which is
+ * exactly how a real driver corners. Facing the target means full power; badly misaligned
+ * means crawl and rotate.
+ */
+function throttleFor(bot: Bot, dx: number, dy: number): number {
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return MIN_THROTTLE;
+  const inv = 1 / Math.sqrt(lenSq);
+  const dot = cosOf(bot.heading) * dx * inv + sinOf(bot.heading) * dy * inv;
+  if (dot <= 0) return MIN_THROTTLE;
+  return MIN_THROTTLE + (1 - MIN_THROTTLE) * dot;
+}
+
 function driveStub(match: Match, bot: Bot): void {
-  let targetX = 0;
-  let targetY = 0;
+  let target: Bot | null = null;
   let bestSq = Number.POSITIVE_INFINITY;
-  let found = false;
 
   for (const other of match.bots) {
     if (other === bot || !other.alive) continue;
@@ -137,15 +160,21 @@ function driveStub(match: Match, bot: Bot): void {
     const distSq = dx * dx + dy * dy;
     if (distSq < bestSq) {
       bestSq = distSq;
-      targetX = dx;
-      targetY = dy;
-      found = true;
+      target = other;
     }
   }
 
-  if (!found) return;
+  if (!target) return;
+
+  // Intercept, not pursuit. Steering straight at a target moving at the same speed
+  // produces a stable mutual orbit that never closes — measured at seed 1, two bots
+  // circled 140 units apart at full speed for 15,000 ticks with zero contacts. Aiming
+  // at where the target WILL be collapses that orbit into a converging spiral.
+  const lead = Math.sqrt(bestSq) / DEFAULT_BOT.maxSpeed;
+  const targetX = target.body.x + target.body.vx * lead - bot.body.x;
+  const targetY = target.body.y + target.body.vy * lead - bot.body.y;
   steerToward(bot, targetX, targetY);
-  applyThrust(bot, 1);
+  applyThrust(bot, throttleFor(bot, targetX, targetY));
   applyGrip(bot);
 }
 
