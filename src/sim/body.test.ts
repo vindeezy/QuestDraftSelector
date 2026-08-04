@@ -34,10 +34,23 @@ describe('integrate', () => {
     expect(b.vx).toBeCloseTo(9, 10);
   });
 
-  it('clamps speed to maxSpeed', () => {
+  it('clamps speed to maxSpeed, and moves by the clamped velocity', () => {
     const b = ball({ vx: 100, vy: 0 });
     integrate(b, 0, 7, 1);
     expect(b.vx).toBeCloseTo(7, 10);
+    // Asserting position matters: if position were advanced using the pre-clamp
+    // velocity, x would be 100 and the tunnelling guard would be worthless.
+    expect(b.x).toBeCloseTo(7, 10);
+  });
+
+  it('applies drag before the speed clamp', () => {
+    // This is the only test that pins the order. Both drag and the clamp are live:
+    // drag first gives 100 * 0.5 = 50, which is under the clamp so it survives.
+    // Clamping first would give 60, then drag to 30. The two orders are
+    // distinguishable only when neither parameter is neutralised.
+    const b = ball({ vx: 100, vy: 0 });
+    integrate(b, 0, 60, 0.5);
+    expect(b.vx).toBeCloseTo(50, 10);
   });
 
   it('never exceeds maxSpeed no matter how long gravity acts', () => {

@@ -47,9 +47,16 @@ export function createBody(init: BodyInit): Body {
 /**
  * Advances a body by one tick using semi-implicit Euler.
  *
- * `maxSpeed` doubles as air resistance and as the tunnelling guard: a body can never
- * travel further in one tick than `maxSpeed`, so as long as that stays below the
+ * `drag` provides air resistance — it decays velocity exponentially every tick.
+ *
+ * `maxSpeed` is a separate hard clamp, and doubles as the tunnelling guard: a body can
+ * never travel further in one tick than `maxSpeed`, so as long as that stays below the
  * smallest collision radius in the world, nothing can pass through anything.
+ *
+ * The order below is load-bearing. Gravity, then drag, then the clamp, then position —
+ * so position always advances by the *clamped* velocity. Clamping after moving would
+ * reintroduce tunnelling; dragging after clamping would make the clamp the dominant
+ * speed control and drag nearly irrelevant.
  */
 export function integrate(body: Body, gravity: number, maxSpeed: number, drag: number): void {
   if (body.invMass === 0) return;
