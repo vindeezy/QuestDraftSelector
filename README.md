@@ -40,6 +40,35 @@ docs/    Design spec and art-direction studies.
 - [Art direction study](docs/design/art-direction-study.html) — a live, non-deterministic
   Canvas 2D mockup establishing look and feel. Open it in a browser.
 
+## Running it
+
+```bash
+npm install
+npm run dev
+```
+
+Enter a seed, hit Run, watch ten balls fall. The same seed always produces the same
+result. Ball 1 is highlighted, standing in for "the member watching" until real
+league data exists.
+
+Other commands:
+
+```bash
+npm test                     # 87 tests. Takes ~3 minutes; the determinism suite
+                             # runs several hundred full simulations.
+npm run distribution -- 400  # measures slot rarity AND per-ball fairness
+npm run lint                 # enforces the sim determinism contract
+```
+
 ## Status
 
-Design approved. Implementation not yet started.
+**Phases 1–2 complete.** The deterministic core and the Bot Forge simulation work.
+Ten balls drop, collide, and land in slots; the same seed replays byte-identically.
+
+Not yet built: the seven bot categories (balls land in numbered slots, not named
+parts), real visuals, audio, the Arena, and the viewing website. See the
+[roadmap](docs/superpowers/specs/2026-08-03-quest-draft-selector-design.md#12-build-roadmap).
+
+**Open tuning question:** the outer "jackpot" slots currently take ~7% of balls each,
+where the design targets 0.2%–1.5%. The board is fair — every member has the same
+expected outcome — but jackpots are not yet rare enough to feel special.
