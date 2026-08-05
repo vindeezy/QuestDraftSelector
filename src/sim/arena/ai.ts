@@ -119,8 +119,10 @@ function checkStuck(match: Match, self: Bot, state: AiState): void {
     const x = col * size + size / 2;
     const y = row * size + size / 2;
     if (isOverHole(grid, x, y)) continue;
-    const away = Math.sqrt((x - self.body.x) ** 2 + (y - self.body.y) ** 2);
-    if (away < size * 4) continue;
+    const dx = x - self.body.x;
+    const dy = y - self.body.y;
+    // Compared squared, so no square root is needed at all here.
+    if (dx * dx + dy * dy < size * 4 * (size * 4)) continue;
     state.relocateX = x;
     state.relocateY = y;
     lockAction(state, 'relocate', tick, RELOCATE_TICKS);
