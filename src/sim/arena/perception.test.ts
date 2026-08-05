@@ -140,4 +140,85 @@ describe('perceive', () => {
     expect(view.avoidX).toBe(0);
     expect(view.avoidY).toBe(0);
   });
+
+  it('produces repulsion from an active saw', () => {
+    // saw-l sits at (0, 300), always active. Just outside its notice range (dist ~251),
+    // this spot reads exactly zero — proof the arena has no other contamination here —
+    // so the nonzero reading a few units closer, well within range (dist ~241), is
+    // attributable to the saw alone.
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 180;
+    self.body.y = 460;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBeGreaterThan(0);
+    expect(view.avoidY).toBeGreaterThan(0);
+  });
+
+  it('produces no repulsion from a flame jet during its off phase', () => {
+    // flame-t sits at (300, 0) on a cycle(180, 70) — off from tick 70 to tick 179. This
+    // spot (col 8, row 4) is within flame-t's notice range but keeps every pit, wall
+    // gap, saw, the other flame jet, the crusher and the cannon's lane out of range.
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 480;
+    self.body.y = 245;
+    m.world.tick = 100;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBe(0);
+    expect(view.avoidY).toBe(0);
+  });
+
+  it('produces more repulsion from a flame jet on than off', () => {
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 480;
+    self.body.y = 245;
+
+    m.world.tick = 100; // off phase
+    const off = perceive(m, self);
+    const offMag = Math.sqrt(off.avoidX * off.avoidX + off.avoidY * off.avoidY);
+
+    m.world.tick = 0; // on phase
+    const on = perceive(m, self);
+    const onMag = Math.sqrt(on.avoidX * on.avoidX + on.avoidY * on.avoidY);
+
+    expect(onMag).toBeGreaterThan(offMag);
+  });
+
+  it('produces no repulsion from a button-triggered zone whose button is unpressed', () => {
+    // The crusher at (480, 500) is wired to 'plate-1', which nobody has stepped on, so
+    // it never latches (armedUntil stays 0). This spot is well within the crusher's
+    // notice range but keeps every pit, saw, flame jet and the cannon's lane out of
+    // range, so a nonzero reading here could only be the crusher's own -- and there is
+    // none.
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 480;
+    self.body.y = 280;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBe(0);
+    expect(view.avoidY).toBe(0);
+  });
+
+  it('produces repulsion from standing in an emitter firing lane, sideways rather than back', () => {
+    // cannon-l fires along +x from (0, 600). Standing north of its centreline should
+    // push further north (negative y) -- sideways, out of the lane -- not back toward
+    // -x, away from the emitter along its own axis.
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 300;
+    self.body.y = 590;
+    const view = perceive(m, self);
+    expect(view.avoidY).toBeLessThan(-10);
+  });
+
+  it('pushes the other way on the other side of an emitter lane', () => {
+    const m = match(4);
+    const self = m.bots[0]!;
+    self.body.x = 300;
+    self.body.y = 610;
+    const view = perceive(m, self);
+    expect(view.avoidY).toBeGreaterThan(10);
+  });
 });

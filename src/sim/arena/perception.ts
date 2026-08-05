@@ -1,6 +1,8 @@
 import { TileState, tileIndexAt } from './tiles';
 import type { Bot } from './bot';
 import type { Match } from './match';
+import { isActive } from './activation';
+import { cosOf, sinOf } from '../trig';
 
 /** How long after a contact two bots still count as fighting each other, in ticks. */
 export const ENGAGE_MEMORY = 90;
@@ -80,6 +82,105 @@ function holeRepulsion(match: Match, bot: Bot): { x: number; y: number } {
   return { x, y };
 }
 
+/**
+ * How far beyond a zone's own reach a bot notices it.
+ *
+ * A zone can be considerably larger than a single tile (a crusher reaches 45 units, a
+ * flame jet's cone 110), so measuring "nearby" from its centre needs a wider margin than
+ * the hole scan to give a bot the same effective warning distance beyond its edge that a
+ * hole gets beyond a tile boundary.
+ */
+const ZONE_NOTICE_MARGIN = 220;
+
+/**
+ * Repulsion away from every currently active zone near the bot.
+ *
+ * Same inverse-square weighting as holes, scaled the same way, so a saw reads as
+ * comparably dangerous to a pit rather than needing a second scale invented for it. A
+ * zone that is NOT currently active contributes nothing at all -- that is what makes a
+ * flame jet a timing hazard a cornered bot can gamble on, rather than a wall it must
+ * always drive around.
+ */
+function zoneRepulsion(match: Match, bot: Bot): { x: number; y: number } {
+  const size = match.arena.grid.tileSize;
+
+  let x = 0;
+  let y = 0;
+
+  for (const zone of match.arena.zones) {
+    if (!isActive(zone.activation, match.world.tick, match.arena.buttons)) continue;
+
+    const dx = bot.body.x - zone.x;
+    const dy = bot.body.y - zone.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq === 0) continue;
+
+    // A zone's own reach pushes its "nearby" boundary outward, same as a hole's tile
+    // footprint does implicitly by being scanned from its own centre.
+    const limit = ZONE_NOTICE_MARGIN + zone.reach;
+    if (distSq > limit * limit) continue;
+
+    const dist = Math.sqrt(distSq);
+    const strength = (size * size) / distSq;
+    x += (dx / dist) * strength;
+    y += (dy / dist) * strength;
+  }
+
+  return { x, y };
+}
+
+/** How far to either side of an emitter's line of fire counts as standing in it. */
+const LANE_HALF_WIDTH_TILES = 1;
+
+/**
+ * Sideways repulsion out of every emitter's firing lane.
+ *
+ * A bot standing in front of an emitter is pushed perpendicular to its heading --
+ * sidestepping the lane -- never straight back along the axis the shot travels, which
+ * would just line the bot up for a shot down a straight retreat instead of clearing it.
+ *
+ * Unlike zones, an emitter's lane is dangerous regardless of whether it happens to be
+ * mid-cycle right now: the shot travels fast and arrives on its own schedule, so a bot
+ * has no way to time a crossing safely and should treat the lane as always live.
+ */
+function emitterRepulsion(match: Match, bot: Bot): { x: number; y: number } {
+  const size = match.arena.grid.tileSize;
+  const halfWidth = LANE_HALF_WIDTH_TILES * size;
+  // Long enough to cover the whole arena along any heading.
+  const range = match.arena.grid.width + match.arena.grid.height;
+
+  let x = 0;
+  let y = 0;
+
+  for (const emitter of match.arena.emitters) {
+    const ax = cosOf(emitter.heading);
+    const ay = sinOf(emitter.heading);
+    const dx = bot.body.x - emitter.x;
+    const dy = bot.body.y - emitter.y;
+
+    // Along the firing axis. Behind the emitter or beyond its useful range is safe.
+    const along = dx * ax + dy * ay;
+    if (along < 0 || along > range) continue;
+
+    // Across the firing axis: positive to one side, negative to the other.
+    const nx = -ay;
+    const ny = ax;
+    const across = dx * nx + dy * ny;
+    if (across > halfWidth || across < -halfWidth) continue;
+
+    const distSq = across * across;
+    // Standing exactly on the centreline is the most dangerous spot of all, so it gets
+    // the strongest push rather than dividing by zero into nothing. Which side it picks
+    // is arbitrary but deterministic, same as the tie-break in `steerToward`.
+    const strength = distSq === 0 ? size * size : (size * size) / distSq;
+    const sign = across < 0 ? -1 : 1;
+    x += nx * sign * strength;
+    y += ny * sign * strength;
+  }
+
+  return { x, y };
+}
+
 export function perceive(match: Match, self: Bot): BotView {
   let nearest: Bot | null = null;
   let nearestDistSq = Number.POSITIVE_INFINITY;
@@ -114,7 +215,9 @@ export function perceive(match: Match, self: Bot): BotView {
     }
   }
 
-  const avoid = holeRepulsion(match, self);
+  const hole = holeRepulsion(match, self);
+  const zones = zoneRepulsion(match, self);
+  const lanes = emitterRepulsion(match, self);
 
   return {
     nearest,
@@ -122,7 +225,7 @@ export function perceive(match: Match, self: Bot): BotView {
     weakest,
     leader,
     engagedPair,
-    avoidX: avoid.x,
-    avoidY: avoid.y,
+    avoidX: hole.x + zones.x + lanes.x,
+    avoidY: hole.y + zones.y + lanes.y,
   };
 }
