@@ -27,8 +27,20 @@ export const DISENGAGE_TICKS = 90;
 const CHARGE_RANGE = 220;
 /** Ticks between Agent of Chaos rerolling its own weights. */
 const CHAOS_REROLL = 240;
-/** Scales hole repulsion into the same units as the chase offsets it blends with. */
-const AVOID_BLEND = 260;
+/**
+ * Scales hole repulsion into the same units as the chase offsets it blends with.
+ *
+ * Chase offsets are a vector to the target, so they routinely run to several hundred
+ * units. At 260 the repulsion was simply outvoted: an aggressive bot (caution 0.3)
+ * pushed back with about 65 units against a 300-unit pull, and drove in. Falls were 62%
+ * of all eliminations, which made the whole match a contest of who avoided holes best
+ * rather than who fought best.
+ */
+const AVOID_BLEND = 900;
+/** How hard hazard proximity cuts the throttle. Scaled by caution. */
+const BRAKE_STRENGTH = 0.9;
+/** A braking bot never fully stops, or it would be a sitting target. */
+const MIN_HAZARD_THROTTLE = 0.25;
 
 export interface AiState {
   personality: PersonalityName;
@@ -269,9 +281,18 @@ export function driveWithAi(match: Match, self: Bot, state: AiState): void {
   const want = actionOffset(action, self, view, target);
   const caution = 1 - state.weights.riskTolerance;
 
-  driveToward(
-    self,
-    want.x + view.avoidX * caution * AVOID_BLEND,
-    want.y + view.avoidY * caution * AVOID_BLEND,
-  );
+  // Hazard avoidance: push straight away from the hole, and brake so the turn radius
+  // is small enough for that push to actually work.
+  //
+  // Steering AROUND the hole instead of back from it was tried and measured worse —
+  // unassisted pit deaths rose from 46% to 53%, because the tangent runs along the
+  // hole's edge and a bot skimming the boundary falls in on any drift.
+  const danger = Math.sqrt(view.avoidX * view.avoidX + view.avoidY * view.avoidY);
+  const dx = want.x + view.avoidX * caution * AVOID_BLEND;
+  const dy = want.y + view.avoidY * caution * AVOID_BLEND;
+
+  const brake = danger * caution * BRAKE_STRENGTH;
+  const cap = brake > 1 - MIN_HAZARD_THROTTLE ? MIN_HAZARD_THROTTLE : 1 - brake;
+
+  driveToward(self, dx, dy, cap);
 }

@@ -55,25 +55,25 @@ const TABLE: Record<PersonalityName, Weights> = {
   aggressive: {
     chaseNearest: 1.0, chaseWeakest: 0.7, chaseLeader: 0.3, attackEngaged: 0.3,
     shove: 0.2, charge: 0.3, disengage: 0.0, retreat: 0.05, strafe: 0.1,
-    celebrate: 0.1, riskTolerance: 0.7, retargetInterval: 180,
+    celebrate: 0.1, riskTolerance: 0.55, retargetInterval: 180,
   },
   // Avoids trouble but attacks when necessary. Fights an intelligent battle.
   defensive: {
     chaseNearest: 0.3, chaseWeakest: 0.9, chaseLeader: 0.05, attackEngaged: 0.2,
-    shove: 0.2, charge: 0.1, disengage: 0.5, retreat: 1.0, strafe: 0.7,
-    celebrate: 0.0, riskTolerance: 0.15, retargetInterval: 120,
+    shove: 0.2, charge: 0.1, disengage: 0.5, retreat: 0.5, strafe: 0.7,
+    celebrate: 0.0, riskTolerance: 0.4, retargetInterval: 120,
   },
   // Strike, break off, repeat. Damage followed by self-preservation.
   hitAndRun: {
     chaseNearest: 0.6, chaseWeakest: 0.8, chaseLeader: 0.1, attackEngaged: 0.4,
     shove: 0.1, charge: 0.5, disengage: 1.0, retreat: 0.4, strafe: 0.4,
-    celebrate: 0.05, riskTolerance: 0.4, retargetInterval: 90,
+    celebrate: 0.05, riskTolerance: 0.45, retargetInterval: 90,
   },
   // Hunts bots already locked in a fight, looking for 2-on-1 eliminations.
   thirdParty: {
     chaseNearest: 0.2, chaseWeakest: 0.6, chaseLeader: 0.1, attackEngaged: 1.0,
     shove: 0.3, charge: 0.3, disengage: 0.3, retreat: 0.5, strafe: 0.5,
-    celebrate: 0.05, riskTolerance: 0.35, retargetInterval: 100,
+    celebrate: 0.05, riskTolerance: 0.5, retargetInterval: 100,
   },
   // Completely unpredictable. Rerolls its own weights mid-battle. The values here are
   // only its starting state; ai.ts replaces them periodically.
@@ -86,7 +86,7 @@ const TABLE: Record<PersonalityName, Weights> = {
   showman: {
     chaseNearest: 0.7, chaseWeakest: 0.3, chaseLeader: 0.8, attackEngaged: 0.4,
     shove: 0.3, charge: 1.0, disengage: 0.2, retreat: 0.1, strafe: 0.3,
-    celebrate: 1.0, riskTolerance: 0.95, retargetInterval: 150,
+    celebrate: 1.0, riskTolerance: 0.62, retargetInterval: 150,
   },
   // Bumps bots into each other and into hazards. Rarely commits to a fight itself.
   instigator: {

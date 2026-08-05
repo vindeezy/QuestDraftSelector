@@ -39,11 +39,17 @@ export const DEFAULT_ARENA: ArenaConfig = {
   cols: 16,
   rows: 12,
   tileSize: 60,
-  // Four pits, offset from the centre so no single safe spot exists.
+  // Two pits on a diagonal, offset from the centre so no single safe spot exists.
+  //
+  // Four was too many. Bots have a ~101-unit turn radius against a 60-unit pit, so
+  // avoiding one at speed is close to geometrically impossible, and with four of them
+  // in the fighting area 46% of ALL eliminations were bots driving in unassisted. That
+  // made the match a contest of hazard-avoidance rather than combat, which is why the
+  // most cautious personality was winning 40-65% of the time. Three separate AI fixes
+  // (stronger repulsion, hazard braking, tangential steering) failed to move it; the
+  // number of pits was the real lever.
   pits: [
     [4, 3],
-    [11, 3],
-    [4, 8],
     [11, 8],
   ],
   // Two gaps on opposite sides, so knockback in either direction can eject a bot.

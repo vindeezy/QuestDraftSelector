@@ -124,11 +124,18 @@ describe('perceive', () => {
   });
 
   it('produces no repulsion in open floor', () => {
+    // Tile (8, 4) is the open spot for a 3-tile scan radius: it sweeps cols 5-11 and
+    // rows 1-7, which excludes both pits ([4,3] is outside the columns, [11,8] outside
+    // the rows), the wall gaps on row 0, and every grid edge.
+    //
+    // This position had to move when the scan radius went from 2 to 3 — at (8, 5) the
+    // sweep reaches row 8 and catches pit [11,8]. The radius widened because bots were
+    // spotting pits too late to turn away from them.
     const m = match(4);
     const self = m.bots[0]!;
     const size = DEFAULT_ARENA.tileSize;
     self.body.x = 8 * size + size / 2;
-    self.body.y = 5 * size + size / 2;
+    self.body.y = 4 * size + size / 2;
     const view = perceive(m, self);
     expect(view.avoidX).toBe(0);
     expect(view.avoidY).toBe(0);

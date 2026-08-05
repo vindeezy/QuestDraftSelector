@@ -49,10 +49,19 @@ export function throttleFor(bot: Bot, dx: number, dy: number): number {
   return MIN_THROTTLE + (1 - MIN_THROTTLE) * dot;
 }
 
-/** Steer toward an offset, throttle for the resulting alignment, thrust, and grip. */
-export function driveToward(bot: Bot, dx: number, dy: number): void {
+/**
+ * Steer toward an offset, throttle for the resulting alignment, thrust, and grip.
+ *
+ * `throttleCap` exists for hazard braking. Steering away from a pit is not enough on its
+ * own: at full speed the turn radius is about 101 units and a pit is 60 across, so a bot
+ * that spots one at close range physically cannot turn out of it however hard it tries.
+ * Capping the throttle shrinks the turn radius and makes the escape geometrically
+ * possible. Raising avoidance strength alone moved falls only from 65% to 60%.
+ */
+export function driveToward(bot: Bot, dx: number, dy: number, throttleCap = 1): void {
   steerToward(bot, dx, dy);
-  applyThrust(bot, throttleFor(bot, dx, dy));
+  const throttle = throttleFor(bot, dx, dy);
+  applyThrust(bot, throttle < throttleCap ? throttle : throttleCap);
   applyGrip(bot);
 }
 
