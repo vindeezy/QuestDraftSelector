@@ -101,7 +101,8 @@ describe('runMatch', () => {
       expect(r.placements[0]!.place).toBe(1);
       expect(new Set(r.placements.map((p) => p.botId)).size).toBe(10);
     }
-  });
+    // 30 full matches. Vitest defaults to a 5s per-test limit, which this exceeds.
+  }, 60000);
 
   it('ranks every bot exactly once', () => {
     const r = runMatch({ ...config, seed: 11, botCount: 10 });
@@ -134,7 +135,7 @@ describe('runMatch', () => {
       const r = runMatch({ ...config, seed, botCount: 10 });
       expect(r.ticks).toBeLessThanOrEqual(config.maxTicks);
     }
-  });
+  }, 60000);
 
   it('gives every bot a different spawn across seeds — no index bias', () => {
     // Guards the fairness rule: spawn position must not correlate with bot index.
