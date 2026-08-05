@@ -63,10 +63,17 @@ export interface Match {
   projectiles: Projectile[];
 }
 
+export interface DamageDealt {
+  botId: string;
+  damageDealt: number;
+}
+
 export interface MatchResult {
   seed: number;
   placements: Placement[];
   eliminations: Elimination[];
+  /** Total damage each bot dealt this match. The event's second tiebreaker. */
+  damage: DamageDealt[];
   ticks: number;
   checksum: string;
 }
@@ -322,6 +329,7 @@ export function runMatch(config: MatchConfig): MatchResult {
     seed: config.seed,
     placements: buildPlacements(match),
     eliminations: match.eliminations,
+    damage: match.bots.map((bot) => ({ botId: bot.body.id, damageDealt: bot.damageDealt })),
     ticks: match.world.tick,
     checksum: hashNumbers(values),
   };
