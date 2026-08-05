@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createBot } from './bot';
-import { arcAlignment, damageFrom, resolveHit } from './combat';
+import { arcAlignment, damageFrom, resolveHit, vulnerability } from './combat';
 
 const at = (x: number, y: number, heading: number) =>
   createBot({ id: `${x},${y}`, x, y, heading });
@@ -59,7 +59,48 @@ describe('damageFrom', () => {
   });
 });
 
+describe('vulnerability', () => {
+  it('is lowest for a hit on the front', () => {
+    // Target faces +x, attacker is at +x, so this lands on its front armour.
+    expect(vulnerability(at(0, 0, 0), 100, 0)).toBeCloseTo(0.7, 8);
+  });
+
+  it('is highest for a hit on the rear', () => {
+    // Target faces +x, attacker is behind at -x.
+    expect(vulnerability(at(0, 0, 0), -100, 0)).toBeCloseTo(1.8, 8);
+  });
+
+  it('is midway for a hit on the side', () => {
+    expect(vulnerability(at(0, 0, 0), 0, 100)).toBeCloseTo(1.25, 6);
+  });
+
+  it('makes the rear more than twice as soft as the front', () => {
+    const front = vulnerability(at(0, 0, 0), 100, 0);
+    const rear = vulnerability(at(0, 0, 0), -100, 0);
+    expect(rear / front).toBeGreaterThan(2);
+  });
+
+  it('is symmetric between the two flanks', () => {
+    expect(vulnerability(at(0, 0, 0), 0, 100)).toBeCloseTo(
+      vulnerability(at(0, 0, 0), 0, -100),
+      8,
+    );
+  });
+});
+
 describe('resolveHit', () => {
+  it('hurts a fleeing bot far more than one facing its attacker', () => {
+    // The whole point of the rear multiplier: turning your back is expensive.
+    const chaser = at(0, 0, 0);
+    const fleeing = at(40, 0, 0); // faces away, chaser is on its rear
+    const facing = at(40, 0, 2048); // turned to meet the chaser head-on
+    resolveHit(chaser, fleeing, 4);
+    resolveHit(chaser, facing, 4);
+    const fleeingLost = fleeing.maxHealth - fleeing.health;
+    const facingLost = facing.maxHealth - facing.health;
+    expect(fleeingLost).toBeGreaterThan(facingLost * 2);
+  });
+
   it('damages the target when the attacker connects head-on', () => {
     const attacker = at(0, 0, 0);
     const target = at(40, 0, 0);

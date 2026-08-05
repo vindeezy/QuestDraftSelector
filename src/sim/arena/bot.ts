@@ -52,7 +52,9 @@ export const DEFAULT_BOT = {
   maxHealth: 100,
   /** 512 steps is 45 degrees either side of dead ahead. */
   weaponArc: 512,
-  weaponDamage: 1.6,
+  // Lowered from 1.6 when rear vulnerability was added. Hits now average about 1.25x
+  // their old damage and rear hits 1.8x, which halved match length from 152s to 63s.
+  weaponDamage: 1.0,
   armour: 1,
   restitution: 0.3,
 } as const;
