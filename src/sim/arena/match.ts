@@ -222,11 +222,11 @@ export function advanceMatch(match: Match): void {
     b.lastContactTick = match.world.tick;
     b.lastContactId = a.body.id;
 
-    if (resolveHit(a, b, contact.speed) > 0) {
+    if (resolveHit(a, b, contact.speed, match.world.tick) > 0) {
       maybeDisengage(match, a);
       if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
     }
-    if (b.alive && resolveHit(b, a, contact.speed) > 0) {
+    if (b.alive && resolveHit(b, a, contact.speed, match.world.tick) > 0) {
       maybeDisengage(match, b);
       if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);
     }

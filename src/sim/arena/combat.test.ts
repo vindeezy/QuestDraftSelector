@@ -94,8 +94,8 @@ describe('resolveHit', () => {
     const chaser = at(0, 0, 0);
     const fleeing = at(40, 0, 0); // faces away, chaser is on its rear
     const facing = at(40, 0, 2048); // turned to meet the chaser head-on
-    resolveHit(chaser, fleeing, 4);
-    resolveHit(chaser, facing, 4);
+    resolveHit(chaser, fleeing, 4, 0);
+    resolveHit(chaser, facing, 4, 0);
     const fleeingLost = fleeing.maxHealth - fleeing.health;
     const facingLost = facing.maxHealth - facing.health;
     expect(fleeingLost).toBeGreaterThan(facingLost * 2);
@@ -104,22 +104,22 @@ describe('resolveHit', () => {
   it('damages the target when the attacker connects head-on', () => {
     const attacker = at(0, 0, 0);
     const target = at(40, 0, 0);
-    resolveHit(attacker, target, 4);
+    resolveHit(attacker, target, 4, 0);
     expect(target.health).toBeLessThan(target.maxHealth);
   });
 
   it('does no damage when the attacker is facing away', () => {
     const attacker = at(0, 0, 2048); // facing -x, target is at +x
     const target = at(40, 0, 0);
-    resolveHit(attacker, target, 4);
+    resolveHit(attacker, target, 4, 0);
     expect(target.health).toBe(target.maxHealth);
   });
 
   it('hurts both bots in a head-on collision', () => {
     const a = at(0, 0, 0);
     const b = at(40, 0, 2048);
-    resolveHit(a, b, 4);
-    resolveHit(b, a, 4);
+    resolveHit(a, b, 4, 0);
+    resolveHit(b, a, 4, 0);
     expect(a.health).toBeLessThan(a.maxHealth);
     expect(b.health).toBeLessThan(b.maxHealth);
   });
@@ -128,8 +128,8 @@ describe('resolveHit', () => {
     // This asymmetry is the whole reason positioning matters.
     const attacker = at(0, 0, 0);
     const victim = at(40, 0, 1024); // facing +y, so attacker is on its flank
-    resolveHit(attacker, victim, 4);
-    resolveHit(victim, attacker, 4);
+    resolveHit(attacker, victim, 4, 0);
+    resolveHit(victim, attacker, 4, 0);
     expect(victim.health).toBeLessThan(victim.maxHealth);
     expect(attacker.health).toBe(attacker.maxHealth);
   });
@@ -137,7 +137,7 @@ describe('resolveHit', () => {
   it('reports the damage it dealt', () => {
     const attacker = at(0, 0, 0);
     const target = at(40, 0, 0);
-    const dealt = resolveHit(attacker, target, 4);
+    const dealt = resolveHit(attacker, target, 4, 0);
     expect(dealt).toBeCloseTo(target.maxHealth - target.health, 8);
   });
 
@@ -145,7 +145,7 @@ describe('resolveHit', () => {
     const attacker = at(0, 0, 0);
     const target = at(40, 0, 0);
     target.health = 0.5;
-    resolveHit(attacker, target, 10);
+    resolveHit(attacker, target, 10, 0);
     expect(target.health).toBe(0);
   });
 
@@ -153,7 +153,7 @@ describe('resolveHit', () => {
     const attacker = at(0, 0, 0);
     const target = at(40, 0, 0);
     target.alive = false;
-    expect(resolveHit(attacker, target, 4)).toBe(0);
+    expect(resolveHit(attacker, target, 4, 0)).toBe(0);
     expect(target.health).toBe(target.maxHealth);
   });
 });

@@ -60,7 +60,7 @@ const TABLE: Record<PersonalityName, Weights> = {
   // Avoids trouble but attacks when necessary. Fights an intelligent battle.
   defensive: {
     chaseNearest: 0.3, chaseWeakest: 0.9, chaseLeader: 0.05, attackEngaged: 0.2,
-    shove: 0.2, charge: 0.1, disengage: 0.5, retreat: 0.5, strafe: 0.7,
+    shove: 0.2, charge: 0.1, disengage: 0.35, retreat: 0.28, strafe: 0.4,
     celebrate: 0.0, riskTolerance: 0.4, retargetInterval: 120,
   },
   // Strike, break off, repeat. Damage followed by self-preservation.

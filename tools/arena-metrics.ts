@@ -24,6 +24,7 @@ const wins: Record<string, number> = {};
 const appearances: Record<string, number> = {};
 /** Elimination ticks bucketed into fifths of the match, to see pacing. */
 const quintiles = [0, 0, 0, 0, 0];
+let lateElims = 0;
 let capped = 0;
 
 for (const name of PERSONALITY_NAMES) {
@@ -48,6 +49,7 @@ for (let seed = 1; seed <= RUNS; seed++) {
     causes[e.cause] = (causes[e.cause] ?? 0) + 1;
     const bucket = Math.min(4, Math.floor((e.tick / Math.max(1, match.world.tick)) * 5));
     quintiles[bucket]!++;
+    if (e.tick >= 3600) lateElims++;
   }
 
   const winner = match.bots.find((b) => b.alive);
@@ -66,7 +68,8 @@ console.log(`     min ${ticks[0]}, median ${median} (${(median / 60).toFixed(0)}
 console.log(`     hit the cap: ${capped}\n`);
 
 const totalElims = Object.values(causes).reduce((a, b) => a + b, 0);
-console.log('  2. ELIMINATION PACING   (even spread is healthy)');
+console.log('  2. ELIMINATION PACING   (most bots should survive past the 1-minute mark)');
+console.log(`     survived past 60s: ${pct(lateElims, totalElims)}   <- want a clear majority`);
 console.log(`     ${quintiles.map((q) => pct(q, totalElims)).join('  ')}`);
 console.log('     ^early                                    late^\n');
 

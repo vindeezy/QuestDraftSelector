@@ -1,4 +1,5 @@
 import { cosOf, sinOf } from '../trig';
+import { isOverHole } from './tiles';
 import { DEFAULT_BOT, type Bot } from './bot';
 import { driveAway, driveToward, interceptOffset } from './steering';
 import type { BotView } from './perception';
@@ -7,6 +8,7 @@ import { weightsFor, type PersonalityName, type Weights } from './personality';
 import type { Match } from './match';
 
 export const ACTIONS = [
+  'relocate',
   'chase',
   'attackEngaged',
   'shove',
@@ -41,6 +43,12 @@ const AVOID_BLEND = 900;
 const BRAKE_STRENGTH = 0.9;
 /** A braking bot never fully stops, or it would be a sitting target. */
 const MIN_HAZARD_THROTTLE = 0.25;
+/** How often the stuck check measures displacement. Four seconds. */
+const STUCK_WINDOW = 240;
+/** Net movement below this over the window counts as stuck. */
+const STUCK_DISTANCE = 55;
+/** How long a bot commits to its escape destination. */
+const RELOCATE_TICKS = 150;
 
 export interface AiState {
   personality: PersonalityName;
@@ -50,6 +58,13 @@ export interface AiState {
   target: string | null;
   nextRetarget: number;
   nextChaosReroll: number;
+  /** Position the stuck check measures displacement from. */
+  anchorX: number;
+  anchorY: number;
+  anchorTick: number;
+  /** Where a relocating bot is heading. */
+  relocateX: number;
+  relocateY: number;
 }
 
 export function createAiState(personality: PersonalityName): AiState {
@@ -61,7 +76,56 @@ export function createAiState(personality: PersonalityName): AiState {
     target: null,
     nextRetarget: 0,
     nextChaosReroll: CHAOS_REROLL,
+    anchorX: 0,
+    anchorY: 0,
+    anchorTick: 0,
+    relocateX: 0,
+    relocateY: 0,
   };
+}
+
+/**
+ * Detects a bot that has stopped getting anywhere, and sends it somewhere else.
+ *
+ * Displacement is the right signal, not speed. Two failure modes were measured at seed
+ * 725633 and only displacement catches both: a bot pressed against another in a shoving
+ * stalemate (speed 1.8, contact gap exactly 40) and a bot in a turn so tight it went
+ * nowhere while travelling flat out (speed 7.0, net displacement 10 units over 240
+ * ticks — roughly 1,680 units of driving in a circle).
+ *
+ * On detection the bot commits to a random solid tile for a fixed span, which breaks
+ * the symmetry that caused the lock-up in the first place.
+ */
+function checkStuck(match: Match, self: Bot, state: AiState): void {
+  const tick = match.world.tick;
+  if (tick - state.anchorTick < STUCK_WINDOW) return;
+
+  const dx = self.body.x - state.anchorX;
+  const dy = self.body.y - state.anchorY;
+  const moved = Math.sqrt(dx * dx + dy * dy);
+
+  state.anchorX = self.body.x;
+  state.anchorY = self.body.y;
+  state.anchorTick = tick;
+
+  if (moved > STUCK_DISTANCE) return;
+
+  // Pick a destination well away from here, drawn from the seeded stream.
+  const grid = match.arena.grid;
+  const size = grid.tileSize;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const col = Math.floor(match.rng.next() * grid.cols);
+    const row = Math.floor(match.rng.next() * grid.rows);
+    const x = col * size + size / 2;
+    const y = row * size + size / 2;
+    if (isOverHole(grid, x, y)) continue;
+    const away = Math.sqrt((x - self.body.x) ** 2 + (y - self.body.y) ** 2);
+    if (away < size * 4) continue;
+    state.relocateX = x;
+    state.relocateY = y;
+    lockAction(state, 'relocate', tick, RELOCATE_TICKS);
+    return;
+  }
 }
 
 /** Locks a bot into a behaviour for a fixed span, suspending normal scoring. */
@@ -190,6 +254,7 @@ function actionOffset(
   self: Bot,
   view: BotView,
   target: Bot | null,
+  state: AiState,
 ): { x: number; y: number } {
   const speed = DEFAULT_BOT.maxSpeed;
   const mark = target ?? view.nearest;
@@ -198,6 +263,8 @@ function actionOffset(
     interceptOffset(self, other.body.x, other.body.y, other.body.vx, other.body.vy, speed);
 
   switch (action) {
+    case 'relocate':
+      return { x: state.relocateX - self.body.x, y: state.relocateY - self.body.y };
     case 'chase':
     case 'charge':
       return mark ? toward(mark) : { x: 0, y: 0 };
@@ -257,6 +324,8 @@ export function driveWithAi(match: Match, self: Bot, state: AiState): void {
   const view = perceive(match, self);
   const tick = match.world.tick;
 
+  checkStuck(match, self, state);
+
   if (state.personality === 'chaos' && tick >= state.nextChaosReroll) {
     // Cycles through the other personalities, which is exactly what Agent of Chaos is.
     const others = ['aggressive', 'defensive', 'hitAndRun', 'thirdParty', 'showman', 'instigator'] as const;
@@ -278,7 +347,7 @@ export function driveWithAi(match: Match, self: Bot, state: AiState): void {
     }
   }
 
-  const want = actionOffset(action, self, view, target);
+  const want = actionOffset(action, self, view, target, state);
   const caution = 1 - state.weights.riskTolerance;
 
   // Hazard avoidance: push straight away from the hole, and brake so the turn radius

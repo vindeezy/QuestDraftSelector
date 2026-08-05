@@ -70,8 +70,17 @@ export function damageFrom(
  * Callers invoke this once per direction, so a head-on collision hurts both bots and a
  * flank attack is one-sided. That asymmetry is what makes positioning matter.
  */
-export function resolveHit(attacker: Bot, target: Bot, impactSpeed: number): number {
+export function resolveHit(
+  attacker: Bot,
+  target: Bot,
+  impactSpeed: number,
+  tick: number,
+): number {
   if (!attacker.alive || !target.alive) return 0;
+  // A weapon needs time to recover between blows. Without this, two bots in contact
+  // traded damage on every single tick and shredded each other in seconds — 89% of all
+  // eliminations happened inside the first minute.
+  if (tick < attacker.nextAttackTick) return 0;
 
   const alignment = arcAlignment(attacker, target.body.x, target.body.y);
   if (alignment === 0) return 0;
@@ -81,5 +90,6 @@ export function resolveHit(attacker: Bot, target: Bot, impactSpeed: number): num
   const dealt = damage > target.health ? target.health : damage;
   target.health -= dealt;
   if (target.health < 0) target.health = 0;
+  attacker.nextAttackTick = tick + attacker.attackCooldown;
   return dealt;
 }

@@ -18,6 +18,10 @@ export interface Bot {
   weaponArc: number;
   weaponDamage: number;
   armour: number;
+  /** Ticks a weapon needs to recover between blows. */
+  attackCooldown: number;
+  /** Earliest tick this bot may deal damage again. */
+  nextAttackTick: number;
   /** Tick of this bot's most recent contact with another bot. -1 if never. */
   lastContactTick: number;
   /** Id of the bot it last touched. Null if never. */
@@ -44,7 +48,11 @@ export interface BotInit {
 export const DEFAULT_BOT = {
   radius: 20,
   mass: 1,
-  maxSpeed: 7,
+  // Lowered from 7. At 7 a bot crossed the arena in a little over two seconds, so it
+  // could abandon one fight and reach another across the map almost instantly — the
+  // action was too fast to follow. Slowing down also shrinks the turn radius from
+  // ~101 units to ~65, which makes a 60-unit pit genuinely avoidable for the first time.
+  maxSpeed: 4.5,
   thrust: 0.35,
   /** 45 steps of 4096 is about 4 degrees per tick, or 237 degrees per second. */
   turnRate: 45,
@@ -56,6 +64,15 @@ export const DEFAULT_BOT = {
   // their old damage and rear hits 1.8x, which halved match length from 152s to 63s.
   weaponDamage: 1.0,
   armour: 1,
+  /**
+   * Half a second between blows.
+   *
+   * Without this, two bots in contact traded damage on every single tick, so an
+   * engagement shredded both in seconds and 89% of all eliminations happened inside the
+   * first minute. A recovery window turns a grind into a series of distinct hits, which
+   * is both how real machines work and what makes a fight watchable.
+   */
+  attackCooldown: 30,
   restitution: 0.3,
 } as const;
 
@@ -79,6 +96,8 @@ export function createBot(init: BotInit): Bot {
     weaponArc: DEFAULT_BOT.weaponArc,
     weaponDamage: DEFAULT_BOT.weaponDamage,
     armour: DEFAULT_BOT.armour,
+    attackCooldown: DEFAULT_BOT.attackCooldown,
+    nextAttackTick: 0,
     lastContactTick: -1,
     lastContactId: null,
     kills: 0,
