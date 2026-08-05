@@ -158,6 +158,12 @@ function botIdToIndex(botId: string): number {
   return Number(botId.slice('bot-'.length));
 }
 
+/** Appends a string's char codes to a checksum accumulator, terminated by a sentinel. */
+function pushStringCodes(values: number[], text: string): void {
+  for (let i = 0; i < text.length; i++) values.push(text.charCodeAt(i));
+  values.push(-1);
+}
+
 /** Runs the entire event from a single master seed. */
 export function runEvent(config: EventConfig): EventResult {
   const { members } = config;
@@ -194,7 +200,17 @@ export function runEvent(config: EventConfig): EventResult {
 
   const standings = buildStandings(tallies);
 
-  const checksumValues: number[] = [config.masterSeed];
+  // Members are inputs to the event, not just a headcount: two rosters of the same size
+  // but different people must never share a checksum, or a record would go on "verifying"
+  // after the league swapped a member out. Character codes fold each id/name/colour into
+  // the hash; -1 is not a valid char code, so it safely separates fields and members
+  // without a real string-hash function (which would need banned Math operations).
+  const checksumValues: number[] = [config.masterSeed, memberCount];
+  for (const member of members) {
+    pushStringCodes(checksumValues, member.id);
+    pushStringCodes(checksumValues, member.name);
+    pushStringCodes(checksumValues, member.colour);
+  }
   for (const board of forge) {
     checksumValues.push(board.seed);
     for (const slot of board.slots) checksumValues.push(slot);
@@ -205,6 +221,7 @@ export function runEvent(config: EventConfig): EventResult {
     for (const elimination of battle.eliminations) checksumValues.push(elimination.tick);
   }
   for (const standing of standings) {
+    pushStringCodes(checksumValues, standing.memberId);
     checksumValues.push(standing.points, standing.draftPosition, standing.eliminations, standing.damage);
   }
 

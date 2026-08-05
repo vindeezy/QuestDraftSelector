@@ -10,7 +10,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "distribution": "vite-node tools/distribution.ts",
-    "arena": "vite-node tools/arena-metrics.ts"
+    "arena": "vite-node tools/arena-metrics.ts",
+    "record": "vite-node tools/record-event.ts"
   },
   "dependencies": {
     "pixi.js": "^8.19.0"
