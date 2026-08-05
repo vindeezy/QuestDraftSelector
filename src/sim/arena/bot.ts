@@ -160,13 +160,17 @@ export function applyThrust(bot: Bot, throttle: number): void {
  * This is what makes a bot a vehicle rather than a floating puck. A sharp turn at speed
  * leaves residual sideways velocity, which reads as a drift. Ice lowers grip, so bots
  * slide; a high-grip build corners cleanly.
+ *
+ * `gripScale` lets the floor surface under the bot modify how much grip applies this
+ * tick — ice passes something below 1, gravel above 1 — without every caller needing to
+ * know surfaces exist.
  */
-export function applyGrip(bot: Bot): void {
+export function applyGrip(bot: Bot, gripScale = 1): void {
   const hx = cosOf(bot.heading);
   const hy = sinOf(bot.heading);
   const along = bot.body.vx * hx + bot.body.vy * hy;
   const lateralX = bot.body.vx - along * hx;
   const lateralY = bot.body.vy - along * hy;
-  bot.body.vx -= lateralX * bot.grip;
-  bot.body.vy -= lateralY * bot.grip;
+  bot.body.vx -= lateralX * bot.grip * gripScale;
+  bot.body.vy -= lateralY * bot.grip * gripScale;
 }

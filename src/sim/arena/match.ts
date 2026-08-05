@@ -10,6 +10,10 @@ import { resolveHit } from './combat';
 import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 import { buildSpiralOrder, updateCollapse } from './collapse';
+import { updateButtons } from './activation';
+import { effectOf, surfaceAt } from './surface';
+import { applyZone } from './zone';
+import { fireEmitters, stepProjectiles, type Projectile } from './projectile';
 
 export type EliminationCause = 'destroyed' | 'fell';
 
@@ -55,6 +59,8 @@ export interface Match {
   aiStates: Map<string, AiState>;
   /** Tile indices in outside-in spiral order, consumed by the endgame collapse. */
   collapseOrder: number[];
+  /** Shots in flight from emitters, live for the ticks between firing and impact. */
+  projectiles: Projectile[];
 }
 
 export interface MatchResult {
@@ -163,7 +169,18 @@ export function createMatch(config: MatchConfig): Match {
 
   const collapseOrder = buildSpiralOrder(arena.grid);
 
-  return { config, arena, world, bots, eliminations: [], done: false, rng, aiStates, collapseOrder };
+  return {
+    config,
+    arena,
+    world,
+    bots,
+    eliminations: [],
+    done: false,
+    rng,
+    aiStates,
+    collapseOrder,
+    projectiles: [],
+  };
 }
 
 /**
@@ -201,10 +218,35 @@ export function advanceMatch(match: Match): void {
 
   updateCollapse(match);
 
+  // Buttons update before the AI drives, so a plate armed this tick is already
+  // dangerous this tick rather than one tick late.
+  const tick = match.world.tick;
+  updateButtons(match.arena.buttons, match.bots, tick);
+
   for (const bot of match.bots) {
     if (!bot.alive) continue;
     driveWithAi(match, bot, match.aiStates.get(bot.body.id)!);
   }
+
+  // Surfaces and zones apply before `step`, so the speed clamp inside `integrate` still
+  // runs last. A body that ends a tick travelling further than the smallest thing it can
+  // collide with passes straight through it, and ice reduces friction — applying these
+  // after the clamp would reopen that hole.
+  for (const bot of match.bots) {
+    if (!bot.alive) continue;
+
+    const surface = surfaceAt(match.arena.grid, match.arena.surfaces, bot.body.x, bot.body.y);
+    const effect = effectOf(surface);
+    bot.body.vx = bot.body.vx * effect.drag + effect.pushX;
+    bot.body.vy = bot.body.vy * effect.drag + effect.pushY;
+
+    for (const zone of match.arena.zones) {
+      applyZone(zone, bot, tick, match.arena.buttons);
+    }
+  }
+
+  fireEmitters(match.arena.emitters, tick, match.arena.buttons, match.projectiles);
+  stepProjectiles(match.projectiles, match.bots, match.arena.grid.width, match.arena.grid.height);
 
   step(match.world);
 

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { isOverHole, solidTileCount } from './tiles';
+import { isOverHole, solidTileCount, TileState } from './tiles';
 import { DEFAULT_ARENA, buildArena } from './arena';
+import { Surface } from './surface';
+import { Activation } from './activation';
 
 describe('buildArena', () => {
   const arena = buildArena(DEFAULT_ARENA);
@@ -60,6 +62,87 @@ describe('buildArena', () => {
         expect(isOverHole(arena.grid, x, y)).toBe(true);
       }
     }
+  });
+});
+
+describe('hazards', () => {
+  const arena = buildArena(DEFAULT_ARENA);
+
+  it('stamps every configured surface tile with the right surface', () => {
+    expect(DEFAULT_ARENA.surfaces.length).toBeGreaterThan(0);
+    for (const [col, row, surface] of DEFAULT_ARENA.surfaces) {
+      const index = row * DEFAULT_ARENA.cols + col;
+      expect(arena.surfaces[index]).toBe(surface);
+    }
+  });
+
+  it('never places a surface on a hole tile', () => {
+    for (let i = 0; i < arena.surfaces.length; i++) {
+      if (arena.surfaces[i] === Surface.Plain) continue;
+      expect(arena.grid.tiles[i]).not.toBe(TileState.Gone);
+    }
+  });
+
+  const inBounds = (x: number, y: number): boolean =>
+    x >= 0 && x <= arena.grid.width && y >= 0 && y <= arena.grid.height;
+
+  it('places every zone within the arena bounds', () => {
+    expect(arena.zones.length).toBeGreaterThan(0);
+    for (const zone of arena.zones) {
+      expect(inBounds(zone.x, zone.y)).toBe(true);
+    }
+  });
+
+  it('places every emitter within the arena bounds', () => {
+    expect(arena.emitters.length).toBeGreaterThan(0);
+    for (const emitter of arena.emitters) {
+      expect(inBounds(emitter.x, emitter.y)).toBe(true);
+    }
+  });
+
+  it('places every button within the arena bounds', () => {
+    expect(arena.buttons.size).toBeGreaterThan(0);
+    for (const button of arena.buttons.values()) {
+      expect(inBounds(button.x, button.y)).toBe(true);
+    }
+  });
+
+  it('never names a nonexistent button from a triggered activation', () => {
+    // A dangling reference is a hazard that silently never fires: `isActive` returns
+    // false for a missing button id with no error, so this must be checked explicitly.
+    for (const zone of arena.zones) {
+      if (zone.activation.mode !== Activation.Triggered) continue;
+      expect(arena.buttons.has(zone.activation.buttonId)).toBe(true);
+    }
+    for (const emitter of arena.emitters) {
+      if (emitter.activation.mode !== Activation.Triggered) continue;
+      expect(arena.buttons.has(emitter.activation.buttonId)).toBe(true);
+    }
+  });
+
+  it('does not share button or emitter runtime state between two arenas built from one config', () => {
+    const a = buildArena(DEFAULT_ARENA);
+    const b = buildArena(DEFAULT_ARENA);
+
+    expect(a.buttons).not.toBe(b.buttons);
+    for (const [id, buttonA] of a.buttons) {
+      const buttonB = b.buttons.get(id)!;
+      expect(buttonA).not.toBe(buttonB);
+    }
+    const [firstId] = a.buttons.keys();
+    const buttonA = a.buttons.get(firstId!)!;
+    const buttonB = b.buttons.get(firstId!)!;
+    buttonA.pressed = true;
+    buttonA.armedUntil = 999;
+    expect(buttonB.pressed).toBe(false);
+    expect(buttonB.armedUntil).toBe(0);
+
+    expect(a.emitters).not.toBe(b.emitters);
+    for (let i = 0; i < a.emitters.length; i++) {
+      expect(a.emitters[i]).not.toBe(b.emitters[i]);
+    }
+    a.emitters[0]!.wasActive = true;
+    expect(b.emitters[0]!.wasActive).toBe(false);
   });
 });
 

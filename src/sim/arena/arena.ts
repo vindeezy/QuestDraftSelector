@@ -1,5 +1,10 @@
 import type { Segment } from '../collision';
 import { TileState, createTileGrid, setTileState, type TileGrid } from './tiles';
+import { createSurfaceMap, setSurface, Surface, type SurfaceValue } from './surface';
+import { createZone, type Zone } from './zone';
+import { createEmitter, type Emitter } from './projectile';
+import { createButton, cycle, triggered, type Button } from './activation';
+import { hazardPreset } from './hazards';
 
 export type WallSide = 'top' | 'bottom' | 'left' | 'right';
 
@@ -21,12 +26,21 @@ export interface ArenaConfig {
   /** Tiles that start missing, as [col, row]. */
   pits: ReadonlyArray<readonly [number, number]>;
   wallGaps: ReadonlyArray<WallGap>;
+  /** Floor surfaces, as [col, row, surface]. */
+  surfaces: ReadonlyArray<readonly [number, number, SurfaceValue]>;
+  zones: ReadonlyArray<Zone>;
+  emitters: ReadonlyArray<Emitter>;
+  buttons: ReadonlyArray<Button>;
 }
 
 export interface Arena {
   config: ArenaConfig;
   grid: TileGrid;
   segments: Segment[];
+  surfaces: Uint8Array;
+  zones: Zone[];
+  emitters: Emitter[];
+  buttons: Map<string, Button>;
 }
 
 /**
@@ -57,6 +71,55 @@ export const DEFAULT_ARENA: ArenaConfig = {
     { side: 'top', from: 7, to: 9 },
     { side: 'bottom', from: 7, to: 9 },
   ],
+  surfaces: [
+    // Tar sits dead centre, where retreating bots are forced to cross it.
+    [7, 5, Surface.Tar],
+    [8, 5, Surface.Tar],
+    [7, 6, Surface.Tar],
+    [8, 6, Surface.Tar],
+    // Ice patches top-left and bottom-right, away from the pits and the tar.
+    [2, 2, Surface.Ice],
+    [3, 2, Surface.Ice],
+    [2, 3, Surface.Ice],
+    [3, 3, Surface.Ice],
+    [12, 8, Surface.Ice],
+    [13, 8, Surface.Ice],
+    [12, 9, Surface.Ice],
+    [13, 9, Surface.Ice],
+  ],
+  zones: [
+    { ...hazardPreset('saw').zone!, id: 'saw-l', x: 0, y: 300, heading: 0 },
+    { ...hazardPreset('saw').zone!, id: 'saw-r', x: 960, y: 420, heading: 0 },
+    // Points down, into the arena.
+    { ...hazardPreset('flameJet').zone!, id: 'flame-t', x: 300, y: 0, heading: 1024 },
+    // Different period from the top jet (220 vs the preset's 180). `cycle()` has no
+    // phase offset, so two jets sharing a period fire in lockstep and the arena reads
+    // as uniformly safe or uniformly dangerous the whole match. Different periods drift
+    // them in and out of sync instead. A phase parameter would be the better long-term
+    // fix; it belongs with the Arena Builder, not here.
+    {
+      ...hazardPreset('flameJet').zone!,
+      id: 'flame-b',
+      x: 660,
+      y: 720,
+      heading: 3072,
+      activation: cycle(220, 70),
+    },
+    // Button-triggered rather than cycling — the one demonstration that buttons drive a
+    // hazard end to end. Leave it wired to 'plate-1'.
+    {
+      ...hazardPreset('crusher').zone!,
+      id: 'crusher',
+      x: 480,
+      y: 500,
+      heading: 0,
+      activation: triggered('plate-1'),
+    },
+  ],
+  emitters: [
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-l', x: 0, y: 600, heading: 0 }),
+  ],
+  buttons: [createButton('plate-1', 480, 200, 30, 90, 240)],
 };
 
 /** Builds the wall segments for one side, split around its gaps. */
@@ -121,5 +184,32 @@ export function buildArena(config: ArenaConfig): Arena {
     segments.push(...buildSide(side, config, config.wallGaps));
   }
 
-  return { config, grid, segments };
+  const surfaces = createSurfaceMap(grid);
+  for (const [col, row, surface] of config.surfaces) {
+    setSurface(surfaces, row * config.cols + col, surface);
+  }
+
+  // Copy every zone, emitter and button rather than sharing the config's objects.
+  // Emitters carry runtime state (`wasActive`) and buttons carry `pressed` /
+  // `armedUntil` / `nextArmTick`; two matches built from the same config must not
+  // share that state, or match 2 would inherit match 1's buttons mid-press.
+  const zones = config.zones.map((zone) => createZone(zone));
+  const emitters = config.emitters.map((emitter) =>
+    createEmitter({
+      id: emitter.id,
+      x: emitter.x,
+      y: emitter.y,
+      heading: emitter.heading,
+      speed: emitter.speed,
+      damage: emitter.damage,
+      radius: emitter.radius,
+      activation: { ...emitter.activation },
+    }),
+  );
+  const buttons = new Map<string, Button>();
+  for (const button of config.buttons) {
+    buttons.set(button.id, createButton(button.id, button.x, button.y, button.radius, button.latchTicks, button.cooldown));
+  }
+
+  return { config, grid, segments, surfaces, zones, emitters, buttons };
 }

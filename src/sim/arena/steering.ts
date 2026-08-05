@@ -58,11 +58,17 @@ export function throttleFor(bot: Bot, dx: number, dy: number): number {
  * Capping the throttle shrinks the turn radius and makes the escape geometrically
  * possible. Raising avoidance strength alone moved falls only from 65% to 60%.
  */
-export function driveToward(bot: Bot, dx: number, dy: number, throttleCap = 1): void {
+export function driveToward(
+  bot: Bot,
+  dx: number,
+  dy: number,
+  throttleCap = 1,
+  gripScale = 1,
+): void {
   steerToward(bot, dx, dy);
   const throttle = throttleFor(bot, dx, dy);
   applyThrust(bot, throttle < throttleCap ? throttle : throttleCap);
-  applyGrip(bot);
+  applyGrip(bot, gripScale);
 }
 
 /** Drive directly away from an offset. */

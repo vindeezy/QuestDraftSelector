@@ -5,6 +5,7 @@ import { driveAway, driveToward, interceptOffset } from './steering';
 import type { BotView } from './perception';
 import { perceive } from './perception';
 import { weightsFor, type PersonalityName, type Weights } from './personality';
+import { effectOf, surfaceAt } from './surface';
 import type { Match } from './match';
 
 export const ACTIONS = [
@@ -365,5 +366,10 @@ export function driveWithAi(match: Match, self: Bot, state: AiState): void {
   const brake = danger * caution * BRAKE_STRENGTH;
   const cap = brake > 1 - MIN_HAZARD_THROTTLE ? MIN_HAZARD_THROTTLE : 1 - brake;
 
-  driveToward(self, dx, dy, cap);
+  // The floor surface under the bot right now scales how much grip applies this tick —
+  // ice lets it slide, gravel bites harder.
+  const surface = surfaceAt(match.arena.grid, match.arena.surfaces, self.body.x, self.body.y);
+  const gripScale = effectOf(surface).grip;
+
+  driveToward(self, dx, dy, cap, gripScale);
 }
