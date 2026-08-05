@@ -924,14 +924,19 @@ describe('stepProjectiles', () => {
   it('expires when it leaves the arena', () => {
     const shots = [{ x: 950, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
     stepProjectiles(shots, [], arena.width, arena.height);
-    expect(shots[0]!.alive).toBe(false);
+    expect(shots.length).toBe(0);
   });
 
-  it('removes dead projectiles from the list', () => {
-    const shots = [{ x: 950, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
-    stepProjectiles(shots, [], arena.width, arena.height);
-    stepProjectiles(shots, [], arena.width, arena.height);
+  it('culls a projectile in the same tick it dies, not the tick after', () => {
+    // Deliberate: dead projectiles do not linger for a frame. A one-tick lag would be
+    // a surprising thing for a function called "step" to do. If the renderer ever needs
+    // to draw an impact, it should be handed an explicit list of hits rather than asked
+    // to notice a corpse still sitting in the projectile array.
+    const target = bot(100, 300);
+    const shots = [{ x: 90, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    stepProjectiles(shots, [target], arena.width, arena.height);
     expect(shots.length).toBe(0);
+    expect(target.health).toBeLessThan(target.maxHealth);
   });
 });
 ```
