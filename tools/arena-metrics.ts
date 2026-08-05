@@ -7,8 +7,9 @@
  *
  * 1. Match length. Target is 2-3 minutes, so 7200-10800 ticks.
  * 2. Elimination pacing. Deaths spread through the match, not all at the start.
- * 3. Cause mix. If most deaths are hazards, the arena is fighting the bots instead of
- *    the bots fighting each other.
+ * 3. Cause mix, split three ways: combat (a bot's kill credited), hazard (a saw, flame
+ *    jet, cannon or crusher — `destroyed` with no killer), and fall. If most deaths are
+ *    hazards, the arena is fighting the bots instead of the bots fighting each other.
  * 4. Win rate by personality. If one wins 60% of matches, the model is broken before a
  *    single bot category exists. This is the number the next phase consumes.
  */
@@ -46,7 +47,13 @@ for (let seed = 1; seed <= RUNS; seed++) {
   if (match.world.tick >= DEFAULT_MATCH.maxTicks) capped++;
 
   for (const e of match.eliminations) {
-    causes[e.cause] = (causes[e.cause] ?? 0) + 1;
+    // `destroyed` conflates two very different deaths: a `byId` means another bot
+    // landed the killing blow (combat); a null `byId` means a hazard did (a saw, a
+    // flame jet, a cannon, a crusher) and nobody gets credit. Counting both as
+    // "destroyed" silently overstates combat, which is exactly the number this tool
+    // exists to report honestly.
+    const label = e.cause === 'destroyed' ? (e.byId !== null ? 'combat' : 'hazard') : e.cause;
+    causes[label] = (causes[label] ?? 0) + 1;
     const bucket = Math.min(4, Math.floor((e.tick / Math.max(1, match.world.tick)) * 5));
     quintiles[bucket]!++;
     if (e.tick >= 3600) lateElims++;
@@ -73,7 +80,7 @@ console.log(`     survived past 60s: ${pct(lateElims, totalElims)}   <- want a c
 console.log(`     ${quintiles.map((q) => pct(q, totalElims)).join('  ')}`);
 console.log('     ^early                                    late^\n');
 
-console.log('  3. CAUSE OF DEATH   (combat should dominate)');
+console.log('  3. CAUSE OF DEATH   (combat should dominate; hazard and fall reported separately)');
 for (const [cause, n] of Object.entries(causes).sort((a, b) => b[1] - a[1])) {
   console.log(`     ${cause.padEnd(12)} ${pct(n, totalElims).padStart(6)}`);
 }

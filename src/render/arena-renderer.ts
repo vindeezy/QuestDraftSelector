@@ -1,6 +1,9 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { TileState } from '../sim/arena/tiles';
-import { cosOf, sinOf } from '../sim/trig';
+import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
+import { ZoneShape } from '../sim/arena/zone';
+import { isActive } from '../sim/arena/activation';
+import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
 import type { Match } from '../sim/arena/match';
 
 const BOT_COLORS = [
@@ -18,6 +21,34 @@ const PULSE_PERIOD_TICKS = 40;
 
 const WARNING_BASE = 0x4a2318;
 const WARNING_BRIGHT = 0xff6a3d;
+
+/** Floor tint per surface. Plain floor and any surface missing here keep the default. */
+const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
+  // Dark and viscous, and — deliberately — nowhere near the WARNING pulse's orange-brown
+  // range so a tarred tile is never mistaken for a tile about to drop.
+  [Surface.Tar]: 0x241a10,
+  [Surface.Ice]: 0xcdeefb,
+  [Surface.Gravel]: 0x7c7161,
+  [Surface.ConveyorN]: 0x2c3f52,
+  [Surface.ConveyorS]: 0x2c3f52,
+  [Surface.ConveyorE]: 0x2c3f52,
+  [Surface.ConveyorW]: 0x2c3f52,
+};
+
+/** Fill and outline for an active zone, regardless of its shape. */
+const ZONE_FILL = 0xff3b30;
+const ZONE_STROKE = 0xff9a70;
+
+/** Angle steps a circular zone's rotation marker advances per tick. Driven by
+ * `match.world.tick`, never wall-clock time, so a saw spins identically on every
+ * replay of the same seed. */
+const ZONE_SPIN_STEPS_PER_TICK = 48;
+
+const BUTTON_IDLE = 0x2c3646;
+const BUTTON_PRESSED = 0xffe45c;
+
+const PROJECTILE_COLOR = 0xffffff;
+const PROJECTILE_GLOW = 0xfff3a0;
 
 export interface ArenaRenderer {
   draw(match: Match): void;
@@ -147,12 +178,103 @@ export async function createArenaRenderer(
       for (let col = 0; col < grid.cols; col++) {
         const state = grid.tiles[row * grid.cols + col];
         if (state === TileState.Gone) continue;
-        const color = state === TileState.Warning ? warningColor(tick) : 0x161d27;
+
+        const cx = col * size + size / 2;
+        const cy = row * size + size / 2;
+        const surface = surfaceAt(grid, current.arena.surfaces, cx, cy);
+
+        // A tile about to collapse always reads as WARNING first -- surface tint would
+        // just compete with the one signal that actually matters right now.
+        const color =
+          state === TileState.Warning ? warningColor(tick) : (SURFACE_COLOR[surface] ?? 0x161d27);
         floor.rect(col * size + 1, row * size + 1, size - 2, size - 2).fill(color);
+
+        if (state !== TileState.Warning) {
+          const push = effectOf(surface);
+          if (push.pushX !== 0 || push.pushY !== 0) {
+            // Conveyors are otherwise indistinguishable from each other, so the push
+            // direction is the whole point of drawing a chevron at all.
+            const plen = Math.sqrt(push.pushX * push.pushX + push.pushY * push.pushY);
+            const dx = push.pushX / plen;
+            const dy = push.pushY / plen;
+            const px = -dy;
+            const py = dx;
+            const tipX = cx + dx * size * 0.28;
+            const tipY = cy + dy * size * 0.28;
+            const backX = cx - dx * size * 0.14;
+            const backY = cy - dy * size * 0.14;
+            floor
+              .moveTo(backX + px * size * 0.2, backY + py * size * 0.2)
+              .lineTo(tipX, tipY)
+              .lineTo(backX - px * size * 0.2, backY - py * size * 0.2)
+              .stroke({ width: 3, color: 0xdfe9f2, alpha: 0.8 });
+          }
+        }
       }
     }
     for (const seg of current.arena.segments) {
       floor.moveTo(seg.x1, seg.y1).lineTo(seg.x2, seg.y2).stroke({ width: 4, color: 0x35424f });
+    }
+  };
+
+  /**
+   * Zones only while active (so pulsing/timing hazards visibly flick on and off), floor
+   * plates always, and any projectile currently in flight.
+   *
+   * Drawn into `dynamic` before the bots below, so hazards never occlude a bot standing
+   * on top of them.
+   */
+  const drawHazards = (current: Match): void => {
+    const tick = current.world.tick;
+
+    for (const zone of current.arena.zones) {
+      if (!isActive(zone.activation, tick, current.arena.buttons)) continue;
+
+      if (zone.shape === ZoneShape.Circle) {
+        dynamic.circle(zone.x, zone.y, zone.reach).fill({ color: ZONE_FILL, alpha: 0.32 });
+        dynamic.circle(zone.x, zone.y, zone.reach).stroke({ width: 2, color: ZONE_STROKE, alpha: 0.9 });
+
+        // A spinning marker, not a decoration: it is what tells a saw apart from a
+        // static damage floor like a spike strip at a glance. Angle comes entirely
+        // from `match.world.tick`, so two replays of one seed spin in lockstep.
+        const base = tick * ZONE_SPIN_STEPS_PER_TICK;
+        for (let i = 0; i < 4; i++) {
+          const angle = base + i * (ANGLE_STEPS / 4);
+          const hx = cosOf(angle);
+          const hy = sinOf(angle);
+          dynamic
+            .moveTo(zone.x, zone.y)
+            .lineTo(zone.x + hx * zone.reach, zone.y + hy * zone.reach)
+            .stroke({ width: 3, color: 0xffffff, alpha: 0.55 });
+        }
+      } else {
+        const ax = cosOf(zone.heading);
+        const ay = sinOf(zone.heading);
+        const nx = -ay;
+        const ny = ax;
+        const tipX = zone.x + ax * zone.reach;
+        const tipY = zone.y + ay * zone.reach;
+        const leftX = zone.x + nx * zone.halfWidth;
+        const leftY = zone.y + ny * zone.halfWidth;
+        const rightX = zone.x - nx * zone.halfWidth;
+        const rightY = zone.y - ny * zone.halfWidth;
+        dynamic.poly([leftX, leftY, tipX, tipY, rightX, rightY]).fill({ color: ZONE_FILL, alpha: 0.38 });
+        dynamic
+          .poly([leftX, leftY, tipX, tipY, rightX, rightY])
+          .stroke({ width: 2, color: ZONE_STROKE, alpha: 0.9 });
+      }
+    }
+
+    for (const button of current.arena.buttons.values()) {
+      dynamic
+        .circle(button.x, button.y, button.radius)
+        .fill({ color: button.pressed ? BUTTON_PRESSED : BUTTON_IDLE, alpha: button.pressed ? 0.9 : 0.6 });
+      dynamic.circle(button.x, button.y, button.radius).stroke({ width: 2, color: 0x0b0f16, alpha: 0.8 });
+    }
+
+    for (const shot of current.projectiles) {
+      dynamic.circle(shot.x, shot.y, shot.radius + 3).fill({ color: PROJECTILE_GLOW, alpha: 0.35 });
+      dynamic.circle(shot.x, shot.y, shot.radius).fill({ color: PROJECTILE_COLOR, alpha: 1 });
     }
   };
 
@@ -174,6 +296,7 @@ export async function createArenaRenderer(
   const draw = (current: Match): void => {
     drawFloor(current);
     dynamic.clear();
+    drawHazards(current);
 
     current.bots.forEach((bot, index) => {
       const label = labelTexts[index]!;
