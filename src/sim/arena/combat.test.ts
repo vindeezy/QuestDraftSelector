@@ -157,3 +157,41 @@ describe('resolveHit', () => {
     expect(target.health).toBe(target.maxHealth);
   });
 });
+
+describe('damage tracking', () => {
+  it('starts at zero', () => {
+    expect(at(0, 0, 0).damageDealt).toBe(0);
+  });
+
+  it('credits the attacker for what it dealt', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const dealt = resolveHit(attacker, target, 4, 0);
+    expect(attacker.damageDealt).toBeCloseTo(dealt, 8);
+  });
+
+  it('accumulates across hits', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const first = resolveHit(attacker, target, 4, 0);
+    const second = resolveHit(attacker, target, 4, 1000);
+    expect(attacker.damageDealt).toBeCloseTo(first + second, 8);
+  });
+
+  it('credits only what was actually dealt, not overkill', () => {
+    // A bot on 5 health hit for 40 gives the attacker 5, not 40. Otherwise finishing
+    // off wounded bots would beat grinding down a healthy one on the tiebreaker.
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    target.health = 5;
+    resolveHit(attacker, target, 100, 0);
+    expect(attacker.damageDealt).toBe(5);
+  });
+
+  it('credits nothing for a blocked hit', () => {
+    const attacker = at(0, 0, 2048); // facing away
+    const target = at(40, 0, 0);
+    resolveHit(attacker, target, 4, 0);
+    expect(attacker.damageDealt).toBe(0);
+  });
+});

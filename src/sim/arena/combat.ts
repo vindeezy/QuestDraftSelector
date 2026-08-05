@@ -90,6 +90,7 @@ export function resolveHit(
   const dealt = damage > target.health ? target.health : damage;
   target.health -= dealt;
   if (target.health < 0) target.health = 0;
+  attacker.damageDealt += dealt;
   attacker.nextAttackTick = tick + attacker.attackCooldown;
   return dealt;
 }

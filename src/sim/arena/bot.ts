@@ -28,6 +28,8 @@ export interface Bot {
   lastContactId: string | null;
   /** Eliminations this bot has caused. Drives the "leader" target. */
   kills: number;
+  /** Total damage this bot has dealt to others. The final tiebreaker. */
+  damageDealt: number;
 }
 
 export interface BotInit {
@@ -101,6 +103,7 @@ export function createBot(init: BotInit): Bot {
     lastContactTick: -1,
     lastContactId: null,
     kills: 0,
+    damageDealt: 0,
   };
 }
 
