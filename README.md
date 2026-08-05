@@ -40,6 +40,44 @@ docs/    Design spec and art-direction studies.
 - [Art direction study](docs/design/art-direction-study.html) — a live, non-deterministic
   Canvas 2D mockup establishing look and feel. Open it in a browser.
 
+## Running it
+
+```bash
+npm install
+npm run dev
+```
+
+Enter a seed, hit Run, watch ten balls fall. Ball 1 is highlighted, standing in for
+"the member watching" until real league data exists.
+
+**A seed reproduces an event only when the configuration is held fixed.** The seed
+selects the random number sequence — the release jitter and shuffle order — not the
+outcome. The outcome is what the physics does with that sequence, so changing max
+speed, ball count, or slot count produces a genuinely different event from the same
+seed. The simulation is chaotic: perturbing gravity by 0.4% changes every landing.
+
+That sensitivity is the point. It is what makes the golden record test in
+`tests/determinism.test.ts` a reliable tripwire against silent physics drift.
+The playback dial is the one control that cannot affect the result.
+
+Other commands:
+
+```bash
+npm test                     # 87 tests. Takes ~3 minutes; the determinism suite
+                             # runs several hundred full simulations.
+npm run distribution -- 400  # measures slot rarity AND per-ball fairness
+npm run lint                 # enforces the sim determinism contract
+```
+
 ## Status
 
-Design approved. Implementation not yet started.
+**Phases 1–2 complete.** The deterministic core and the Bot Forge simulation work.
+Ten balls drop, collide, and land in slots; the same seed replays byte-identically.
+
+Not yet built: the seven bot categories (balls land in numbered slots, not named
+parts), real visuals, audio, the Arena, and the viewing website. See the
+[roadmap](docs/superpowers/specs/2026-08-03-quest-draft-selector-design.md#12-build-roadmap).
+
+**Open tuning question:** the outer "jackpot" slots currently take ~7% of balls each,
+where the design targets 0.2%–1.5%. The board is fair — every member has the same
+expected outcome — but jackpots are not yet rare enough to feel special.
