@@ -7,6 +7,18 @@
  */
 export const PLACEMENT_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1] as const;
 
+/**
+ * Flat bonus per elimination a bot is credited with, on top of placement points.
+ *
+ * Placement alone rewards surviving and nothing else, which is exactly the problem this
+ * constant exists to fix — see the event's doc comment. With 10 bots there are 9
+ * eliminations up for grabs per battle, so kill points are worth at most 45 against 101
+ * placement points (25+18+...+1) in a single battle — meaningful, but not dominant, and
+ * four eliminations is worth about as much as winning a battle outright. This is a
+ * first-draft number, chosen to be measured, exactly like every other number here.
+ */
+export const KILL_POINTS = 5;
+
 export type Tiebreak = 'eliminations' | 'damage' | 'memberId';
 
 export interface BattleTally {
@@ -43,12 +55,17 @@ export function pointsForPlace(place: number): number {
  * Points first, then eliminations, then damage, then member id. The final fallback is not
  * decoration: without it the order would depend on sort stability, and a draft order that
  * could differ between browsers would be worthless.
+ *
+ * `points` folds `KILL_POINTS` straight into the placement total, so eliminations already
+ * move the primary ranking, not just the first tiebreak. `battlePoints` deliberately stays
+ * placement-only: a `BattleTally`'s `eliminations` is summed across the whole event, not
+ * per battle, so there is no honest way to attribute a kill bonus to one battle.
  */
 export function buildStandings(tallies: readonly BattleTally[]): Standing[] {
   const rows = tallies.map((t) => ({
     memberId: t.memberId,
     battlePoints: t.places.map(pointsForPlace),
-    points: t.places.reduce((sum, place) => sum + pointsForPlace(place), 0),
+    points: t.places.reduce((sum, place) => sum + pointsForPlace(place), 0) + t.eliminations * KILL_POINTS,
     eliminations: t.eliminations,
     damage: t.damage,
     draftPosition: 0,

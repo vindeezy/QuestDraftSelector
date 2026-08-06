@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { runEvent, type EventConfig, type EventMember } from './event';
+import { runEvent, tallyKillCredit, type EventConfig, type EventMember } from './event';
 import { CATEGORIES, slotCountFor } from '../parts/tables';
 import { createMatch, DEFAULT_MATCH } from '../arena/match';
 import { DEFAULT_ARENA } from '../arena/arena';
 import { assemble } from '../parts/assemble';
+import type { Elimination } from '../arena/match';
 
 const COLOURS = [
   '#e6194b',
@@ -29,6 +30,35 @@ function makeMembers(count = 10): EventMember[] {
 function makeConfig(masterSeed: number, count = 10): EventConfig {
   return { masterSeed, members: makeMembers(count) };
 }
+
+describe('tallyKillCredit', () => {
+  const elim = (byId: string | null, botId = 'bot-9'): Elimination => ({
+    botId,
+    cause: byId === null ? 'fell' : 'destroyed',
+    tick: 1,
+    byId,
+  });
+
+  it('credits the killer for a combat elimination', () => {
+    const eliminationsByMember = [0, 0, 0];
+    tallyKillCredit(eliminationsByMember, [elim('bot-0')]);
+    expect(eliminationsByMember).toEqual([1, 0, 0]);
+  });
+
+  it('awards nobody for an environmental death', () => {
+    // A pit, a saw, a flame jet -- anything with a null `byId` is not credited to
+    // anyone, so it must not move any member's kill points.
+    const eliminationsByMember = [0, 0, 0];
+    tallyKillCredit(eliminationsByMember, [elim(null)]);
+    expect(eliminationsByMember).toEqual([0, 0, 0]);
+  });
+
+  it('accumulates multiple credited eliminations for the same killer', () => {
+    const eliminationsByMember = [0, 0, 0];
+    tallyKillCredit(eliminationsByMember, [elim('bot-2'), elim('bot-2'), elim(null)]);
+    expect(eliminationsByMember).toEqual([0, 0, 2]);
+  });
+});
 
 describe('runEvent', () => {
   it(

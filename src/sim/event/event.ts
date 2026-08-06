@@ -201,6 +201,21 @@ function botIdToIndex(botId: string): number {
   return Number(botId.slice('bot-'.length));
 }
 
+/**
+ * Folds one battle's eliminations into per-member kill credit, in place.
+ *
+ * An environmental death — a pit, a saw, a flame jet, a cannon, a crusher — has
+ * `byId === null` (see `EliminationCause` in `match.ts`) and, correctly, credits nobody:
+ * `KILL_POINTS` in `scoring.ts` rewards eliminations a bot *caused*, not deaths that
+ * merely happened nearby.
+ */
+export function tallyKillCredit(eliminationsByMember: number[], eliminations: readonly Elimination[]): void {
+  for (const elimination of eliminations) {
+    if (elimination.byId === null) continue;
+    eliminationsByMember[botIdToIndex(elimination.byId)]! += 1;
+  }
+}
+
 /** Appends a string's char codes to a checksum accumulator, terminated by a sentinel. */
 function pushStringCodes(values: number[], text: string): void {
   for (let i = 0; i < text.length; i++) values.push(text.charCodeAt(i));
@@ -233,10 +248,7 @@ export function runEvent(config: EventConfig): EventResult {
     const { result, damage } = runBattle(i, seed, memberCount, assembledBots);
     battles.push(result);
 
-    for (const elimination of result.eliminations) {
-      if (elimination.byId === null) continue;
-      eliminationsByMember[botIdToIndex(elimination.byId)]! += 1;
-    }
+    tallyKillCredit(eliminationsByMember, result.eliminations);
 
     for (const [botId, dealt] of damage) {
       damageByMember[botIdToIndex(botId)]! += dealt;

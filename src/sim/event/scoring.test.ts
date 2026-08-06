@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PLACEMENT_POINTS, pointsForPlace, buildStandings, type BattleTally } from './scoring';
+import { PLACEMENT_POINTS, KILL_POINTS, pointsForPlace, buildStandings, type BattleTally } from './scoring';
 
 const tally = (
   memberId: string,
@@ -19,6 +19,12 @@ describe('PLACEMENT_POINTS', () => {
     const topGap = PLACEMENT_POINTS[0]! - PLACEMENT_POINTS[1]!;
     const midGap = PLACEMENT_POINTS[4]! - PLACEMENT_POINTS[5]!;
     expect(topGap).toBeGreaterThan(midGap * 3);
+  });
+});
+
+describe('KILL_POINTS', () => {
+  it('is a flat 5 points per credited elimination', () => {
+    expect(KILL_POINTS).toBe(5);
   });
 });
 
@@ -51,8 +57,27 @@ describe('buildStandings', () => {
     expect(s.map((r) => r.draftPosition)).toEqual([1, 2, 3]);
   });
 
+  it('scores a credited elimination as placement points plus KILL_POINTS each', () => {
+    // Place 1 is worth 25; three credited eliminations add 3 * KILL_POINTS on top.
+    const s = buildStandings([tally('a', [1], 3)]);
+    expect(s[0]!.points).toBe(25 + 3 * KILL_POINTS);
+  });
+
+  it('awards no kill points for eliminations nobody was credited with', () => {
+    // A tally's `eliminations` only ever holds credited kills by the time it reaches
+    // `buildStandings` -- `event.ts`'s `tallyKillCredit` drops environmental deaths
+    // (`byId === null`) before this point. Zero credited eliminations means zero bonus.
+    const s = buildStandings([tally('a', [1], 0)]);
+    expect(s[0]!.points).toBe(25);
+  });
+
   it('breaks a tie on total eliminations', () => {
-    const s = buildStandings([tally('a', [1, 10, 10], 2), tally('b', [1, 10, 10], 7)]);
+    // Since eliminations now feed straight into points via KILL_POINTS, a genuine tie
+    // needs placement + kill points to land on the same total despite different kill
+    // counts: place 1 (25) + 1 elimination (5) = 30, matching place 3 (15) + 3
+    // eliminations (15) = 30.
+    const s = buildStandings([tally('a', [1], 1), tally('b', [3], 3)]);
+    expect(s[0]!.points).toBe(s[1]!.points);
     expect(s[0]!.memberId).toBe('b');
   });
 
@@ -65,7 +90,9 @@ describe('buildStandings', () => {
   });
 
   it('records why a tie was broken, so the site can explain it', () => {
-    const s = buildStandings([tally('a', [1], 1, 10), tally('b', [1], 5, 10)]);
+    // Same constructed tie as 'breaks a tie on total eliminations' above: points match
+    // (30 each) so the tiebreak falls to eliminations, which differ (1 vs 3).
+    const s = buildStandings([tally('a', [1], 1), tally('b', [3], 3)]);
     expect(s[0]!.tiebreak).toBe('eliminations');
     expect(s[1]!.tiebreak).toBe('eliminations');
   });
