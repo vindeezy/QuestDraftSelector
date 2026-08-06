@@ -38,77 +38,11 @@
 import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
 import { ADRENALINE_THRESHOLD } from '../src/sim/arena/ability';
-import { createRng } from '../src/sim/rng';
-import { runPlinko, DEFAULT_PLINKO } from '../src/sim/plinko/plinko';
-import { DEFAULT_BOARD } from '../src/sim/plinko/board';
-import { assemble, type AssembledBot, type BotBuild } from '../src/sim/parts/assemble';
-import { CATEGORIES, slotCountFor, type AbilityName, type CategoryName } from '../src/sim/parts/tables';
+import { buildsForSeed } from '../src/sim/parts/forge';
+import { type AssembledBot } from '../src/sim/parts/assemble';
+import { CATEGORIES, type AbilityName, type CategoryName } from '../src/sim/parts/tables';
 
 const BOT_COUNT = 10;
-
-/** Upper bound for a drawn sub-seed. `createRng` treats seeds as 32-bit integers. Copied
- *  from `src/sim/event/event.ts`'s `MAX_SUB_SEED` — this tool derives sub-seeds the same
- *  way the real event does, so its builds are drawn from the same Plinko machinery, not
- *  a shortcut. */
-const MAX_SUB_SEED = 2147483647;
-
-/**
- * Draws one sub-seed per Forge board (six, in `CATEGORIES` order) plus one match seed,
- * from a single top-level seed — mirroring `deriveSubSeeds` in `event.ts`. Using the raw
- * loop seed directly for both the Plinko boards and the match would let the two systems'
- * randomness correlate; drawing children the same way the real event does avoids that.
- */
-function deriveSeeds(seed: number): { forgeSeeds: number[]; matchSeed: number } {
-  const rng = createRng(seed);
-  const forgeSeeds: number[] = [];
-  for (let i = 0; i < CATEGORIES.length; i++) forgeSeeds.push(Math.floor(rng.next() * MAX_SUB_SEED));
-  const matchSeed = Math.floor(rng.next() * MAX_SUB_SEED);
-  return { forgeSeeds, matchSeed };
-}
-
-/**
- * `DEFAULT_PLINKO.settleGraceTicks` (400) exists so the *visible* board looks calm before
- * the UI reads a result — see `board.ts`'s `finish()` comment: once every ball's topmost
- * point is below `slotTopY`, it is physically enclosed by that slot's dividers and its
- * slot index cannot change again no matter how long it keeps jostling. This tool never
- * renders the board, so waiting out that cosmetic settle time on every one of six boards
- * per match, hundreds of matches in a row, buys nothing but wall-clock time. Cutting grace
- * to 60 ticks (still a full second of margin past "all balls in slots") changes only how
- * long the run keeps simulating after the answer is already fixed, never the answer.
- */
-const FAST_SETTLE_GRACE_TICKS = 60;
-
-/**
- * Runs all six Forge boards for `botCount` bots and assembles one `AssembledBot` per bot
- * index, exactly the way `runEvent` does for a real event. Also hands back the match seed
- * derived alongside the Forge seeds, so a caller never has to choose a seed itself.
- */
-function buildsForSeed(seed: number, botCount: number): { builds: AssembledBot[]; matchSeed: number } {
-  const { forgeSeeds, matchSeed } = deriveSeeds(seed);
-
-  const slotsByCategory = {} as Record<CategoryName, number[]>;
-  CATEGORIES.forEach((category, i) => {
-    const result = runPlinko({
-      ...DEFAULT_PLINKO,
-      settleGraceTicks: FAST_SETTLE_GRACE_TICKS,
-      board: { ...DEFAULT_BOARD, slotCount: slotCountFor(category) },
-      ballCount: botCount,
-      seed: forgeSeeds[i]!,
-    });
-    const slots = new Array<number>(botCount);
-    for (const landing of result.landings) slots[landing.ballIndex] = landing.slot;
-    slotsByCategory[category] = slots;
-  });
-
-  const builds: AssembledBot[] = [];
-  for (let i = 0; i < botCount; i++) {
-    const build = {} as BotBuild;
-    for (const category of CATEGORIES) build[category] = slotsByCategory[category]![i]!;
-    builds.push(assemble(build));
-  }
-
-  return { builds, matchSeed };
-}
 
 /** `bot-3` -> 3. */
 function botIndex(botId: string): number {

@@ -1,8 +1,11 @@
 import { DEFAULT_BOARD } from '../sim/plinko/board';
 import { DEFAULT_PLINKO, advance, createPlinkoRun } from '../sim/plinko/plinko';
 import { createPlinkoRenderer, type PlinkoRenderer } from '../render/plinko-renderer';
-import { DEFAULT_ARENA } from '../sim/arena/arena';
+import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, type ArenaConfig } from '../sim/arena/arena';
 import { DEFAULT_MATCH, advanceMatch, createMatch, type Match } from '../sim/arena/match';
+import { ARENA_VARIANTS, ARENA_VARIANT_NAMES } from '../sim/event/arenas';
+import { buildsForSeed } from '../sim/parts/forge';
+import type { AssembledBot } from '../sim/parts/assemble';
 import { createArenaRenderer, type ArenaRenderer } from '../render/arena-renderer';
 
 /**
@@ -21,13 +24,27 @@ const PERSONALITY_TAGS: Record<string, string> = {
   instigator: 'INS',
 };
 
-/** Builds the bot-id -> tag map the renderer draws under each living bot. */
-function buildPersonalityTags(match: Match): Map<string, string> {
+/**
+ * Builds the bot-id -> label map the renderer draws under each living bot: the three-letter
+ * personality tag, plus (when `builds` is supplied) the chassis and armour that bot was
+ * assembled with — the whole point of watching a real Forge-built roster is being able to
+ * tell, at a glance, which bot is the Depleted Uranium one.
+ *
+ * Personality is read from `match.aiStates`, not `builds`, but the two never disagree: when
+ * `builds` is supplied to `createMatch`, it is `createMatch` itself that seeds every bot's
+ * `aiStates` personality from `build.personality` (see `match.ts`) — `aiStates` is simply
+ * where the running match keeps it. Reading it from there, rather than re-deriving it here,
+ * means this function never has to know how bot index maps to build index.
+ */
+function buildBotTags(match: Match, builds: AssembledBot[] | null): Map<string, string> {
   const tags = new Map<string, string>();
-  for (const bot of match.bots) {
+  match.bots.forEach((bot, index) => {
     const personality = match.aiStates.get(bot.body.id)?.personality;
-    if (personality) tags.set(bot.body.id, PERSONALITY_TAGS[personality] ?? personality);
-  }
+    if (!personality) return;
+    const tag = PERSONALITY_TAGS[personality] ?? personality;
+    const build = builds?.[index];
+    tags.set(bot.body.id, build ? `${tag}\n${build.partLabels.chassis} · ${build.partLabels.armour}` : tag);
+  });
   return tags;
 }
 
@@ -219,7 +236,23 @@ function mountForge(container: HTMLElement): () => void {
   };
 }
 
-/** Mounts the greybox Arena view into `container`. Returns a teardown. */
+/**
+ * The four arenas the picker offers, by human name. `GRINDER_ARENA` is also
+ * `ARENA_VARIANTS[0]` under the hood (see `arenas.ts`'s `GRINDER` alias) — it is listed
+ * here from `arena.ts` directly rather than through the event variants, since it is named
+ * in its own right regardless of the event. `Gauntlet` and `Crossfire` are only ever
+ * exported as members of `ARENA_VARIANTS`, so they are read from there by index.
+ */
+const ARENA_OPTIONS: ReadonlyArray<{ id: string; label: string; arena: ArenaConfig }> = [
+  { id: 'grinder', label: 'The Grinder', arena: GRINDER_ARENA },
+  { id: 'proving', label: 'The Proving Ground', arena: PROVING_ARENA },
+  { id: 'greybox', label: 'The Greybox', arena: DEFAULT_ARENA },
+  { id: 'gauntlet', label: ARENA_VARIANT_NAMES[1]!, arena: ARENA_VARIANTS[1]! },
+  { id: 'crossfire', label: ARENA_VARIANT_NAMES[2]!, arena: ARENA_VARIANTS[2]! },
+];
+
+/** Mounts the Arena view, running real Forge-assembled bots, into `container`. Returns a
+ *  teardown. */
 function mountArena(container: HTMLElement): () => void {
   const controls = document.createElement('div');
   controls.style.cssText = `
@@ -230,6 +263,12 @@ function mountArena(container: HTMLElement): () => void {
   controls.innerHTML = `
     <label class="dial"><span>Seed</span>
       <input id="arenaSeed" type="number" value="4242">
+    </label>
+
+    <label class="dial"><span>Arena</span>
+      <select id="arenaSelect">
+        ${ARENA_OPTIONS.map((opt) => `<option value="${opt.id}">${opt.label}</option>`).join('\n')}
+      </select>
     </label>
 
     <div style="display:flex; gap:8px;">
@@ -248,20 +287,34 @@ function mountArena(container: HTMLElement): () => void {
   container.appendChild(wrapper);
 
   const seedInput = controls.querySelector<HTMLInputElement>('#arenaSeed')!;
+  const arenaSelect = controls.querySelector<HTMLSelectElement>('#arenaSelect')!;
   const runButton = controls.querySelector<HTMLButtonElement>('#arenaRun')!;
   const randomButton = controls.querySelector<HTMLButtonElement>('#arenaRandom')!;
 
+  // Default selection: The Grinder — see Task 2.
+  arenaSelect.value = 'grinder';
+
   let arenaRenderer: ArenaRenderer | null = null;
   let arenaFrame = 0;
+
+  function selectedArena(): ArenaConfig {
+    const opt = ARENA_OPTIONS.find((o) => o.id === arenaSelect.value);
+    return opt ? opt.arena : GRINDER_ARENA;
+  }
 
   async function startArenaRun(seed: number): Promise<void> {
     cancelAnimationFrame(arenaFrame);
     arenaRenderer?.destroy();
     stage.innerHTML = '';
 
-    const match = createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed });
-    const personalityTags = buildPersonalityTags(match);
-    arenaRenderer = await createArenaRenderer(stage, match, 0, personalityTags);
+    // The entered seed drives the same Forge-board-then-match derivation a real event
+    // uses (see `buildsForSeed`), so the ten bots here differ exactly as they do in a real
+    // event, and the match itself runs on a sub-seed drawn alongside the builds rather
+    // than the raw entered seed — see `buildsForSeed`'s own doc comment for why.
+    const { builds, matchSeed } = buildsForSeed(seed, DEFAULT_MATCH.botCount);
+    const match = createMatch({ ...DEFAULT_MATCH, arena: selectedArena(), seed: matchSeed, builds });
+    const botTags = buildBotTags(match, builds);
+    arenaRenderer = await createArenaRenderer(stage, match, 0, botTags);
 
     const loop = (): void => {
       // 1x: one simulation tick per animation frame, matching the Forge.
@@ -273,9 +326,11 @@ function mountArena(container: HTMLElement): () => void {
       if (match.done) {
         const winnerIndex = match.bots.findIndex((b) => b.alive);
         const winner = winnerIndex === -1 ? null : match.bots[winnerIndex]!;
+        const winnerBuild = winnerIndex === -1 ? null : builds[winnerIndex];
         const winnerTag = winner ? match.aiStates.get(winner.body.id)?.personality : null;
+        const winnerParts = winnerBuild ? ` [${winnerBuild.partLabels.chassis}/${winnerBuild.partLabels.armour}]` : '';
         status.textContent = winner
-          ? `finished at tick ${match.world.tick} — bot #${winnerIndex + 1} (${winnerTag}) wins`
+          ? `finished at tick ${match.world.tick} — bot #${winnerIndex + 1} (${winnerTag})${winnerParts} wins`
           : `finished at tick ${match.world.tick} — no survivors`;
       } else {
         status.textContent = `tick ${match.world.tick} — ${alive} alive`;
@@ -313,10 +368,11 @@ globalStyle.textContent = `
     font-size:10px; letter-spacing:.11em; text-transform:uppercase; color:#5b6a80;
   }
   .dial input[type=range] { width:132px; accent-color:#4aa8ff; }
-  .dial input[type=number] {
+  .dial input[type=number], .dial select {
     width:104px; background:#141b26; color:#dbe4ef; border:1px solid #24303f;
     border-radius:4px; padding:5px 7px; font:inherit;
   }
+  .dial select { width:172px; }
   .val { color:#dbe4ef; font-variant-numeric:tabular-nums; font-size:12.5px; }
   .note { color:#4d5a6b; font-size:11px; }
   #shell-controls button, .view-nav button, #arena-controls button {
