@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { isOverHole, solidTileCount, TileState } from './tiles';
-import { DEFAULT_ARENA, buildArena } from './arena';
+import { DEFAULT_ARENA, PROVING_ARENA, buildArena } from './arena';
 import { Surface } from './surface';
 import { Activation } from './activation';
+import { DEFAULT_MATCH, runMatch } from './match';
 
 describe('buildArena', () => {
   const arena = buildArena(DEFAULT_ARENA);
@@ -162,4 +163,60 @@ describe('DEFAULT_ARENA', () => {
     const total = DEFAULT_ARENA.cols * DEFAULT_ARENA.rows;
     expect(DEFAULT_ARENA.pits.length).toBeLessThan(total * 0.1);
   });
+
+  it('has no trapdoors, and builds an arena with an empty trapdoor list', () => {
+    // Existing arenas must keep working unmodified: an arena with no trapdoors
+    // configured gets a runtime Trapdoor[] that is simply empty, not undefined.
+    expect(DEFAULT_ARENA.trapdoors.length).toBe(0);
+    const arena = buildArena(DEFAULT_ARENA);
+    expect(arena.trapdoors).toEqual([]);
+  });
+
+  it('runs a full match unaffected by the trapdoor primitive existing', () => {
+    const r = runMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed: 99, botCount: 10 });
+    expect(r.placements.length).toBe(10);
+  });
+});
+
+describe('PROVING_ARENA', () => {
+  const arena = buildArena(PROVING_ARENA);
+
+  it('is 16 by 12 tiles of 60 units, same as DEFAULT_ARENA', () => {
+    expect(PROVING_ARENA.cols).toBe(16);
+    expect(PROVING_ARENA.rows).toBe(12);
+    expect(PROVING_ARENA.tileSize).toBe(60);
+  });
+
+  it('has no static pits and exactly one trapdoor', () => {
+    expect(PROVING_ARENA.pits.length).toBe(0);
+    expect(PROVING_ARENA.trapdoors.length).toBe(1);
+    expect(arena.trapdoors.length).toBe(1);
+  });
+
+  it('has a wall gap on all four sides', () => {
+    const sides = new Set(PROVING_ARENA.wallGaps.map((g) => g.side));
+    expect(sides).toEqual(new Set(['top', 'bottom', 'left', 'right']));
+  });
+
+  it('starts with the trapdoor tiles solid -- the pit only appears once triggered', () => {
+    for (const [col, row] of PROVING_ARENA.trapdoors[0]!.tiles) {
+      const size = PROVING_ARENA.tileSize;
+      const x = col * size + size / 2;
+      const y = row * size + size / 2;
+      expect(isOverHole(arena.grid, x, y)).toBe(false);
+    }
+  });
+
+  it('never names a nonexistent button from the trapdoor activation', () => {
+    for (const trapdoor of arena.trapdoors) {
+      expect(arena.buttons.has(trapdoor.activation.buttonId)).toBe(true);
+    }
+  });
+
+  it('runs full matches to completion', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = runMatch({ ...DEFAULT_MATCH, arena: PROVING_ARENA, seed, botCount: 10 });
+      expect(r.placements.length).toBe(10);
+    }
+  }, 30000);
 });

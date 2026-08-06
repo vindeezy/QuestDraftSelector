@@ -15,6 +15,7 @@ import type { AssembledBot } from '../parts/assemble';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 import { buildSpiralOrder, updateCollapse } from './collapse';
 import { updateButtons } from './activation';
+import { updateTrapdoors } from './trapdoor';
 import { effectOf, surfaceAt } from './surface';
 import { applyZone } from './zone';
 import { fireEmitters, stepProjectiles, type Projectile } from './projectile';
@@ -288,12 +289,19 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
 export function advanceMatch(match: Match): void {
   if (match.done) return;
 
-  updateCollapse(match);
-
   // Buttons update before the AI drives, so a plate armed this tick is already
   // dangerous this tick rather than one tick late.
   const tick = match.world.tick;
   updateButtons(match.arena.buttons, match.bots, tick);
+
+  // Trapdoors update before the collapse, deliberately. `updateCollapse` is a pure,
+  // idempotent function of the current tick that re-asserts `Gone` for every tile it
+  // owns on every call, so a trapdoor that wrongly tries to reopen ground the collapse
+  // has already claimed gets overwritten back to `Gone` a few lines below, in the same
+  // tick, before anything reads the grid. Swap this order and that stops being true.
+  updateTrapdoors(match.arena.trapdoors, match.arena.grid, tick, match.arena.buttons);
+
+  updateCollapse(match);
 
   for (const bot of match.bots) {
     if (!bot.alive) continue;

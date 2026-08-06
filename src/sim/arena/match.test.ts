@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_ARENA } from './arena';
+import { DEFAULT_ARENA, PROVING_ARENA } from './arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, runMatch } from './match';
 import { assemble, type AssembledBot, type BotBuild } from '../parts/assemble';
 import { slotCountFor } from '../parts/tables';
@@ -145,6 +145,15 @@ describe('runMatch', () => {
     const a = runMatch({ ...config, seed: 1, botCount: 10 });
     const b = runMatch({ ...config, seed: 2, botCount: 10 });
     expect(a.checksum).not.toBe(b.checksum);
+  });
+
+  it('produces identical results for the same seed on PROVING_ARENA', () => {
+    // Same determinism guarantee, on the new arena with a live trapdoor in the mix.
+    const provingConfig = { ...DEFAULT_MATCH, arena: PROVING_ARENA };
+    const a = runMatch({ ...provingConfig, seed: 4242, botCount: 10 });
+    const b = runMatch({ ...provingConfig, seed: 4242, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.placements).toEqual(b.placements);
   });
 
   it('terminates within the tick limit', () => {

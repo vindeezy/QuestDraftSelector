@@ -8,6 +8,13 @@
  *                                            ability, personality).
  *   npm run arena -- [matches] --ability-ab  Adrenaline on/off A/B instead of the
  *                                            report above. See `runAbilityAB` below.
+ *   ... --arena=proving                     Run against `PROVING_ARENA` instead of the
+ *                                            default. Applies to both the standard
+ *                                            report and `--ability-ab`. Omit for
+ *                                            `DEFAULT_ARENA`. The arena used is always
+ *                                            printed in the report header, so a set of
+ *                                            numbers is never ambiguous about which
+ *                                            arena produced them.
  *
  * Numbers that matter, in this order:
  *
@@ -24,7 +31,7 @@
  *    every category's fair value is the same: 1 in `botCount`, i.e. 10%, since a build's
  *    category doesn't change how many bot-slots are in the match.
  */
-import { DEFAULT_ARENA } from '../src/sim/arena/arena';
+import { DEFAULT_ARENA, PROVING_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
 import { ADRENALINE_THRESHOLD } from '../src/sim/arena/ability';
 import { createRng } from '../src/sim/rng';
@@ -152,7 +159,7 @@ function printCategory(category: CategoryName, tally: PartTally): void {
 
 // --- Standard report --------------------------------------------------------------------
 
-function runReport(runs: number, seedStart: number): void {
+function runReport(runs: number, seedStart: number, arena: ArenaConfig, arenaLabel: string): void {
   const ticks: number[] = [];
   const causes: Record<string, number> = {};
   const quintiles = [0, 0, 0, 0, 0];
@@ -168,7 +175,7 @@ function runReport(runs: number, seedStart: number): void {
   for (let i = 0; i < runs; i++) {
     const seed = seedStart + i;
     const { builds, matchSeed } = buildsForSeed(seed, BOT_COUNT);
-    const match = createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed: matchSeed, botCount: BOT_COUNT, builds });
+    const match = createMatch({ ...DEFAULT_MATCH, arena, seed: matchSeed, botCount: BOT_COUNT, builds });
 
     while (!match.done) advanceMatch(match);
 
@@ -199,7 +206,8 @@ function runReport(runs: number, seedStart: number): void {
   const median = ticks[Math.floor(ticks.length / 2)]!;
 
   const seedRange = `seeds ${seedStart}-${seedStart + runs - 1}`;
-  console.log(`\n  ${runs} matches (${seedRange}) in ${elapsed.toFixed(0)}s\n`);
+  console.log(`\n  arena: ${arenaLabel}`);
+  console.log(`  ${runs} matches (${seedRange}) in ${elapsed.toFixed(0)}s\n`);
 
   console.log('  1. MATCH LENGTH   (target 7200-10800 ticks, 2-3 minutes)');
   console.log(`     min ${ticks[0]}, median ${median} (${(median / 60).toFixed(0)}s), max ${ticks[ticks.length - 1]}`);
@@ -252,10 +260,10 @@ interface ForcedRunResult {
   causes: Record<string, number>;
 }
 
-function runForced(matchSeed: number, builds: AssembledBot[]): ForcedRunResult {
+function runForced(matchSeed: number, builds: AssembledBot[], arena: ArenaConfig): ForcedRunResult {
   const match: Match = createMatch({
     ...DEFAULT_MATCH,
-    arena: DEFAULT_ARENA,
+    arena,
     seed: matchSeed,
     botCount: BOT_COUNT,
     builds,
@@ -303,7 +311,7 @@ function runForced(matchSeed: number, builds: AssembledBot[]): ForcedRunResult {
  * `buildsForSeed` call per seed and reused for both arms -- so both arms differ only in
  * whether the ability is active, never in which builds or which match seed they ran.
  */
-function runAbilityAB(runs: number, seedStart: number): void {
+function runAbilityAB(runs: number, seedStart: number, arena: ArenaConfig, arenaLabel: string): void {
   let onComeback = 0;
   let offComeback = 0;
   let onWinners = 0;
@@ -322,8 +330,8 @@ function runAbilityAB(runs: number, seedStart: number): void {
     const onBuilds = builds.map((b) => ({ ...b, ability: 'adrenaline' as AbilityName }));
     const offBuilds = builds.map((b) => ({ ...b, ability: NO_ABILITY }));
 
-    const on = runForced(matchSeed, onBuilds);
-    const off = runForced(matchSeed, offBuilds);
+    const on = runForced(matchSeed, onBuilds, arena);
+    const off = runForced(matchSeed, offBuilds, arena);
 
     onTicks.push(on.ticks);
     offTicks.push(off.ticks);
@@ -346,8 +354,9 @@ function runAbilityAB(runs: number, seedStart: number): void {
   const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
 
   const seedRange = `seeds ${seedStart}-${seedStart + runs - 1}`;
+  console.log(`\n  arena: ${arenaLabel}`);
   console.log(
-    `\n  Adrenaline A/B: ${runs} paired matches (${seedRange}, same seed, same builds, ability forced) in ${elapsed.toFixed(0)}s\n`,
+    `  Adrenaline A/B: ${runs} paired matches (${seedRange}, same seed, same builds, ability forced) in ${elapsed.toFixed(0)}s\n`,
   );
   console.log(`  "Win rate" here = share of matches whose winner dropped below ${(ADRENALINE_THRESHOLD * 100).toFixed(0)}%`);
   console.log(`  max health at some point and still won -- the exact condition Adrenaline reacts to.`);
@@ -380,8 +389,17 @@ const runs = Number(positional[0] ?? 100);
 // are provably reading the same ones.
 const seedStart = Number(positional[1] ?? 1);
 
+// --arena=proving switches both the standard report and --ability-ab to `PROVING_ARENA`,
+// so the two arenas' numbers can be compared directly. Default is `DEFAULT_ARENA`. The
+// arena actually used is always printed in the report header -- a set of numbers whose
+// arena is ambiguous is worse than no numbers.
+const arenaArg = args.find((a) => a.startsWith('--arena='));
+const arenaName = arenaArg ? arenaArg.slice('--arena='.length) : 'default';
+const arena = arenaName === 'proving' ? PROVING_ARENA : DEFAULT_ARENA;
+const arenaLabel = arenaName === 'proving' ? 'proving (The Proving Ground)' : 'default (The Grinder)';
+
 if (abilityAB) {
-  runAbilityAB(runs, seedStart);
+  runAbilityAB(runs, seedStart, arena, arenaLabel);
 } else {
-  runReport(runs, seedStart);
+  runReport(runs, seedStart, arena, arenaLabel);
 }

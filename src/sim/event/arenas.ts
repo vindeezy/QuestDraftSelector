@@ -73,6 +73,7 @@ const GAUNTLET: ArenaConfig = {
   ],
   emitters: [],
   buttons: [createButton('g-plate', 180, 360, 30, 90, 240)],
+  trapdoors: [],
 };
 
 /**
@@ -133,6 +134,7 @@ const CROSSFIRE: ArenaConfig = {
     }),
   ],
   buttons: [],
+  trapdoors: [],
 };
 
 export const ARENA_VARIANTS: readonly ArenaConfig[] = [GRINDER, GAUNTLET, CROSSFIRE];

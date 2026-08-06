@@ -71,12 +71,16 @@ const SHOCKWAVE_FORCE = 3.5;
 /** Repair: only heals once this many ticks have passed since the bot last took damage. 3s. */
 const REPAIR_DELAY_TICKS = 180;
 /**
- * Repair: heal per tick, as a fraction of max health. Not given a number in the spec
- * ("heals steadily" is the only description) — this is a first-draft value, flagged for
- * the project owner. At 60 ticks/second this is 9% of max health per second, so healing
- * back from zero takes a little over 11 seconds once the 3s delay has elapsed.
+ * Repair: heal per tick, as a fraction of max health. Set by measurement, not by the
+ * spec: a 200-match run at the original first-draft value (0.0015, 9% of max health per
+ * second) had Repair winning 26.6% of matches against a fair-value baseline of 10%, by
+ * far the most dominant option in any category. Retuned to 1 HP/sec at the 100-health
+ * baseline — 0.000167 — so healing back from zero takes about 600 seconds once the 3s
+ * delay has elapsed. Kept as a fraction of max health rather than a flat number so it
+ * stays build-neutral: a 224-health tank and a 70-health sprinter heal the same
+ * proportion of their pool per second.
  */
-const REPAIR_HEAL_FRACTION = 0.0015;
+const REPAIR_HEAL_FRACTION = 0.000167;
 
 /** Adrenaline: health fraction below which it activates. Exported so the metrics
  *  harness's on/off A/B (`tools/arena-metrics.ts`) can detect a "comeback" without

@@ -4,6 +4,7 @@ import { createSurfaceMap, setSurface, Surface, type SurfaceValue } from './surf
 import { createZone, type Zone } from './zone';
 import { createEmitter, type Emitter } from './projectile';
 import { createButton, cycle, triggered, type Button } from './activation';
+import { createTrapdoor, type Trapdoor } from './trapdoor';
 import { hazardPreset } from './hazards';
 
 export type WallSide = 'top' | 'bottom' | 'left' | 'right';
@@ -31,6 +32,7 @@ export interface ArenaConfig {
   zones: ReadonlyArray<Zone>;
   emitters: ReadonlyArray<Emitter>;
   buttons: ReadonlyArray<Button>;
+  trapdoors: ReadonlyArray<Trapdoor>;
 }
 
 export interface Arena {
@@ -41,6 +43,7 @@ export interface Arena {
   zones: Zone[];
   emitters: Emitter[];
   buttons: Map<string, Button>;
+  trapdoors: Trapdoor[];
 }
 
 /**
@@ -120,6 +123,84 @@ export const DEFAULT_ARENA: ArenaConfig = {
     createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-l', x: 0, y: 600, heading: 0 }),
   ],
   buttons: [createButton('plate-1', 480, 200, 30, 90, 240)],
+  trapdoors: [],
+};
+
+/**
+ * Arena 2: The Proving Ground.
+ *
+ * Falls were 54.2% of all deaths against 30.9% combat in a 200-match measurement of
+ * `DEFAULT_ARENA` — the arena was killing bots faster than they were killing each other.
+ * This arena removes every static pit from the fighting area, leaving only the outside
+ * wall gaps and one button-activated trapdoor as ways to fall, to test whether that moves
+ * the combat/fall split. It is also how the project owner intends to build the real
+ * arenas going forward: no open pits, falls gated behind a mechanism a bot has to trigger
+ * (or be shoved into).
+ */
+export const PROVING_ARENA: ArenaConfig = {
+  cols: 16,
+  rows: 12,
+  tileSize: 60,
+  // The whole point: no static pits.
+  pits: [],
+  // One gap per side, so a shove in any direction can eject a bot.
+  wallGaps: [
+    { side: 'top', from: 7, to: 9 },
+    { side: 'bottom', from: 7, to: 9 },
+    { side: 'left', from: 5, to: 7 },
+    { side: 'right', from: 5, to: 7 },
+  ],
+  surfaces: [
+    // The tar that sat dead centre in DEFAULT_ARENA now flanks the trapdoor instead,
+    // since the trapdoor itself occupies the centre.
+    [5, 5, Surface.Tar],
+    [5, 6, Surface.Tar],
+    [10, 5, Surface.Tar],
+    [10, 6, Surface.Tar],
+    // Ice patches unchanged from DEFAULT_ARENA.
+    [2, 2, Surface.Ice],
+    [3, 2, Surface.Ice],
+    [2, 3, Surface.Ice],
+    [3, 3, Surface.Ice],
+    [12, 8, Surface.Ice],
+    [13, 8, Surface.Ice],
+    [12, 9, Surface.Ice],
+    [13, 9, Surface.Ice],
+  ],
+  // Same hazards as DEFAULT_ARENA, unchanged: only static pits are being removed, not
+  // hazards generally.
+  zones: [
+    { ...hazardPreset('saw').zone!, id: 'saw-l', x: 0, y: 300, heading: 0 },
+    { ...hazardPreset('saw').zone!, id: 'saw-r', x: 960, y: 420, heading: 0 },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-t', x: 300, y: 0, heading: 1024 },
+    {
+      ...hazardPreset('flameJet').zone!,
+      id: 'flame-b',
+      x: 660,
+      y: 720,
+      heading: 3072,
+      activation: cycle(220, 70),
+    },
+    {
+      ...hazardPreset('crusher').zone!,
+      id: 'crusher',
+      x: 480,
+      y: 500,
+      heading: 0,
+      activation: triggered('plate-1'),
+    },
+  ],
+  emitters: [
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-l', x: 0, y: 600, heading: 0 }),
+  ],
+  // 'plate-1' kept exactly as DEFAULT_ARENA has it, for the crusher. 'trap-plate' is new,
+  // driving the trapdoor below.
+  buttons: [
+    createButton('plate-1', 480, 200, 30, 90, 240),
+    createButton('trap-plate', 180, 600, 30, 240, 480),
+  ],
+  // One trapdoor, dead centre, driven by 'trap-plate'.
+  trapdoors: [createTrapdoor('trap-1', [[7, 5], [8, 5], [7, 6], [8, 6]], triggered('trap-plate'))],
 };
 
 /** Builds the wall segments for one side, split around its gaps. */
@@ -211,5 +292,11 @@ export function buildArena(config: ArenaConfig): Arena {
     buttons.set(button.id, createButton(button.id, button.x, button.y, button.radius, button.latchTicks, button.cooldown));
   }
 
-  return { config, grid, segments, surfaces, zones, emitters, buttons };
+  // Same reasoning as buttons/emitters above: fresh runtime objects per arena, not
+  // shared config objects, so two matches built from one config don't share `open`.
+  const trapdoors = config.trapdoors.map((trapdoor) =>
+    createTrapdoor(trapdoor.id, trapdoor.tiles, { ...trapdoor.activation }),
+  );
+
+  return { config, grid, segments, surfaces, zones, emitters, buttons, trapdoors };
 }
