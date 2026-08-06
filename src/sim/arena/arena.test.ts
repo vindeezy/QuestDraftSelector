@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { isOverHole, solidTileCount, TileState } from './tiles';
-import { DEFAULT_ARENA, PROVING_ARENA, buildArena } from './arena';
+import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, buildArena } from './arena';
 import { Surface } from './surface';
-import { Activation } from './activation';
-import { DEFAULT_MATCH, runMatch } from './match';
+import { Activation, createButton } from './activation';
+import { DEFAULT_MATCH, createMatch, advanceMatch, runMatch } from './match';
+import { createEmitter, fireEmitters, stepProjectiles, type Projectile } from './projectile';
 
 describe('buildArena', () => {
   const arena = buildArena(DEFAULT_ARENA);
@@ -216,6 +217,147 @@ describe('PROVING_ARENA', () => {
   it('runs full matches to completion', () => {
     for (let seed = 1; seed <= 10; seed++) {
       const r = runMatch({ ...DEFAULT_MATCH, arena: PROVING_ARENA, seed, botCount: 10 });
+      expect(r.placements.length).toBe(10);
+    }
+  }, 30000);
+});
+
+describe('GRINDER_ARENA', () => {
+  it('is 16 by 12 tiles of 60 units, same as DEFAULT_ARENA', () => {
+    expect(GRINDER_ARENA.cols).toBe(16);
+    expect(GRINDER_ARENA.rows).toBe(12);
+    expect(GRINDER_ARENA.tileSize).toBe(60);
+  });
+
+  it('has no pits and no trapdoors', () => {
+    expect(GRINDER_ARENA.pits.length).toBe(0);
+    expect(GRINDER_ARENA.trapdoors.length).toBe(0);
+  });
+
+  it('tars exactly the two outermost rings: a core tile is clean, ring tiles are not', () => {
+    const surfaceAt = (col: number, row: number): number | undefined => {
+      const hit = GRINDER_ARENA.surfaces.find(([c, r]) => c === col && r === row);
+      return hit?.[2];
+    };
+
+    // Core (cols 2-13, rows 2-9): clean.
+    expect(surfaceAt(7, 5)).toBeUndefined();
+
+    // Ring: tar, on every side.
+    expect(surfaceAt(1, 5)).toBe(Surface.Tar); // one tile in from the left edge
+    expect(surfaceAt(0, 0)).toBe(Surface.Tar); // corner
+    expect(surfaceAt(14, 6)).toBe(Surface.Tar); // one tile in from the right edge
+
+    expect(GRINDER_ARENA.surfaces.length).toBe(96);
+    expect(GRINDER_ARENA.surfaces.every(([, , surface]) => surface === Surface.Tar)).toBe(true);
+  });
+
+  it('has a wall gap on all four sides, and no more than that', () => {
+    expect(GRINDER_ARENA.wallGaps.length).toBe(4);
+    const sides = new Set(GRINDER_ARENA.wallGaps.map((g) => g.side));
+    expect(sides).toEqual(new Set(['top', 'bottom', 'left', 'right']));
+  });
+
+  it('has three saw zones and no flame jets or crusher', () => {
+    expect(GRINDER_ARENA.zones.length).toBe(3);
+    expect(GRINDER_ARENA.zones.every((z) => z.id.startsWith('saw'))).toBe(true);
+  });
+
+  it('has two cannon emitters and two buttons', () => {
+    expect(GRINDER_ARENA.emitters.length).toBe(2);
+    expect(GRINDER_ARENA.emitters.map((e) => e.id).sort()).toEqual(['cannon-bot', 'cannon-top']);
+    expect(GRINDER_ARENA.buttons.length).toBe(2);
+    expect(GRINDER_ARENA.buttons.map((b) => b.id).sort()).toEqual([
+      'cannon-bot-plate',
+      'cannon-top-plate',
+    ]);
+  });
+
+  it('wires each cannon to a triggered activation naming a button that actually exists', () => {
+    const buttonIds = new Set(GRINDER_ARENA.buttons.map((b) => b.id));
+    for (const emitter of GRINDER_ARENA.emitters) {
+      expect(emitter.activation.mode).toBe(Activation.Triggered);
+      expect(buttonIds.has(emitter.activation.buttonId)).toBe(true);
+    }
+  });
+
+  it('a cannon does not fire until its button is pressed', () => {
+    // End to end through advanceMatch: a bot parked away from the plate should never
+    // draw a shot, and moving it onto the plate should produce one on that exact tick.
+    // botCount is 2, not 1: `advanceMatch` ends the match once <=1 bot is alive, and
+    // with a single bot that is true from tick zero, so it would never actually run.
+    const match = createMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 1, botCount: 2 });
+    const bot = match.bots[0]!;
+    const filler = match.bots[1]!;
+
+    // Bot: somewhere in the clean core, well clear of both plates (300,480) and
+    // (660,240) and of the centre saw (480,360). Filler: pinned far away in the
+    // opposite corner of the core so the two never come into contact.
+    const away = { x: 700, y: 150 };
+    const fillerSpot = { x: 200, y: 550 };
+    for (let t = 0; t < 30; t++) {
+      bot.body.x = away.x;
+      bot.body.y = away.y;
+      bot.body.vx = 0;
+      bot.body.vy = 0;
+      filler.body.x = fillerSpot.x;
+      filler.body.y = fillerSpot.y;
+      filler.body.vx = 0;
+      filler.body.vy = 0;
+      advanceMatch(match);
+      expect(match.done).toBe(false);
+      expect(match.projectiles.length).toBe(0);
+    }
+
+    // Now step onto 'cannon-top-plate'.
+    const plate = GRINDER_ARENA.buttons.find((b) => b.id === 'cannon-top-plate')!;
+    bot.body.x = plate.x;
+    bot.body.y = plate.y;
+    bot.body.vx = 0;
+    bot.body.vy = 0;
+    filler.body.x = fillerSpot.x;
+    filler.body.y = fillerSpot.y;
+    filler.body.vx = 0;
+    filler.body.vy = 0;
+    advanceMatch(match);
+
+    expect(match.projectiles.length).toBeGreaterThan(0);
+  });
+
+  it('a cannonball fired from cannon-top travels along row 0', () => {
+    const configured = GRINDER_ARENA.emitters.find((e) => e.id === 'cannon-top')!;
+    const plate = GRINDER_ARENA.buttons.find((b) => b.id === 'cannon-top-plate')!;
+
+    const button = createButton(plate.id, plate.x, plate.y, plate.radius, plate.latchTicks, plate.cooldown);
+    button.pressed = true;
+    button.armedUntil = 10000; // held on for the whole test, regardless of latch math
+    const buttons = new Map([[button.id, button]]);
+
+    const emitter = createEmitter({ ...configured });
+    const shots: Projectile[] = [];
+    fireEmitters([emitter], 0, buttons, shots);
+    expect(shots.length).toBe(1);
+
+    const width = GRINDER_ARENA.cols * GRINDER_ARENA.tileSize;
+    const height = GRINDER_ARENA.rows * GRINDER_ARENA.tileSize;
+    for (let t = 0; t < 80 && shots.length > 0; t++) {
+      stepProjectiles(shots, [], width, height);
+      if (shots.length === 0) break;
+      expect(shots[0]!.y).toBeGreaterThanOrEqual(0);
+      expect(shots[0]!.y).toBeLessThan(GRINDER_ARENA.tileSize);
+    }
+  });
+
+  it('produces identical results for the same seed, twice', () => {
+    const a = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 4242, botCount: 10 });
+    const b = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 4242, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.placements).toEqual(b.placements);
+  });
+
+  it('runs full matches to completion', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed, botCount: 10 });
       expect(r.placements.length).toBe(10);
     }
   }, 30000);

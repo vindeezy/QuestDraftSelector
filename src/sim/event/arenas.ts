@@ -1,4 +1,4 @@
-import { DEFAULT_ARENA, type ArenaConfig } from '../arena/arena';
+import { GRINDER_ARENA, type ArenaConfig } from '../arena/arena';
 import { Surface } from '../arena/surface';
 import { hazardPreset } from '../arena/hazards';
 import { createEmitter } from '../arena/projectile';
@@ -12,8 +12,14 @@ import { createButton, triggered } from '../arena/activation';
  * nothing: different pits, surfaces and hazard placement, same grid and the same physics.
  */
 
-/** Variant 1 — "The Grinder." The original arena, unmodified. */
-const GRINDER: ArenaConfig = DEFAULT_ARENA;
+/**
+ * Variant 1 — "The Grinder."
+ *
+ * Was `DEFAULT_ARENA` unmodified; now points at `GRINDER_ARENA`, the geometry built to
+ * push bots into the middle and punish retreating to the edges. See the comment on
+ * `GRINDER_ARENA` in `arena.ts` for the full rationale.
+ */
+const GRINDER: ArenaConfig = GRINDER_ARENA;
 
 /**
  * Variant 2 — "The Gauntlet."

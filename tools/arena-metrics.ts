@@ -15,6 +15,10 @@
  *                                            printed in the report header, so a set of
  *                                            numbers is never ambiguous about which
  *                                            arena produced them.
+ *   ... --arena=grinder                     Run against `GRINDER_ARENA` instead --
+ *                                            the geometry fix for the 50.5% survival-
+ *                                            personality win share. Same applicability
+ *                                            and header guarantee as `--arena=proving`.
  *
  * Numbers that matter, in this order:
  *
@@ -31,7 +35,7 @@
  *    every category's fair value is the same: 1 in `botCount`, i.e. 10%, since a build's
  *    category doesn't change how many bot-slots are in the match.
  */
-import { DEFAULT_ARENA, PROVING_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
+import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
 import { ADRENALINE_THRESHOLD } from '../src/sim/arena/ability';
 import { createRng } from '../src/sim/rng';
@@ -389,14 +393,20 @@ const runs = Number(positional[0] ?? 100);
 // are provably reading the same ones.
 const seedStart = Number(positional[1] ?? 1);
 
-// --arena=proving switches both the standard report and --ability-ab to `PROVING_ARENA`,
-// so the two arenas' numbers can be compared directly. Default is `DEFAULT_ARENA`. The
-// arena actually used is always printed in the report header -- a set of numbers whose
-// arena is ambiguous is worse than no numbers.
+// --arena=proving / --arena=grinder switch both the standard report and --ability-ab to
+// `PROVING_ARENA` / `GRINDER_ARENA` respectively, so arenas' numbers can be compared
+// directly. Default is `DEFAULT_ARENA`. The arena actually used is always printed in the
+// report header -- a set of numbers whose arena is ambiguous is worse than no numbers.
 const arenaArg = args.find((a) => a.startsWith('--arena='));
 const arenaName = arenaArg ? arenaArg.slice('--arena='.length) : 'default';
-const arena = arenaName === 'proving' ? PROVING_ARENA : DEFAULT_ARENA;
-const arenaLabel = arenaName === 'proving' ? 'proving (The Proving Ground)' : 'default (The Grinder)';
+const arena =
+  arenaName === 'proving' ? PROVING_ARENA : arenaName === 'grinder' ? GRINDER_ARENA : DEFAULT_ARENA;
+const arenaLabel =
+  arenaName === 'proving'
+    ? 'proving (The Proving Ground)'
+    : arenaName === 'grinder'
+      ? 'grinder (The Grinder)'
+      : 'default (The Grinder)';
 
 if (abilityAB) {
   runAbilityAB(runs, seedStart, arena, arenaLabel);
