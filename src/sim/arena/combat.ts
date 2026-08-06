@@ -25,15 +25,20 @@ export function arcAlignment(bot: Bot, targetX: number, targetY: number): number
   return (dot - arcCos) / (1 - arcCos);
 }
 
-/** Damage multiplier for a hit landing on the front. Armour is thickest here. */
-const FRONT_VULNERABILITY = 0.7;
-/** Damage multiplier for a hit landing on the rear. Thin plating, exposed drive. */
-const REAR_VULNERABILITY = 1.8;
-
 /**
  * How exposed a bot is to a hit coming from a given direction.
  *
- * Front 0.7, side 1.25, rear 1.8, interpolated linearly between.
+ * Reads `target.frontVulnerability`, `target.sideVulnerability` and
+ * `target.rearVulnerability` — chassis shape owns where a bot's armour is, so this is no
+ * longer a fixed 0.7 / 1.25 / 1.8 for every bot.
+ *
+ * Interpolated in two segments rather than one straight line from front to rear. A
+ * single lerp from front to rear would pass through the side value only momentarily (at
+ * facing exactly 0) rather than using it as a real point on the curve, and worse, a
+ * chassis with a side value that is not the midpoint of front and rear (a Diamond's
+ * paper-thin 1.7 flank against a 0.75 front and 1.0 rear, for instance) would have that
+ * shape entirely erased by the straight line. Facing above 0 blends front↔side; facing
+ * below 0 blends side↔rear, so the side value is always what a pure-flank hit reads.
  *
  * This exists to make retreating cost something. In a last-bot-standing format not dying
  * is winning, so with damage depending only on the attacker's facing, fleeing was close
@@ -50,8 +55,13 @@ export function vulnerability(target: Bot, fromX: number, fromY: number): number
   const inv = 1 / Math.sqrt(lenSq);
   // +1 when the attacker is dead ahead of the target, -1 when directly behind it.
   const facing = cosOf(target.heading) * dx * inv + sinOf(target.heading) * dy * inv;
-  const t = (facing + 1) / 2;
-  return REAR_VULNERABILITY + (FRONT_VULNERABILITY - REAR_VULNERABILITY) * t;
+
+  if (facing >= 0) {
+    // Front (facing 1) down to side (facing 0).
+    return target.sideVulnerability + (target.frontVulnerability - target.sideVulnerability) * facing;
+  }
+  // Side (facing 0) down to rear (facing -1). `-facing` runs 0..1 across this segment.
+  return target.sideVulnerability + (target.rearVulnerability - target.sideVulnerability) * -facing;
 }
 
 /** Damage for one hit. Kept separate from `resolveHit` so it can be tested directly. */
@@ -92,5 +102,16 @@ export function resolveHit(
   if (target.health < 0) target.health = 0;
   attacker.damageDealt += dealt;
   attacker.nextAttackTick = tick + attacker.attackCooldown;
+
+  // Reflect. Spiked Composite is the only thing that changes the ATTACKER's maths.
+  // Deliberately not counted in either bot's `damageDealt` — that stat is the event's
+  // second tiebreaker and measures damage a bot went out and inflicted, not damage that
+  // bounced off it.
+  if (target.damageReflect > 0) {
+    const back = dealt * target.damageReflect;
+    attacker.health -= back > attacker.health ? attacker.health : back;
+    if (attacker.health < 0) attacker.health = 0;
+  }
+
   return dealt;
 }

@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { createBot } from './bot';
+import { createBot, DEFAULT_BOT, type BotStats } from './bot';
 import { arcAlignment, damageFrom, resolveHit, vulnerability } from './combat';
 
 const at = (x: number, y: number, heading: number) =>
   createBot({ id: `${x},${y}`, x, y, heading });
+
+const atStats = (x: number, y: number, heading: number, stats: Partial<BotStats>) =>
+  createBot({ id: `${x},${y}`, x, y, heading }, { ...DEFAULT_BOT, ...stats });
 
 describe('arcAlignment', () => {
   it('is 1 when the target is dead ahead', () => {
@@ -85,6 +88,54 @@ describe('vulnerability', () => {
       vulnerability(at(0, 0, 0), 0, -100),
       8,
     );
+  });
+
+  it('reads per-bot chassis values, not the old fixed constants', () => {
+    // A 0.40 front / 2.2 rear chassis (Wedge-like) takes over five times as much from
+    // behind as it does head-on.
+    const wedge = atStats(0, 0, 0, { frontVulnerability: 0.4, sideVulnerability: 1.4, rearVulnerability: 2.2 });
+    const front = vulnerability(wedge, 100, 0);
+    const rear = vulnerability(wedge, -100, 0);
+    expect(front).toBeCloseTo(0.4, 8);
+    expect(rear).toBeCloseTo(2.2, 8);
+    expect(rear / front).toBeGreaterThan(5);
+  });
+
+  it('uses side vulnerability rather than skipping it in a straight front-to-rear lerp', () => {
+    // Two chassis with identical front and rear, differing only in side. A single lerp
+    // from front to rear would make these indistinguishable at every facing except
+    // exactly 0; the two-segment version must show a real difference approaching the
+    // flank.
+    const paperFlank = atStats(0, 0, 0, {
+      frontVulnerability: 0.75,
+      sideVulnerability: 1.7,
+      rearVulnerability: 1.0,
+    });
+    const toughFlank = atStats(0, 0, 0, {
+      frontVulnerability: 0.75,
+      sideVulnerability: 1.2,
+      rearVulnerability: 1.0,
+    });
+    // A near-flank angle, not exactly 90 degrees, so both segments' shape is exercised.
+    const flankHit = vulnerability(paperFlank, 1, 100);
+    const toughHit = vulnerability(toughFlank, 1, 100);
+    expect(flankHit).toBeGreaterThan(toughHit);
+    // At the exact side angle both must equal their own side value exactly.
+    expect(vulnerability(paperFlank, 0, 100)).toBeCloseTo(1.7, 8);
+    expect(vulnerability(toughFlank, 0, 100)).toBeCloseTo(1.2, 8);
+  });
+
+  it('returns exactly the side value at facing 0, for a chassis where side is not the midpoint', () => {
+    // Diamond-shaped: front 0.75, side 1.7, rear 1.0. The midpoint of front and rear is
+    // 0.875, nowhere near 1.7 — a straight lerp would silently erase this chassis's
+    // whole design. The two-segment interpolation must still land exactly on 1.7.
+    const diamond = atStats(0, 0, 0, {
+      frontVulnerability: 0.75,
+      sideVulnerability: 1.7,
+      rearVulnerability: 1.0,
+    });
+    expect(vulnerability(diamond, 0, 100)).toBeCloseTo(1.7, 8);
+    expect(vulnerability(diamond, 0, -100)).toBeCloseTo(1.7, 8);
   });
 });
 
@@ -193,5 +244,46 @@ describe('damage tracking', () => {
     const target = at(40, 0, 0);
     resolveHit(attacker, target, 4, 0);
     expect(attacker.damageDealt).toBe(0);
+  });
+});
+
+describe('damage reflection', () => {
+  it('returns 35% of what the target took, back at the attacker', () => {
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    const startHealth = attacker.health;
+    const dealt = resolveHit(attacker, target, 4, 0);
+    expect(dealt).toBeGreaterThan(0);
+    const attackerLost = startHealth - attacker.health;
+    expect(attackerLost).toBeCloseTo(dealt * 0.35, 8);
+  });
+
+  it('does nothing for a bot with zero reflect', () => {
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0 });
+    const startHealth = attacker.health;
+    resolveHit(attacker, target, 4, 0);
+    expect(attacker.health).toBe(startHealth);
+  });
+
+  it('cannot push the attacker below zero health', () => {
+    const attacker = at(0, 0, 0);
+    attacker.health = 1;
+    // A high reflect fraction and a hefty hit so the naive reflected amount would be
+    // far more than the attacker has left.
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    resolveHit(attacker, target, 100, 0);
+    expect(attacker.health).toBe(0);
+  });
+
+  it('does not credit the reflected damage to either bot\'s damageDealt', () => {
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    const dealt = resolveHit(attacker, target, 4, 0);
+    // The attacker is credited with exactly what it dealt to the target, not a cent more
+    // for the reflected damage that bounced back onto itself.
+    expect(attacker.damageDealt).toBeCloseTo(dealt, 8);
+    // The target never dealt anything at all — reflection is not an attack it made.
+    expect(target.damageDealt).toBe(0);
   });
 });
