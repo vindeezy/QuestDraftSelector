@@ -59,7 +59,7 @@ mechanic from a global constant into a build decision.
 | 0 *(rare)* | **Wedge** | **0.40** / 1.4 / 2.2 | −10 health | Nearly immune head-on, glass from behind |
 | 1 | **Diamond** | 0.75 / **1.7** / 1.0 | +8 turn rate | Tough front and back, paper flanks |
 | 2 *(common)* | **Square** | 0.75 / 1.2 / 1.7 | baseline | The honest all-rounder |
-| 3 *(common)* | **Circle** | **1.15 / 1.15 / 1.15** | +restitution, −15% mass | Uniform armour, never punished for position. Bounces badly, cannot shove. |
+| 3 *(common)* | **Circle** | **1.15 / 1.15 / 1.15** | restitution 0.55 (baseline 0.3), −15% mass | Uniform armour, never punished for position. Bounces badly, cannot shove. |
 | 4 | **Box** | 0.7 / 1.25 / 1.8 | +15 health, +20% mass, −8 turn | The tank |
 | 5 *(rare)* | **Tower** | 0.7 / 1.5 / 1.9 | −25% radius, −25% mass, −20 health, +12 turn | Survives by not being hit |
 

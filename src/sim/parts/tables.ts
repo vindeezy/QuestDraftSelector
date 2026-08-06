@@ -90,7 +90,16 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-circle',
     label: 'Circle',
     category: 'chassis',
-    set: { frontVulnerability: 1.15, sideVulnerability: 1.15, rearVulnerability: 1.15 },
+    // Restitution 0.55 against a 0.3 baseline. A circle has no flat face to absorb an
+    // impact, so it is thrown much further by every hit, saw and air blaster. That plus
+    // the low mass is the price of uniform armour: averaged across all angles a circle
+    // is better protected than a square, so without a cost it would be strictly better.
+    set: {
+      frontVulnerability: 1.15,
+      sideVulnerability: 1.15,
+      rearVulnerability: 1.15,
+      restitution: 0.55,
+    },
     scale: { mass: 0.85 },
   },
   {
