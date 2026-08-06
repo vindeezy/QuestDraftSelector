@@ -369,6 +369,21 @@ export function buildArena(config: ArenaConfig): Arena {
     setSurface(surfaces, row * config.cols + col, surface);
   }
 
+  // A tile cannot be both a floor surface and a hole. Surfaces are stamped from the
+  // config, which does not know which tiles the pits and wall gaps carve out, so an arena
+  // that generates its surfaces in bulk — GRINDER_ARENA's tar ring covers the whole outer
+  // border, and all four of its gaps sit on that border — legitimately ends up stamping
+  // tar onto tiles that are then removed. Clearing them here keeps the two maps agreeing
+  // by construction, rather than asking every arena author to hand-subtract their gaps.
+  //
+  // Nothing reads a removed tile's surface today (a bot over a hole is falling, not
+  // driving), so this changes no behaviour. It exists so the invariant stays true, and
+  // so a genuine authoring mistake — ice deliberately painted onto a pit — is not hidden
+  // among noise the generator produced.
+  for (let i = 0; i < grid.tiles.length; i++) {
+    if (grid.tiles[i] === TileState.Gone) setSurface(surfaces, i, Surface.Plain);
+  }
+
   // Copy every zone, emitter and button rather than sharing the config's objects.
   // Emitters carry runtime state (`wasActive`) and buttons carry `pressed` /
   // `armedUntil` / `nextArmTick`; two matches built from the same config must not
