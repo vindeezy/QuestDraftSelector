@@ -78,8 +78,10 @@ const REPAIR_DELAY_TICKS = 180;
  */
 const REPAIR_HEAL_FRACTION = 0.0015;
 
-/** Adrenaline: health fraction below which it activates. */
-const ADRENALINE_THRESHOLD = 0.3;
+/** Adrenaline: health fraction below which it activates. Exported so the metrics
+ *  harness's on/off A/B (`tools/arena-metrics.ts`) can detect a "comeback" without
+ *  duplicating the number. */
+export const ADRENALINE_THRESHOLD = 0.3;
 /** Adrenaline: weapon damage multiplier while active. */
 const ADRENALINE_DAMAGE_MULT = 1.5;
 /** Adrenaline: top speed multiplier while active. */

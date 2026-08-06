@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 
 import { runEvent, type EventMember } from '../src/sim/event/event';
 import { createRecord, verifyRecord } from '../src/sim/event/record';
+import { CATEGORIES } from '../src/sim/parts/tables';
 
 const DATA_DIR = join(process.cwd(), 'data');
 const LEAGUE_PATH = join(DATA_DIR, 'league.json');
@@ -51,6 +52,12 @@ function summarize(members: EventMember[], seed: number): void {
   console.log(`    draft order:     ${order}`);
   console.log(`    battle lengths:  ${battleLengths}`);
   console.log(`    tiebreaks:       ${tiebreaks} place(s) needed a tiebreak`);
+  console.log(`    builds:`);
+  members.forEach((member, i) => {
+    const labels = result.partLabels[i]!;
+    const parts = CATEGORIES.map((category) => labels[category]).join(', ');
+    console.log(`      ${member.name.padEnd(16)} ${parts}`);
+  });
 }
 
 function rollAndPreview(count: number): void {
