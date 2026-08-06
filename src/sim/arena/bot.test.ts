@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ANGLE_STEPS, cosOf, sinOf } from '../trig';
+import { integrate } from '../body';
 import {
   createBot,
   steerToward,
@@ -223,5 +224,33 @@ describe('applyGrip', () => {
 describe('DEFAULT_BOT', () => {
   it('keeps max speed below the bot radius so it cannot tunnel', () => {
     expect(DEFAULT_BOT.maxSpeed).toBeLessThan(DEFAULT_BOT.radius);
+  });
+});
+
+describe('per-bot maxSpeed', () => {
+  it('createBot copies maxSpeed onto both the bot and its body', () => {
+    const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 }, { ...DEFAULT_BOT, maxSpeed: 6 });
+    expect(b.maxSpeed).toBe(6);
+    expect(b.body.maxSpeed).toBe(6);
+  });
+
+  it('two bots built with different maxSpeed stats reach different top speeds under identical thrust', () => {
+    // Same thrust and no drag for both — the only thing that can make them differ is
+    // each bot's own speed cap, exercised through createBot -> body.maxSpeed -> integrate.
+    const slow = createBot({ id: 's', x: 0, y: 0, heading: 0 }, { ...DEFAULT_BOT, maxSpeed: 3, thrust: 0.5 });
+    const fast = createBot({ id: 'f', x: 0, y: 0, heading: 0 }, { ...DEFAULT_BOT, maxSpeed: 6, thrust: 0.5 });
+
+    for (let i = 0; i < 100; i++) {
+      applyThrust(slow, 1);
+      applyThrust(fast, 1);
+      integrate(slow.body, 0, slow.maxSpeed, 1);
+      integrate(fast.body, 0, fast.maxSpeed, 1);
+    }
+
+    const slowSpeed = Math.sqrt(slow.body.vx * slow.body.vx + slow.body.vy * slow.body.vy);
+    const fastSpeed = Math.sqrt(fast.body.vx * fast.body.vx + fast.body.vy * fast.body.vy);
+    expect(slowSpeed).toBeCloseTo(3, 6);
+    expect(fastSpeed).toBeCloseTo(6, 6);
+    expect(fastSpeed).toBeGreaterThan(slowSpeed);
   });
 });

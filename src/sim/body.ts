@@ -17,6 +17,15 @@ export interface Body {
   invMass: number;
   /** Bounciness, 0 to 1. */
   restitution: number;
+  /**
+   * This body's own speed cap, in units per tick. When set, `integrate` clamps to it
+   * instead of the `maxSpeed` argument it is called with. Without this, every body in
+   * a `World` was flattened to one shared cap — a Hover bot and a Tank Tracks bot would
+   * reach identical top speeds. Left undefined for bodies that do not need one of their
+   * own (Plinko pegs and balls), which keep falling back to the caller-supplied value
+   * exactly as before.
+   */
+  maxSpeed?: number;
 }
 
 export interface BodyInit {
@@ -29,6 +38,7 @@ export interface BodyInit {
   vx?: number;
   vy?: number;
   restitution?: number;
+  maxSpeed?: number;
 }
 
 export function createBody(init: BodyInit): Body {
@@ -41,6 +51,7 @@ export function createBody(init: BodyInit): Body {
     radius: init.radius,
     invMass: init.mass === 0 ? 0 : 1 / init.mass,
     restitution: init.restitution ?? 0.4,
+    maxSpeed: init.maxSpeed,
   };
 }
 
@@ -57,6 +68,11 @@ export function createBody(init: BodyInit): Body {
  * so position always advances by the *clamped* velocity. Clamping after moving would
  * reintroduce tunnelling; dragging after clamping would make the clamp the dominant
  * speed control and drag nearly irrelevant.
+ *
+ * `maxSpeed` is the argument's name but not always the value used: when `body.maxSpeed`
+ * is set, it wins. That lets each body carry its own cap (a per-bot drive stat, or a
+ * temporarily raised one while launched — see `arena/launch.ts`) while callers that
+ * only ever had one shared cap, like the Plinko board, keep working unchanged.
  */
 export function integrate(body: Body, gravity: number, maxSpeed: number, drag: number): void {
   if (body.invMass === 0) return;
@@ -65,7 +81,8 @@ export function integrate(body: Body, gravity: number, maxSpeed: number, drag: n
   body.vx *= drag;
   body.vy *= drag;
 
-  const clamped = clampLength(body.vx, body.vy, maxSpeed);
+  const cap = body.maxSpeed ?? maxSpeed;
+  const clamped = clampLength(body.vx, body.vy, cap);
   body.vx = clamped.x;
   body.vy = clamped.y;
 

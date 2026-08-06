@@ -64,4 +64,30 @@ describe('integrate', () => {
     integrate(b, 0.5, 100, 1);
     expect(b).toMatchObject({ x: 5, y: 5, vx: 0, vy: 0 });
   });
+
+  it("clamps to the body's own maxSpeed when set, ignoring the passed argument", () => {
+    const b = ball({ vx: 100, maxSpeed: 3 });
+    integrate(b, 0, 999, 1);
+    expect(b.vx).toBeCloseTo(3, 10);
+  });
+
+  it('falls back to the passed maxSpeed when the body has none of its own', () => {
+    const b = ball({ vx: 100 });
+    integrate(b, 0, 5, 1);
+    expect(b.vx).toBeCloseTo(5, 10);
+  });
+
+  it('lets two bodies with different maxSpeed reach different top speeds under identical force', () => {
+    const slow = ball({ id: 'slow', maxSpeed: 3 });
+    const fast = ball({ id: 'fast', maxSpeed: 6 });
+    for (let i = 0; i < 50; i++) {
+      slow.vx += 1;
+      fast.vx += 1;
+      integrate(slow, 0, 999, 1);
+      integrate(fast, 0, 999, 1);
+    }
+    expect(slow.vx).toBeCloseTo(3, 10);
+    expect(fast.vx).toBeCloseTo(6, 10);
+    expect(fast.vx).toBeGreaterThan(slow.vx);
+  });
 });

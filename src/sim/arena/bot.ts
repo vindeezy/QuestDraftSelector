@@ -42,6 +42,22 @@ export interface Bot {
   damageReflect: number;
   /** Earliest tick this bot regains control after being stunned. 0 if never stunned. */
   stunnedUntil: number;
+  /**
+   * This bot's normal top speed, from its drive stats. Kept here (in addition to
+   * `body.maxSpeed`, which `integrate` actually reads) because `body.maxSpeed` is
+   * temporarily overwritten while launched — see `arena/launch.ts` — and something has
+   * to remember what "normal" is so the effect can decay back to it.
+   */
+  maxSpeed: number;
+  /**
+   * While `tick < launchUntil`, this bot is in the launched state: `body.maxSpeed` is
+   * held at `launchSpeed` instead of `maxSpeed`, so a knockback impulse can actually
+   * throw it rather than being clamped back to normal on the very next tick. Set by
+   * `launch()`; 0 means never launched.
+   */
+  launchUntil: number;
+  /** The currently active (and decaying) raised speed cap while launched. */
+  launchSpeed: number;
 }
 
 export interface BotInit {
@@ -133,6 +149,7 @@ export function createBot(init: BotInit, stats: BotStats = DEFAULT_BOT): Bot {
       radius: stats.radius,
       mass: stats.mass,
       restitution: stats.restitution,
+      maxSpeed: stats.maxSpeed,
     }),
     heading: normalizeAngle(init.heading),
     turnRate: stats.turnRate,
@@ -156,6 +173,9 @@ export function createBot(init: BotInit, stats: BotStats = DEFAULT_BOT): Bot {
     rearVulnerability: stats.rearVulnerability,
     damageReflect: stats.damageReflect,
     stunnedUntil: 0,
+    maxSpeed: stats.maxSpeed,
+    launchUntil: 0,
+    launchSpeed: stats.maxSpeed,
   };
 }
 

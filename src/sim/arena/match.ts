@@ -7,6 +7,7 @@ import { buildArena, type Arena, type ArenaConfig } from './arena';
 import { isOverHole } from './tiles';
 import { createBot, DEFAULT_BOT, type Bot } from './bot';
 import { resolveHit } from './combat';
+import { launch, updateLaunch } from './launch';
 import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 import { buildSpiralOrder, updateCollapse } from './collapse';
@@ -255,6 +256,14 @@ export function advanceMatch(match: Match): void {
   fireEmitters(match.arena.emitters, tick, match.arena.buttons, match.projectiles);
   stepProjectiles(match.projectiles, match.bots, match.arena.grid.width, match.arena.grid.height);
 
+  // Sync each bot's effective speed cap onto its body before physics runs this tick,
+  // so a launch from a hit earlier this tick (or a decaying one from a prior tick) is
+  // in place for `integrate` to clamp to.
+  for (const bot of match.bots) {
+    if (!bot.alive) continue;
+    updateLaunch(bot, tick);
+  }
+
   step(match.world);
 
   // `world.step` already resolved the physical collisions and reported them. This
@@ -273,10 +282,12 @@ export function advanceMatch(match: Match): void {
 
     if (resolveHit(a, b, contact.speed, match.world.tick) > 0) {
       maybeDisengage(match, a);
+      launch(b, b.body.x - a.body.x, b.body.y - a.body.y, a.weaponKnockback, match.world.tick);
       if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
     }
     if (b.alive && resolveHit(b, a, contact.speed, match.world.tick) > 0) {
       maybeDisengage(match, b);
+      launch(a, a.body.x - b.body.x, a.body.y - b.body.y, b.weaponKnockback, match.world.tick);
       if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);
     }
   }
