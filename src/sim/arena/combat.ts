@@ -1,5 +1,5 @@
 import { cosOf, sinOf } from '../trig';
-import type { Bot } from './bot';
+import { isStunned, type Bot } from './bot';
 
 /**
  * How squarely a bot is facing a point, from 0 to 1.
@@ -87,6 +87,8 @@ export function resolveHit(
   tick: number,
 ): number {
   if (!attacker.alive || !target.alive) return 0;
+  // A stunned bot deals no damage on contact — it is EMPed, not driving the hit.
+  if (isStunned(attacker, tick)) return 0;
   // A weapon needs time to recover between blows. Without this, two bots in contact
   // traded damage on every single tick and shredded each other in seconds — 89% of all
   // eliminations happened inside the first minute.

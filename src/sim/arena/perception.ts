@@ -1,5 +1,5 @@
 import { TileState, tileIndexAt } from './tiles';
-import type { Bot } from './bot';
+import { isUntargetable, type Bot } from './bot';
 import type { Match } from './match';
 import { isActive } from './activation';
 import { cosOf, sinOf } from '../trig';
@@ -187,8 +187,12 @@ export function perceive(match: Match, self: Bot): BotView {
   let weakest: Bot | null = null;
   let leader: Bot | null = null;
 
+  const tick = match.world.tick;
+
+  // Smoke Screen removes a bot from every kind of target selection below — it is still a
+  // real, collidable body, just invisible to everyone else's targeting for a while.
   for (const other of match.bots) {
-    if (other === self || !other.alive) continue;
+    if (other === self || !other.alive || isUntargetable(other, tick)) continue;
 
     const dx = other.body.x - self.body.x;
     const dy = other.body.y - self.body.y;
@@ -204,10 +208,10 @@ export function perceive(match: Match, self: Bot): BotView {
   let engagedPair: [Bot, Bot] | null = null;
   for (let i = 0; i < match.bots.length && engagedPair === null; i++) {
     const a = match.bots[i]!;
-    if (a === self || !a.alive) continue;
+    if (a === self || !a.alive || isUntargetable(a, tick)) continue;
     for (let j = i + 1; j < match.bots.length; j++) {
       const b = match.bots[j]!;
-      if (b === self || !b.alive) continue;
+      if (b === self || !b.alive || isUntargetable(b, tick)) continue;
       if (areEngaged(a, b, match.world.tick)) {
         engagedPair = [a, b];
         break;

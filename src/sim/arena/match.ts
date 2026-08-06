@@ -9,6 +9,8 @@ import { createBot, DEFAULT_BOT, type Bot } from './bot';
 import { resolveHit } from './combat';
 import { launch, updateLaunch } from './launch';
 import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
+import { createAbilityState, updateAbility, ABILITY_NAMES, type AbilityState } from './ability';
+import type { AbilityName } from '../parts/tables';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 import { buildSpiralOrder, updateCollapse } from './collapse';
 import { updateButtons } from './activation';
@@ -58,6 +60,11 @@ export interface Match {
    * pure physics-and-stats record.
    */
   aiStates: Map<string, AiState>;
+  /**
+   * Ability state per bot, keyed by `bot.body.id`. Kept off `Bot` for the same reason
+   * `aiStates` is: `Bot` stays a pure physics-and-stats record.
+   */
+  abilityStates: Map<string, AbilityState>;
   /** Tile indices in outside-in spiral order, consumed by the endgame collapse. */
   collapseOrder: number[];
   /** Shots in flight from emitters, live for the ticks between firing and impact. */
@@ -154,6 +161,31 @@ function assignPersonalities(botCount: number, rng: Rng): PersonalityName[] {
   return assignment;
 }
 
+/**
+ * Assigns an ability to every bot.
+ *
+ * Cycles through `ABILITY_NAMES` until there are `botCount` entries, then shuffles with
+ * the seeded PRNG so ability never correlates with bot index — the same fairness rule
+ * spawn position and personality already follow. Until the Forge is wired up (a later
+ * task), this is every bot's only source of an ability; once builds are supplied there,
+ * the ability will come from the build instead, exactly as personality will.
+ */
+function assignAbilities(botCount: number, rng: Rng): AbilityName[] {
+  const assignment: AbilityName[] = [];
+  for (let i = 0; i < botCount; i++) {
+    assignment.push(ABILITY_NAMES[i % ABILITY_NAMES.length]!);
+  }
+
+  for (let i = assignment.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    const swap = assignment[i]!;
+    assignment[i] = assignment[j]!;
+    assignment[j] = swap;
+  }
+
+  return assignment;
+}
+
 export function createMatch(config: MatchConfig): Match {
   const arena = buildArena(config.arena);
   const rng = createRng(config.seed);
@@ -175,6 +207,12 @@ export function createMatch(config: MatchConfig): Match {
     aiStates.set(bot.body.id, createAiState(personalities[i]!));
   });
 
+  const abilities = assignAbilities(config.botCount, rng);
+  const abilityStates = new Map<string, AbilityState>();
+  bots.forEach((bot, i) => {
+    abilityStates.set(bot.body.id, createAbilityState(abilities[i]!, bot));
+  });
+
   const collapseOrder = buildSpiralOrder(arena.grid);
 
   return {
@@ -186,6 +224,7 @@ export function createMatch(config: MatchConfig): Match {
     done: false,
     rng,
     aiStates,
+    abilityStates,
     collapseOrder,
     projectiles: [],
   };
@@ -299,6 +338,13 @@ export function advanceMatch(match: Match): void {
     } else if (isOverHole(match.arena.grid, bot.body.x, bot.body.y)) {
       eliminate(match, bot, 'fell', null);
     }
+  }
+
+  // Abilities update after damage is fully resolved and before the next tick's AI runs,
+  // so a bot that just crossed a threshold this tick acts on it starting next tick.
+  for (const bot of match.bots) {
+    if (!bot.alive) continue;
+    updateAbility(match, bot, match.abilityStates.get(bot.body.id)!);
   }
 
   const living = match.bots.filter((bot) => bot.alive).length;

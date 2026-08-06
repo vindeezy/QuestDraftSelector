@@ -43,6 +43,12 @@ export interface Bot {
   /** Earliest tick this bot regains control after being stunned. 0 if never stunned. */
   stunnedUntil: number;
   /**
+   * Earliest tick this bot can be selected as a target again after Smoke Screen. 0 if
+   * never used one. Purely an AI-targeting concept — the bot still exists physically and
+   * can still be hit or collided with; see `isUntargetable` and `arena/ability.ts`.
+   */
+  untargetableUntil: number;
+  /**
    * This bot's normal top speed, from its drive stats. Kept here (in addition to
    * `body.maxSpeed`, which `integrate` actually reads) because `body.maxSpeed` is
    * temporarily overwritten while launched — see `arena/launch.ts` — and something has
@@ -173,10 +179,29 @@ export function createBot(init: BotInit, stats: BotStats = DEFAULT_BOT): Bot {
     rearVulnerability: stats.rearVulnerability,
     damageReflect: stats.damageReflect,
     stunnedUntil: 0,
+    untargetableUntil: 0,
     maxSpeed: stats.maxSpeed,
     launchUntil: 0,
     launchSpeed: stats.maxSpeed,
   };
+}
+
+/**
+ * True while a stun (from EMP) holds a bot: it skips steering and thrust, and deals no
+ * damage on contact. Momentum and shoveability are deliberately untouched — a stunned
+ * bot's `body` is not made static, so it can still be hit into a pit. See `arena/ability.ts`.
+ */
+export function isStunned(bot: Bot, tick: number): boolean {
+  return tick < bot.stunnedUntil;
+}
+
+/**
+ * True while Smoke Screen hides a bot from other bots' target selection. Purely an
+ * AI-targeting concept: the bot still physically exists and can still be hit or
+ * collided with, so this must never be consulted by collision code.
+ */
+export function isUntargetable(bot: Bot, tick: number): boolean {
+  return tick < bot.untargetableUntil;
 }
 
 /**

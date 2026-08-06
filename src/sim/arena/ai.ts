@@ -1,6 +1,6 @@
 import { cosOf, sinOf } from '../trig';
 import { isOverHole } from './tiles';
-import { DEFAULT_BOT, type Bot } from './bot';
+import { DEFAULT_BOT, isStunned, isUntargetable, type Bot } from './bot';
 import { driveAway, driveToward, interceptOffset } from './steering';
 import type { BotView } from './perception';
 import { perceive } from './perception';
@@ -156,9 +156,18 @@ function resolveTarget(match: Match, self: Bot, state: AiState): Bot | null {
   const current =
     state.target === null ? null : match.bots.find((b) => b.body.id === state.target) ?? null;
 
-  if (current !== null && current.alive && match.world.tick < state.nextRetarget) return current;
+  if (
+    current !== null &&
+    current.alive &&
+    !isUntargetable(current, match.world.tick) &&
+    match.world.tick < state.nextRetarget
+  ) {
+    return current;
+  }
 
-  const candidates = match.bots.filter((b) => b !== self && b.alive);
+  const candidates = match.bots.filter(
+    (b) => b !== self && b.alive && !isUntargetable(b, match.world.tick),
+  );
   if (candidates.length === 0) {
     state.target = null;
     return null;
@@ -323,6 +332,9 @@ function actionOffset(
  */
 export function driveWithAi(match: Match, self: Bot, state: AiState): void {
   if (!self.alive) return;
+  // Stunned: no steering, no thrust. Momentum and shoveability are untouched — this
+  // function simply never runs, so nothing here overwrites the body's velocity.
+  if (isStunned(self, match.world.tick)) return;
 
   const view = perceive(match, self);
   const tick = match.world.tick;
