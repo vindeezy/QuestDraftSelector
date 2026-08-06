@@ -11,6 +11,7 @@ import { launch, updateLaunch } from './launch';
 import { createAiState, driveWithAi, lockAction, CELEBRATE_TICKS, DISENGAGE_TICKS, type AiState } from './ai';
 import { createAbilityState, updateAbility, ABILITY_NAMES, type AbilityState } from './ability';
 import type { AbilityName } from '../parts/tables';
+import type { AssembledBot } from '../parts/assemble';
 import { PERSONALITY_NAMES, type PersonalityName } from './personality';
 import { buildSpiralOrder, updateCollapse } from './collapse';
 import { updateButtons } from './activation';
@@ -40,6 +41,15 @@ export interface MatchConfig {
   botCount: number;
   maxTicks: number;
   drag: number;
+  /**
+   * One assembled bot per bot index, from the Forge. When supplied, every bot's stats,
+   * personality and ability come from its build instead of `DEFAULT_BOT` and the shuffled
+   * assignment below — the Forge already assigned both fairly, so re-shuffling on top of
+   * that would only throw away information. Optional so the greybox tests and the metrics
+   * harness can keep running without builds, using the shuffle fallback exactly as before.
+   * When supplied, must have exactly `botCount` entries.
+   */
+  builds?: AssembledBot[];
 }
 
 export interface Match {
@@ -99,8 +109,16 @@ export const DEFAULT_MATCH: Omit<MatchConfig, 'arena' | 'seed'> = {
   drag: 0.985,
 };
 
-/** Spawns bots on solid floor, spread out, without overlapping. */
-function spawnBots(arena: Arena, count: number, rng: Rng): Bot[] {
+/**
+ * Spawns bots on solid floor, spread out, without overlapping.
+ *
+ * `builds`, when supplied, gives bot `i` its stats from `builds[i]`. Bot index already
+ * maps straight to member index (see `runForgeBoard`'s and `runBattle`'s doc comments in
+ * `event.ts`), and spawn position is shuffled independently of that index below, so
+ * handing bot `i` build `i`'s stats introduces no new correlation between a member's
+ * index and their outcome.
+ */
+function spawnBots(arena: Arena, count: number, rng: Rng, builds?: AssembledBot[]): Bot[] {
   const bots: Bot[] = [];
   const size = arena.config.tileSize;
 
@@ -126,12 +144,15 @@ function spawnBots(arena: Arena, count: number, rng: Rng): Bot[] {
   for (let i = 0; i < count; i++) {
     const [col, row] = candidates[i]!;
     bots.push(
-      createBot({
-        id: `bot-${i}`,
-        x: col * size + size / 2,
-        y: row * size + size / 2,
-        heading: Math.floor(rng.next() * ANGLE_STEPS),
-      }),
+      createBot(
+        {
+          id: `bot-${i}`,
+          x: col * size + size / 2,
+          y: row * size + size / 2,
+          heading: Math.floor(rng.next() * ANGLE_STEPS),
+        },
+        builds ? builds[i]!.stats : DEFAULT_BOT,
+      ),
     );
   }
 
@@ -141,9 +162,10 @@ function spawnBots(arena: Arena, count: number, rng: Rng): Bot[] {
 /**
  * Assigns a personality to every bot.
  *
- * Cycles through `PERSONALITY_NAMES` until there are `botCount` entries, then shuffles
- * with the seeded PRNG so personality never correlates with bot index — the same
- * fairness rule spawn position and the Plinko board needed.
+ * Fallback only, used when no builds are supplied. Cycles through `PERSONALITY_NAMES`
+ * until there are `botCount` entries, then shuffles with the seeded PRNG so personality
+ * never correlates with bot index — the same fairness rule spawn position and the Plinko
+ * board needed. When builds are supplied, personality comes from each build instead.
  */
 function assignPersonalities(botCount: number, rng: Rng): PersonalityName[] {
   const assignment: PersonalityName[] = [];
@@ -164,11 +186,10 @@ function assignPersonalities(botCount: number, rng: Rng): PersonalityName[] {
 /**
  * Assigns an ability to every bot.
  *
- * Cycles through `ABILITY_NAMES` until there are `botCount` entries, then shuffles with
- * the seeded PRNG so ability never correlates with bot index — the same fairness rule
- * spawn position and personality already follow. Until the Forge is wired up (a later
- * task), this is every bot's only source of an ability; once builds are supplied there,
- * the ability will come from the build instead, exactly as personality will.
+ * Fallback only, used when no builds are supplied. Cycles through `ABILITY_NAMES` until
+ * there are `botCount` entries, then shuffles with the seeded PRNG so ability never
+ * correlates with bot index — the same fairness rule spawn position and personality
+ * already follow. When builds are supplied, ability comes from each build instead.
  */
 function assignAbilities(botCount: number, rng: Rng): AbilityName[] {
   const assignment: AbilityName[] = [];
@@ -198,16 +219,20 @@ export function createMatch(config: MatchConfig): Match {
   });
   world.segments.push(...arena.segments);
 
-  const bots = spawnBots(arena, config.botCount, rng);
+  const bots = spawnBots(arena, config.botCount, rng, config.builds);
   for (const bot of bots) world.bodies.push(bot.body);
 
-  const personalities = assignPersonalities(config.botCount, rng);
+  const personalities = config.builds
+    ? config.builds.map((build) => build.personality)
+    : assignPersonalities(config.botCount, rng);
   const aiStates = new Map<string, AiState>();
   bots.forEach((bot, i) => {
     aiStates.set(bot.body.id, createAiState(personalities[i]!));
   });
 
-  const abilities = assignAbilities(config.botCount, rng);
+  const abilities = config.builds
+    ? config.builds.map((build) => build.ability)
+    : assignAbilities(config.botCount, rng);
   const abilityStates = new Map<string, AbilityState>();
   bots.forEach((bot, i) => {
     abilityStates.set(bot.body.id, createAbilityState(abilities[i]!, bot));

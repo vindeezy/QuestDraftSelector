@@ -3,19 +3,21 @@ import { hashNumbers } from '../checksum';
 import { DEFAULT_BOARD } from '../plinko/board';
 import { DEFAULT_PLINKO, runPlinko } from '../plinko/plinko';
 import { DEFAULT_MATCH, runMatch, type Elimination } from '../arena/match';
+import { assemble, type AssembledBot, type BotBuild } from '../parts/assemble';
+import { CATEGORIES, partAt, slotCountFor, type CategoryName } from '../parts/tables';
 import { ARENA_VARIANTS, ARENA_VARIANT_NAMES } from './arenas';
 import { buildStandings, type BattleTally, type Standing } from './scoring';
 
 /**
- * The whole show, from one seed: seven Forge boards build every member's bot, then three
- * battles decide the draft order.
+ * The whole show, from one seed: six Forge boards — one per category in `CATEGORIES`
+ * order — build every member's bot, then three battles decide the draft order.
  *
  * A record of an event is therefore just the master seed and the roster — replaying it
  * means calling `runEvent` again and checking the checksum still matches. That is the
  * entire reason every sub-system in `src/sim` is deterministic.
  */
 
-const FORGE_BOARD_COUNT = 7;
+const FORGE_BOARD_COUNT = CATEGORIES.length;
 const BATTLE_COUNT = 3;
 
 /** Upper bound for a drawn sub-seed. `createRng` treats seeds as 32-bit integers. */
@@ -34,9 +36,17 @@ export interface EventConfig {
 
 export interface ForgeBoardResult {
   boardIndex: number;
+  /** Which of the six categories this board assigns. */
+  category: CategoryName;
   seed: number;
-  /** Slot each member landed in, indexed to match `members`. */
+  /** Slot each member landed in, indexed to match `members`. The simulation reads only
+   *  this — `partIds`/`partLabels` below exist for the website and must never be able to
+   *  change a battle outcome. */
   slots: number[];
+  /** Part id each member landed on, indexed to match `members`. */
+  partIds: string[];
+  /** Human-readable part name each member landed on, indexed to match `members`. */
+  partLabels: string[];
 }
 
 export interface BattleResult {
@@ -55,12 +65,17 @@ export interface EventResult {
   forge: ForgeBoardResult[];
   battles: BattleResult[];
   standings: Standing[];
+  /** Every member's build, indexed to match `members`. What the battles actually run on. */
+  builds: BotBuild[];
+  /** Every member's human-readable part names, indexed to match `members`. What the
+   *  website shows — never read by the simulation. */
+  partLabels: Record<CategoryName, string>[];
   checksum: string;
 }
 
 /**
- * Draws the ten sub-seeds from the master seed: seven Forge board seeds, then three
- * battle seeds, in that fixed order.
+ * Draws the nine sub-seeds from the master seed: six Forge board seeds (one per category,
+ * in `CATEGORIES` order), then three battle seeds, in that fixed order.
  *
  * The order is part of the contract. Changing it, or the count, changes what every
  * previously recorded master seed produces.
@@ -82,17 +97,23 @@ function deriveSubSeeds(masterSeed: number): { forgeSeeds: number[]; battleSeeds
 }
 
 /**
- * Runs one Forge board and reads off each member's landing slot.
+ * Runs one Forge board for one category and reads off each member's landing slot and
+ * the part it corresponds to.
  *
  * Member index maps straight to ball index — member 0 is ball 0, and so on. That mapping
  * is already fair: the board shuffles release position and height independently, from its
  * own seeded stream, so no member is permanently advantaged by their index. Adding another
  * shuffle here on top would only make the mapping harder to explain, not fairer.
  */
-function runForgeBoard(boardIndex: number, seed: number, memberCount: number): ForgeBoardResult {
+function runForgeBoard(
+  boardIndex: number,
+  category: CategoryName,
+  seed: number,
+  memberCount: number,
+): ForgeBoardResult {
   const result = runPlinko({
     ...DEFAULT_PLINKO,
-    board: DEFAULT_BOARD,
+    board: { ...DEFAULT_BOARD, slotCount: slotCountFor(category) },
     ballCount: memberCount,
     seed,
   });
@@ -102,20 +123,41 @@ function runForgeBoard(boardIndex: number, seed: number, memberCount: number): F
     slots[landing.ballIndex] = landing.slot;
   }
 
-  return { boardIndex, seed, slots };
+  const partIds = new Array<string>(memberCount);
+  const partLabels = new Array<string>(memberCount);
+  for (let i = 0; i < memberCount; i++) {
+    const part = partAt(category, slots[i]!);
+    partIds[i] = part.id;
+    partLabels[i] = part.label;
+  }
+
+  return { boardIndex, category, seed, slots, partIds, partLabels };
+}
+
+/** Folds one member's six landing slots (one per board, in `CATEGORIES` order) into a
+ *  `BotBuild`. */
+function buildFor(forge: readonly ForgeBoardResult[], memberIndex: number): BotBuild {
+  const build = {} as Record<CategoryName, number>;
+  for (const board of forge) {
+    build[board.category] = board.slots[memberIndex]!;
+  }
+  return build as BotBuild;
 }
 
 /**
  * Runs one battle and reads off each member's finishing place.
  *
  * Member index maps straight to bot index for the same reason it does on the Forge board:
- * the arena shuffles spawn position and personality independently from its own seeded
- * stream, so the mapping is already fair without a further shuffle.
+ * the arena shuffles spawn position independently from its own seeded stream, and `builds`
+ * is already indexed to match `members`, so the mapping is already fair without a further
+ * shuffle. `createMatch` reads personality and ability straight off each build rather than
+ * drawing its own shuffle, since the Forge already assigned both fairly.
  */
 function runBattle(
   battleIndex: number,
   seed: number,
   memberCount: number,
+  builds: AssembledBot[],
 ): { result: BattleResult; damage: Map<string, number> } {
   const arenaConfig = ARENA_VARIANTS[battleIndex]!;
   const arenaName = ARENA_VARIANT_NAMES[battleIndex]!;
@@ -125,6 +167,7 @@ function runBattle(
     arena: arenaConfig,
     botCount: memberCount,
     seed,
+    builds,
   });
 
   const places = new Array<number>(memberCount);
@@ -171,14 +214,23 @@ export function runEvent(config: EventConfig): EventResult {
 
   const { forgeSeeds, battleSeeds } = deriveSubSeeds(config.masterSeed);
 
-  const forge: ForgeBoardResult[] = forgeSeeds.map((seed, i) => runForgeBoard(i, seed, memberCount));
+  const forge: ForgeBoardResult[] = forgeSeeds.map((seed, i) =>
+    runForgeBoard(i, CATEGORIES[i]!, seed, memberCount),
+  );
+
+  // Every member's build, and the assembled bot the battles actually run on. Personality
+  // and ability the Forge assigned flow straight into the match through `assembledBots` —
+  // see `createMatch`'s `builds` option.
+  const builds: BotBuild[] = members.map((_, i) => buildFor(forge, i));
+  const assembledBots: AssembledBot[] = builds.map((build) => assemble(build));
+  const partLabels: Record<CategoryName, string>[] = assembledBots.map((bot) => bot.partLabels);
 
   const battles: BattleResult[] = [];
   const eliminationsByMember = new Array<number>(memberCount).fill(0);
   const damageByMember = new Array<number>(memberCount).fill(0);
 
   battleSeeds.forEach((seed, i) => {
-    const { result, damage } = runBattle(i, seed, memberCount);
+    const { result, damage } = runBattle(i, seed, memberCount, assembledBots);
     battles.push(result);
 
     for (const elimination of result.eliminations) {
@@ -231,6 +283,8 @@ export function runEvent(config: EventConfig): EventResult {
     forge,
     battles,
     standings,
+    builds,
+    partLabels,
     checksum: hashNumbers(checksumValues),
   };
 }

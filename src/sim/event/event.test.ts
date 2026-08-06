@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { runEvent, type EventConfig, type EventMember } from './event';
+import { CATEGORIES, slotCountFor } from '../parts/tables';
+import { createMatch, DEFAULT_MATCH } from '../arena/match';
+import { DEFAULT_ARENA } from '../arena/arena';
+import { assemble } from '../parts/assemble';
 
 const COLOURS = [
   '#e6194b',
@@ -28,11 +32,20 @@ function makeConfig(masterSeed: number, count = 10): EventConfig {
 
 describe('runEvent', () => {
   it(
-    'runs seven forge boards and three battles',
+    'runs six forge boards and three battles',
     () => {
       const result = runEvent(makeConfig(1));
-      expect(result.forge.length).toBe(7);
+      expect(result.forge.length).toBe(6);
       expect(result.battles.length).toBe(3);
+    },
+    30000,
+  );
+
+  it(
+    'runs the six boards in CATEGORIES order',
+    () => {
+      const result = runEvent(makeConfig(1));
+      expect(result.forge.map((board) => board.category)).toEqual([...CATEGORIES]);
     },
     30000,
   );
@@ -155,5 +168,95 @@ describe('runEvent', () => {
       }
     },
     180000,
+  );
+});
+
+describe('runEvent: Forge builds real bots', () => {
+  it(
+    'gives every member a part id and label from every board, matching the board category',
+    () => {
+      const config = makeConfig(20);
+      const result = runEvent(config);
+      for (const board of result.forge) {
+        expect(board.partIds.length).toBe(config.members.length);
+        expect(board.partLabels.length).toBe(config.members.length);
+        for (let i = 0; i < config.members.length; i++) {
+          expect(typeof board.partIds[i]).toBe('string');
+          expect(board.partIds[i]!.length).toBeGreaterThan(0);
+          expect(typeof board.partLabels[i]).toBe('string');
+          expect(board.partLabels[i]!.length).toBeGreaterThan(0);
+        }
+      }
+    },
+    30000,
+  );
+
+  it(
+    'gives every member a build with six valid slot indices',
+    () => {
+      const config = makeConfig(21);
+      const result = runEvent(config);
+      expect(result.builds.length).toBe(config.members.length);
+
+      for (const build of result.builds) {
+        for (const category of CATEGORIES) {
+          const slot = build[category];
+          expect(Number.isInteger(slot)).toBe(true);
+          expect(slot).toBeGreaterThanOrEqual(0);
+          expect(slot).toBeLessThan(slotCountFor(category));
+        }
+      }
+    },
+    30000,
+  );
+
+  it(
+    'gives every member part labels for all six categories',
+    () => {
+      const config = makeConfig(22);
+      const result = runEvent(config);
+      expect(result.partLabels.length).toBe(config.members.length);
+      for (const labels of result.partLabels) {
+        for (const category of CATEGORIES) {
+          expect(typeof labels[category]).toBe('string');
+          expect(labels[category].length).toBeGreaterThan(0);
+        }
+      }
+    },
+    30000,
+  );
+
+  it(
+    'the ten bots that actually fight are not identical — at least two distinct maxHealth values',
+    () => {
+      const config = makeConfig(23);
+      const result = runEvent(config);
+      const maxHealths = result.builds.map((build) => assemble(build).stats.maxHealth);
+      expect(new Set(maxHealths).size).toBeGreaterThanOrEqual(2);
+    },
+    30000,
+  );
+
+  it(
+    'a battle uses the assembled builds — createMatch with those builds reflects each build\'s personality and ability',
+    () => {
+      const config = makeConfig(24);
+      const result = runEvent(config);
+      const assembledBots = result.builds.map((build) => assemble(build));
+
+      const m = createMatch({
+        ...DEFAULT_MATCH,
+        arena: DEFAULT_ARENA,
+        botCount: config.members.length,
+        seed: 999,
+        builds: assembledBots,
+      });
+
+      m.bots.forEach((bot, i) => {
+        expect(m.aiStates.get(bot.body.id)!.personality).toBe(assembledBots[i]!.personality);
+        expect(m.abilityStates.get(bot.body.id)!.name).toBe(assembledBots[i]!.ability);
+      });
+    },
+    30000,
   );
 });

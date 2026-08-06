@@ -1,8 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_ARENA } from './arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, runMatch } from './match';
+import { assemble, type AssembledBot, type BotBuild } from '../parts/assemble';
+import { slotCountFor } from '../parts/tables';
 
 const config = { ...DEFAULT_MATCH, arena: DEFAULT_ARENA };
+
+/** Ten distinct builds — one per bot — that vary chassis and armour so `maxHealth`
+ *  genuinely differs, and step through every category's slot range so nothing here is
+ *  accidentally out of range. */
+function makeVariedBuilds(count = 10): AssembledBot[] {
+  const builds: BotBuild[] = Array.from({ length: count }, (_, i) => ({
+    chassis: i % slotCountFor('chassis'),
+    drive: (i + 1) % slotCountFor('drive'),
+    weapon: (i + 2) % slotCountFor('weapon'),
+    armour: (i + 3) % slotCountFor('armour'),
+    ability: (i + 4) % slotCountFor('ability'),
+    personality: (i + 5) % slotCountFor('personality'),
+  }));
+  return builds.map((build) => assemble(build));
+}
 
 describe('createMatch', () => {
   it('places the requested number of bots', () => {
@@ -168,5 +185,60 @@ describe('personalities', () => {
     const m = createMatch({ ...config, seed: 3, botCount: 10 });
     const used = new Set([...m.aiStates.values()].map((s) => s.personality));
     expect(used.size).toBe(7);
+  });
+});
+
+describe('createMatch: builds', () => {
+  it('uses each build\'s stats instead of DEFAULT_BOT', () => {
+    const builds = makeVariedBuilds(10);
+    const m = createMatch({ ...config, seed: 1, botCount: 10, builds });
+
+    m.bots.forEach((bot, i) => {
+      expect(bot.maxHealth).toBeCloseTo(builds[i]!.stats.maxHealth, 8);
+      expect(bot.body.radius).toBeCloseTo(builds[i]!.stats.radius, 8);
+    });
+  });
+
+  it('produces bots that genuinely differ — at least two distinct maxHealth values among ten', () => {
+    const builds = makeVariedBuilds(10);
+    const m = createMatch({ ...config, seed: 2, botCount: 10, builds });
+    const maxHealths = m.bots.map((bot) => bot.maxHealth);
+    expect(new Set(maxHealths).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it('takes personality from the build, not the shuffle', () => {
+    const builds = makeVariedBuilds(10);
+    const m = createMatch({ ...config, seed: 8, botCount: 10, builds });
+
+    m.bots.forEach((bot, i) => {
+      expect(m.aiStates.get(bot.body.id)!.personality).toBe(builds[i]!.personality);
+    });
+  });
+
+  it('takes ability from the build, not the shuffle', () => {
+    const builds = makeVariedBuilds(10);
+    const m = createMatch({ ...config, seed: 9, botCount: 10, builds });
+
+    m.bots.forEach((bot, i) => {
+      expect(m.abilityStates.get(bot.body.id)!.name).toBe(builds[i]!.ability);
+    });
+  });
+
+  it('falls back to the shuffle when no builds are supplied', () => {
+    // Same seed with and without builds must diverge in personality/ability assignment
+    // only because the builds path skips the shuffle draws entirely — this just confirms
+    // the no-builds path still works and is independent of the builds path.
+    const m = createMatch({ ...config, seed: 10, botCount: 10 });
+    for (const bot of m.bots) {
+      expect(m.aiStates.get(bot.body.id)).toBeDefined();
+      expect(m.abilityStates.get(bot.body.id)).toBeDefined();
+    }
+  });
+
+  it('runs a full match to completion using builds', () => {
+    const builds = makeVariedBuilds(10);
+    const r = runMatch({ ...config, seed: 13, botCount: 10, builds });
+    expect(r.placements.length).toBe(10);
+    expect(new Set(r.placements.map((p) => p.botId)).size).toBe(10);
   });
 });
