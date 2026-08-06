@@ -17,6 +17,8 @@ export interface Bot {
   /** Half-width of the damaging front arc, in angle steps. */
   weaponArc: number;
   weaponDamage: number;
+  /** Force imparted to a target on a successful hit. Drives the launched state. */
+  weaponKnockback: number;
   armour: number;
   /** Ticks a weapon needs to recover between blows. */
   attackCooldown: number;
@@ -30,6 +32,16 @@ export interface Bot {
   kills: number;
   /** Total damage this bot has dealt to others. The final tiebreaker. */
   damageDealt: number;
+  /** Damage multiplier for a hit landing on the front. Chassis shape owns this. */
+  frontVulnerability: number;
+  /** Damage multiplier for a hit landing on the side. Chassis shape owns this. */
+  sideVulnerability: number;
+  /** Damage multiplier for a hit landing on the rear. Chassis shape owns this. */
+  rearVulnerability: number;
+  /** Fraction of damage taken that is returned to the attacker. */
+  damageReflect: number;
+  /** Earliest tick this bot regains control after being stunned. 0 if never stunned. */
+  stunnedUntil: number;
 }
 
 export interface BotInit {
@@ -40,14 +52,42 @@ export interface BotInit {
 }
 
 /**
- * Placeholder stats for the greybox. A later phase replaces these with values derived
- * from the seven bot categories — nothing here is tuned yet.
+ * Everything about a bot's build that does not change during a match: size, mobility,
+ * durability and weapon. Six Plinko boards assemble one of these per bot; `createBot`
+ * copies it onto the live `Bot` record.
+ */
+export interface BotStats {
+  radius: number;
+  mass: number;
+  maxSpeed: number;
+  thrust: number;
+  turnRate: number;
+  grip: number;
+  maxHealth: number;
+  armour: number;
+  restitution: number;
+  weaponArc: number;
+  weaponDamage: number;
+  weaponKnockback: number;
+  attackCooldown: number;
+  /** Damage multipliers by where a hit lands. Chassis shape owns these. */
+  frontVulnerability: number;
+  sideVulnerability: number;
+  rearVulnerability: number;
+  /** Fraction of damage taken that is returned to the attacker. */
+  damageReflect: number;
+}
+
+/**
+ * Today's stats, as a `BotStats`. Every bot used this exact block before per-bot builds
+ * existed, so it is also the default `createBot` falls back to — nothing changes for
+ * existing callers.
  *
  * `maxSpeed` must stay below `radius`: a body that travels further in one tick than the
  * smallest thing it can collide with will pass straight through it. Tar and ice change
  * effective speed, so the clamp must be applied AFTER those modifiers, never before.
  */
-export const DEFAULT_BOT = {
+export const DEFAULT_BOT: BotStats = {
   radius: 20,
   mass: 1,
   // Lowered from 7. At 7 a bot crossed the arena in a little over two seconds, so it
@@ -65,6 +105,7 @@ export const DEFAULT_BOT = {
   // Lowered from 1.6 when rear vulnerability was added. Hits now average about 1.25x
   // their old damage and rear hits 1.8x, which halved match length from 152s to 63s.
   weaponDamage: 1.0,
+  weaponKnockback: 0,
   armour: 1,
   /**
    * Half a second between blows.
@@ -76,34 +117,45 @@ export const DEFAULT_BOT = {
    */
   attackCooldown: 30,
   restitution: 0.3,
-} as const;
+  // Today's fixed vulnerability constants, now the chassis-shape defaults.
+  frontVulnerability: 0.7,
+  sideVulnerability: 1.25,
+  rearVulnerability: 1.8,
+  damageReflect: 0,
+};
 
-export function createBot(init: BotInit): Bot {
+export function createBot(init: BotInit, stats: BotStats = DEFAULT_BOT): Bot {
   return {
     body: createBody({
       id: init.id,
       x: init.x,
       y: init.y,
-      radius: DEFAULT_BOT.radius,
-      mass: DEFAULT_BOT.mass,
-      restitution: DEFAULT_BOT.restitution,
+      radius: stats.radius,
+      mass: stats.mass,
+      restitution: stats.restitution,
     }),
     heading: normalizeAngle(init.heading),
-    turnRate: DEFAULT_BOT.turnRate,
-    thrust: DEFAULT_BOT.thrust,
-    grip: DEFAULT_BOT.grip,
-    health: DEFAULT_BOT.maxHealth,
-    maxHealth: DEFAULT_BOT.maxHealth,
+    turnRate: stats.turnRate,
+    thrust: stats.thrust,
+    grip: stats.grip,
+    health: stats.maxHealth,
+    maxHealth: stats.maxHealth,
     alive: true,
-    weaponArc: DEFAULT_BOT.weaponArc,
-    weaponDamage: DEFAULT_BOT.weaponDamage,
-    armour: DEFAULT_BOT.armour,
-    attackCooldown: DEFAULT_BOT.attackCooldown,
+    weaponArc: stats.weaponArc,
+    weaponDamage: stats.weaponDamage,
+    weaponKnockback: stats.weaponKnockback,
+    armour: stats.armour,
+    attackCooldown: stats.attackCooldown,
     nextAttackTick: 0,
     lastContactTick: -1,
     lastContactId: null,
     kills: 0,
     damageDealt: 0,
+    frontVulnerability: stats.frontVulnerability,
+    sideVulnerability: stats.sideVulnerability,
+    rearVulnerability: stats.rearVulnerability,
+    damageReflect: stats.damageReflect,
+    stunnedUntil: 0,
   };
 }
 

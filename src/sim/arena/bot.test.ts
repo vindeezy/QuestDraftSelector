@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { ANGLE_STEPS, cosOf, sinOf } from '../trig';
-import { createBot, steerToward, applyThrust, applyGrip, DEFAULT_BOT, type Bot } from './bot';
+import {
+  createBot,
+  steerToward,
+  applyThrust,
+  applyGrip,
+  DEFAULT_BOT,
+  type Bot,
+  type BotStats,
+} from './bot';
 
 const bot = (over: Partial<Bot> = {}): Bot => {
   const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 });
@@ -16,6 +24,99 @@ describe('createBot', () => {
 
   it('wraps its starting heading into range', () => {
     expect(createBot({ id: 'b', x: 0, y: 0, heading: ANGLE_STEPS + 5 }).heading).toBe(5);
+  });
+
+  it('with no stats produces exactly today\'s values', () => {
+    const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 });
+    expect(b.turnRate).toBe(DEFAULT_BOT.turnRate);
+    expect(b.thrust).toBe(DEFAULT_BOT.thrust);
+    expect(b.grip).toBe(DEFAULT_BOT.grip);
+    expect(b.maxHealth).toBe(DEFAULT_BOT.maxHealth);
+    expect(b.health).toBe(DEFAULT_BOT.maxHealth);
+    expect(b.weaponArc).toBe(DEFAULT_BOT.weaponArc);
+    expect(b.weaponDamage).toBe(DEFAULT_BOT.weaponDamage);
+    expect(b.weaponKnockback).toBe(DEFAULT_BOT.weaponKnockback);
+    expect(b.armour).toBe(DEFAULT_BOT.armour);
+    expect(b.attackCooldown).toBe(DEFAULT_BOT.attackCooldown);
+    expect(b.frontVulnerability).toBe(DEFAULT_BOT.frontVulnerability);
+    expect(b.sideVulnerability).toBe(DEFAULT_BOT.sideVulnerability);
+    expect(b.rearVulnerability).toBe(DEFAULT_BOT.rearVulnerability);
+    expect(b.damageReflect).toBe(DEFAULT_BOT.damageReflect);
+    expect(b.stunnedUntil).toBe(0);
+    expect(b.body.radius).toBe(DEFAULT_BOT.radius);
+    expect(b.body.invMass).toBe(1 / DEFAULT_BOT.mass);
+    expect(b.body.restitution).toBe(DEFAULT_BOT.restitution);
+  });
+
+  it('with custom stats reflects every field', () => {
+    const stats: BotStats = {
+      radius: 30,
+      mass: 2,
+      maxSpeed: 6,
+      thrust: 0.5,
+      turnRate: 60,
+      grip: 0.4,
+      maxHealth: 150,
+      armour: 1.2,
+      restitution: 0.6,
+      weaponArc: 700,
+      weaponDamage: 1.5,
+      weaponKnockback: 3,
+      attackCooldown: 20,
+      frontVulnerability: 0.4,
+      sideVulnerability: 1.7,
+      rearVulnerability: 2.2,
+      damageReflect: 0.35,
+    };
+    const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 }, stats);
+    expect(b.turnRate).toBe(stats.turnRate);
+    expect(b.thrust).toBe(stats.thrust);
+    expect(b.grip).toBe(stats.grip);
+    expect(b.maxHealth).toBe(stats.maxHealth);
+    expect(b.health).toBe(stats.maxHealth);
+    expect(b.weaponArc).toBe(stats.weaponArc);
+    expect(b.weaponDamage).toBe(stats.weaponDamage);
+    expect(b.weaponKnockback).toBe(stats.weaponKnockback);
+    expect(b.armour).toBe(stats.armour);
+    expect(b.attackCooldown).toBe(stats.attackCooldown);
+    expect(b.frontVulnerability).toBe(stats.frontVulnerability);
+    expect(b.sideVulnerability).toBe(stats.sideVulnerability);
+    expect(b.rearVulnerability).toBe(stats.rearVulnerability);
+    expect(b.damageReflect).toBe(stats.damageReflect);
+    expect(b.stunnedUntil).toBe(0);
+    expect(b.body.radius).toBe(stats.radius);
+    expect(b.body.invMass).toBe(1 / stats.mass);
+    expect(b.body.restitution).toBe(stats.restitution);
+  });
+
+  it('builds two bots from different stats that share no state', () => {
+    const statsA: BotStats = { ...DEFAULT_BOT, maxHealth: 80, damageReflect: 0.2 };
+    const statsB: BotStats = { ...DEFAULT_BOT, maxHealth: 200, damageReflect: 0 };
+    const a = createBot({ id: 'a', x: 0, y: 0, heading: 0 }, statsA);
+    const b = createBot({ id: 'b', x: 10, y: 10, heading: 0 }, statsB);
+
+    expect(a.maxHealth).toBe(80);
+    expect(b.maxHealth).toBe(200);
+    expect(a.damageReflect).toBe(0.2);
+    expect(b.damageReflect).toBe(0);
+
+    // Mutating one bot must not leak into the other, and must not mutate the shared
+    // stats objects either.
+    a.health -= 10;
+    a.kills = 3;
+    a.body.x = 999;
+    expect(b.health).toBe(200);
+    expect(b.kills).toBe(0);
+    expect(b.body.x).toBe(10);
+    expect(statsA.maxHealth).toBe(80);
+    expect(statsB.maxHealth).toBe(200);
+  });
+
+  it('starts health at maxHealth, whatever that is', () => {
+    const stats: BotStats = { ...DEFAULT_BOT, maxHealth: 42 };
+    const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 }, stats);
+    expect(b.health).toBe(42);
+    expect(b.maxHealth).toBe(42);
   });
 });
 
