@@ -207,21 +207,40 @@ const WEAPON: readonly Part[] = [
 ];
 
 // --- Category 4: Armour Material. Spec §7. --------------------------------------------
+//
+// ROUND 1 OF COMPRESSION, 2026-08-06. The first draft spread effective HP from 72 to 200,
+// a 2.8:1 range. Measured over 200 matches in The Grinder, that produced a 35:1 spread in
+// win rate — Depleted Uranium 38.8%, Carbon Fibre 1.1%, against a fair value of 10%.
+//
+// Win rate is strongly super-linear in effective HP, so a modest range in the table
+// becomes an extreme range in outcomes. This pass narrows 72-200 to 90-155 (1.7:1) by
+// moving only the four extremes; Alloy, Aluminium and Spiked Composite are already inside
+// the target band and are left alone.
+//
+// Expect this to need another pass. The reason to compress rather than redesign: Spiked
+// Composite won 11.3% on 110 effective HP while Alloy won 8.6% on 121 — it beat a tougher
+// material, which says the non-EHP differentiators (here, damage reflect) genuinely work
+// and the category does not need a new mechanic to be interesting.
 const ARMOUR: readonly Part[] = [
   {
     id: 'armour-depleted-uranium',
     label: 'Depleted Uranium',
     category: 'armour',
-    set: { armour: 1.6, damageReflect: 0 },
-    add: { maxHealth: 25, maxSpeed: -0.7, turnRate: -10 },
+    // 1.6/+25 -> 1.35/+15: 200 EHP down to 155. Keeps the heaviest, slowest, toughest
+    // identity; it just no longer wins four times as often as the field.
+    set: { armour: 1.35, damageReflect: 0 },
+    add: { maxHealth: 15, maxSpeed: -0.7, turnRate: -10 },
     scale: { mass: 1.55 },
   },
   {
     id: 'armour-carbon-fibre',
     label: 'Carbon Fibre',
     category: 'armour',
-    set: { armour: 0.85, damageReflect: 0 },
-    add: { maxHealth: -15, maxSpeed: 0.5, turnRate: 8 },
+    // 0.85/-15 -> 0.95/-5: 72 EHP up to 90. At 72 it was unplayable (1.1%), which matters
+    // more here than in a normal game: this picks a draft order, so a dead slot on the
+    // Forge board tells a league member their result before the fighting starts.
+    set: { armour: 0.95, damageReflect: 0 },
+    add: { maxHealth: -5, maxSpeed: 0.5, turnRate: 8 },
     scale: { mass: 0.7 },
   },
   {
@@ -244,16 +263,21 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-titanium',
     label: 'Titanium',
     category: 'armour',
-    set: { armour: 1.3, damageReflect: 0 },
-    add: { maxHealth: -20, maxSpeed: 0.25, turnRate: 4 },
+    // 1.3/-20 -> 1.2/-8: 104 EHP up to 110. Barely moved on paper, but it was winning
+    // 5.6% — below Aluminium's baseline despite costing more health for better armour.
+    // The health penalty was doing more harm than the armour multiplier was undoing.
+    set: { armour: 1.2, damageReflect: 0 },
+    add: { maxHealth: -8, maxSpeed: 0.25, turnRate: 4 },
     scale: { mass: 0.85 },
   },
   {
     id: 'armour-hardened-steel',
     label: 'Hardened Steel',
     category: 'armour',
-    set: { armour: 1.35, damageReflect: 0 },
-    add: { maxHealth: 15, maxSpeed: -0.35, turnRate: -5 },
+    // 1.35/+15 -> 1.25/+10: 155 EHP down to 138. Second-toughest, as designed, but the
+    // gap to the middle of the table was too large to be paid for by -0.35 speed.
+    set: { armour: 1.25, damageReflect: 0 },
+    add: { maxHealth: 10, maxSpeed: -0.35, turnRate: -5 },
     scale: { mass: 1.25 },
   },
   {
