@@ -145,7 +145,7 @@ Abilities fire when you are being hurt, which is when something interesting is h
 
 | Slot | Ability | Effect | Type |
 |---|---|---|---|
-| 0 *(rare)* | **EMP Pulse** | Nearby bots lose all control for 1s — momentum only | Triggered |
+| 0 *(rare)* | **EMP Pulse** | Nearby bots lose all control for 2s — no steering, no thrust, no weapon. Momentum carries them, and they can still be shoved. | Triggered |
 | 1 | **Nitro Boost** | +80% top speed for 1.5s | Triggered |
 | 2 *(common)* | **Oil Slick** | Drops an ice patch behind you | Triggered |
 | 3 *(common)* | **Shockwave** | Omnidirectional launch, no damage | Triggered |
@@ -174,16 +174,24 @@ Instigator. This board maps slots to existing personalities and needs no new mec
 | **Launched state** — knockback may briefly exceed a bot's own speed cap, decaying over ~1s | Small | Vertical Spinner, Shockwave |
 | `damageReflect` | Small | Spiked Composite |
 | Ability framework — health-threshold triggers, ratcheted | Small | All abilities |
-| Stun state | **Moderate** | EMP Pulse only |
+| Stun state | Small | EMP Pulse only |
 | Six cheap abilities | Small each | Nitro, Oil Slick, Shockwave, Repair, Adrenaline, Smoke |
 
 The launched state exists because knockback is otherwise pointless: `integrate()` clamps
 velocity to `maxSpeed` every tick, so a 4.0 knockback on a 4.5-speed bot is flattened
 back immediately. Being thrown should be different from driving.
 
-**EMP's stun state is the only moderate item, and the first thing to cut if time runs
-short.** A cheaper rare edge would be a Ram Booster — a temporary collision-damage
-multiplier reusing what exists.
+**EMP was initially priced as moderate and earmarked for cutting. That was wrong.** The
+mistake was imagining a general status-effect system; what is actually needed is one
+boolean on the bot and two conditions — skip the AI, and deal no damage.
+
+Freezing a bot outright would be slightly harder AND worse. Stopping the physics means
+setting , which makes the victim unpushable — so the stun would protect them
+from being shoved into a pit, removing the best thing about EMP. Drag already handles the
+appearance: a stunned bot retains about 16% of its speed after two seconds, so it visibly
+coasts to a halt without any of that being written.
+
+Every mechanic in this spec is now small. Nothing here is earmarked for cutting.
 
 ## 11. Deferred decisions
 
