@@ -107,7 +107,10 @@ const CHASSIS: readonly Part[] = [
     label: 'Box',
     category: 'chassis',
     set: { frontVulnerability: 0.7, sideVulnerability: 1.25, rearVulnerability: 1.8 },
-    add: { maxHealth: 15, turnRate: -8 },
+    // +15 -> +10 health. Box drafted at 4.12 against a fair 5.5, the best part in the game.
+    // Its +20% mass is untouched — that is its real identity, and shoving is not what made
+    // it dominant.
+    add: { maxHealth: 10, turnRate: -8 },
     scale: { mass: 1.2 },
   },
   {
@@ -115,7 +118,15 @@ const CHASSIS: readonly Part[] = [
     label: 'Tower',
     category: 'chassis',
     set: { frontVulnerability: 0.7, sideVulnerability: 1.5, rearVulnerability: 1.9 },
-    add: { maxHealth: -20, turnRate: 12 },
+    // -20 -> -6 health. Tower drafted at 7.02, the worst part in the game, because its
+    // premise does not survive the arena it now fights in: "survives by not being hit"
+    // assumes a lot of misses, and combat is 91% of deaths in The Grinder. Being small and
+    // light stopped paying once the floor stopped killing people.
+    //
+    // Chassis durability is health divided by mean vulnerability, and Box over Tower was
+    // 92 to 58.5 — a 1.57:1 ratio, which the measured 3.53 exponent turns into a ~4.9:1
+    // advantage. This and the Box change together bring that to 1.28:1.
+    add: { maxHealth: -6, turnRate: 12 },
     scale: { radius: 0.75, mass: 0.75 },
   },
 ];
@@ -270,13 +281,18 @@ const ARMOUR: readonly Part[] = [
     // reflect, no penalty, nothing. Every rival buys something, and a do-nothing option
     // turns out to break the table's "no option is strictly better" rule from the far side.
     //
-    // Grip is the fix because no other armour touches it, so it gives Aluminium an identity
-    // instead of a bigger number. It also creates a real build interaction: grip runs 0.04
-    // (Hover) to 0.60 (Tank Tracks) across the drive table, so +0.12 rescues a slippery
-    // drive and barely registers on a grippy one. Effective HP stays at 100 deliberately —
-    // this tests whether handling is worth anything at all, which the whole table needs to
-    // know.
-    set: { armour: 1.0, damageReflect: 0 },
+    // Grip alone was tried and FAILED: holding effective HP at 100 and adding +0.12 grip
+    // moved Aluminium from 6.43 to 6.73 — it got worse. That was a deliberate experiment
+    // and the answer is useful beyond this row: handling is worth close to nothing here.
+    // Partly self-inflicted, since The Grinder has no ice at all, so grip only affects
+    // cornering.
+    //
+    // So it gets durability as well: armour 1.00 -> 1.10, putting effective HP at 110,
+    // level with Titanium and Spiked Composite but reached without their costs. The grip
+    // stays as the thing that distinguishes it — grip runs 0.04 (Hover) to 0.60 (Tank
+    // Tracks) across the drive table, so it rescues a slippery drive and barely registers
+    // on a grippy one. The band is unchanged at 98-134, so the armour ratio still holds.
+    set: { armour: 1.1, damageReflect: 0 },
     add: { maxHealth: 0, maxSpeed: 0, turnRate: 0, grip: 0.12 },
     scale: { mass: 1.0 },
   },
