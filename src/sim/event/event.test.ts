@@ -58,6 +58,17 @@ describe('tallyKillCredit', () => {
     tallyKillCredit(eliminationsByMember, [elim('bot-2'), elim('bot-2'), elim(null)]);
     expect(eliminationsByMember).toEqual([0, 0, 2]);
   });
+
+  it('credits nobody for an environmental death, in every battle', () => {
+    // `runEvent` calls `tallyKillCredit` once per battle into a fresh per-battle array
+    // (see `eliminationsByMemberPerBattle` in event.ts). An environmental death must
+    // credit nobody no matter which battle it happens in.
+    for (let battle = 0; battle < 3; battle++) {
+      const eliminationsByMember = [0, 0, 0];
+      tallyKillCredit(eliminationsByMember, [elim(null), elim(null, 'bot-1')]);
+      expect(eliminationsByMember).toEqual([0, 0, 0]);
+    }
+  });
 });
 
 describe('runEvent', () => {

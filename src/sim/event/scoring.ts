@@ -25,16 +25,34 @@ export interface BattleTally {
   memberId: string;
   /** Finishing place in each battle, 1 is best. */
   places: number[];
-  /** Eliminations caused across all battles. */
-  eliminations: number;
+  /** Eliminations caused in each battle, parallel to `places`. */
+  eliminationsPerBattle: number[];
   /** Damage dealt across all battles. */
   damage: number;
 }
 
+/** One battle's contribution to a member's total, so the site can render a per-battle
+ *  scoreboard without recomputing anything. */
+export interface BattleStanding {
+  /** Points earned from finishing place alone. */
+  placementPoints: number;
+  /** Points earned from credited eliminations in this battle: `eliminations * KILL_POINTS`. */
+  killPoints: number;
+  /** Eliminations credited to this member in this battle. */
+  eliminations: number;
+  /** `placementPoints + killPoints` for this battle alone. */
+  total: number;
+}
+
 export interface Standing {
   memberId: string;
+  /** Grand total across every battle: the sum of each entry's `total` in `battles`. */
   points: number;
-  battlePoints: number[];
+  /** Per-battle breakdown, parallel to the event's battle order. */
+  battles: BattleStanding[];
+  /** Eliminations credited across the whole event — the sum of `battles[*].eliminations`.
+   *  Kept here (rather than only per-battle) because the tiebreak chain below reads it,
+   *  and so do the metrics tools. */
   eliminations: number;
   damage: number;
   /** 1 drafts first. */
@@ -57,20 +75,30 @@ export function pointsForPlace(place: number): number {
  * could differ between browsers would be worthless.
  *
  * `points` folds `KILL_POINTS` straight into the placement total, so eliminations already
- * move the primary ranking, not just the first tiebreak. `battlePoints` deliberately stays
- * placement-only: a `BattleTally`'s `eliminations` is summed across the whole event, not
- * per battle, so there is no honest way to attribute a kill bonus to one battle.
+ * move the primary ranking, not just the first tiebreak. Each battle's `total` is computed
+ * the same way, per battle, from `BattleTally.eliminationsPerBattle` — the grand `points` is
+ * just the sum of those per-battle totals, so 5 points per kill summed per battle is
+ * arithmetically identical to 5 points per kill summed across the event.
  */
 export function buildStandings(tallies: readonly BattleTally[]): Standing[] {
-  const rows = tallies.map((t) => ({
-    memberId: t.memberId,
-    battlePoints: t.places.map(pointsForPlace),
-    points: t.places.reduce((sum, place) => sum + pointsForPlace(place), 0) + t.eliminations * KILL_POINTS,
-    eliminations: t.eliminations,
-    damage: t.damage,
-    draftPosition: 0,
-    tiebreak: null as Tiebreak | null,
-  }));
+  const rows = tallies.map((t) => {
+    const battles: BattleStanding[] = t.places.map((place, i) => {
+      const placementPoints = pointsForPlace(place);
+      const eliminations = t.eliminationsPerBattle[i] ?? 0;
+      const killPoints = eliminations * KILL_POINTS;
+      return { placementPoints, killPoints, eliminations, total: placementPoints + killPoints };
+    });
+
+    return {
+      memberId: t.memberId,
+      points: battles.reduce((sum, b) => sum + b.total, 0),
+      battles,
+      eliminations: battles.reduce((sum, b) => sum + b.eliminations, 0),
+      damage: t.damage,
+      draftPosition: 0,
+      tiebreak: null as Tiebreak | null,
+    };
+  });
 
   rows.sort((a, b) => {
     if (b.points !== a.points) return b.points - a.points;

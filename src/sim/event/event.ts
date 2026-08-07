@@ -241,14 +241,18 @@ export function runEvent(config: EventConfig): EventResult {
   const partLabels: Record<CategoryName, string>[] = assembledBots.map((bot) => bot.partLabels);
 
   const battles: BattleResult[] = [];
-  const eliminationsByMember = new Array<number>(memberCount).fill(0);
+  // Indexed [battleIndex][memberIndex] — kept per battle, not folded into a single running
+  // sum, so `buildStandings` can attribute kill points to the battle that earned them.
+  const eliminationsByMemberPerBattle: number[][] = [];
   const damageByMember = new Array<number>(memberCount).fill(0);
 
   battleSeeds.forEach((seed, i) => {
     const { result, damage } = runBattle(i, seed, memberCount, assembledBots);
     battles.push(result);
 
-    tallyKillCredit(eliminationsByMember, result.eliminations);
+    const eliminationsThisBattle = new Array<number>(memberCount).fill(0);
+    tallyKillCredit(eliminationsThisBattle, result.eliminations);
+    eliminationsByMemberPerBattle.push(eliminationsThisBattle);
 
     for (const [botId, dealt] of damage) {
       damageByMember[botIdToIndex(botId)]! += dealt;
@@ -258,7 +262,7 @@ export function runEvent(config: EventConfig): EventResult {
   const tallies: BattleTally[] = members.map((member, i) => ({
     memberId: member.id,
     places: battles.map((battle) => battle.places[i]!),
-    eliminations: eliminationsByMember[i]!,
+    eliminationsPerBattle: eliminationsByMemberPerBattle.map((battleElims) => battleElims[i]!),
     damage: damageByMember[i]!,
   }));
 
