@@ -131,6 +131,35 @@ Recorded because each one cost hours and none is obvious from the code.
 - **The eliminations tiebreak resolves fewer cases than it used to** now that kills feed
   points directly, but it still fires most often of the three.
 
+## Queued decisions — after the three arenas are locked
+
+Both deliberately deferred, because arena geometry changes the answer to each.
+
+**1. How much is a kill worth?** `KILL_POINTS` is 5, a first-draft number. Compare 1 vs 3
+vs 5 and read the effect on draft position and on survival-personality share. The harness
+for this is `npm run draft`, which already reports both.
+
+**2. What counts as a kill?** Currently, *only a direct bot-on-bot final blow*. See the
+four `eliminate()` call sites in `match.ts`: contact damage credits the other bot; a
+`destroyed` death from any zone, projectile or hazard credits nobody, and a `fell` death
+credits nobody.
+
+So none of these currently earn a kill, and several are the most watchable moments in the
+game:
+
+| Moment | Credited today |
+|---|---|
+| Shove a bot into a pit or off the edge | **No** |
+| Trigger a cannon whose ball lands the killing blow | **No** |
+| Shove a bot into a saw | **No** |
+| Kill with a Shockwave launch | **No** |
+| Kill via Spiked Composite damage reflect | **No** (reflect does not credit damage either) |
+
+This interacts directly with arena design: in The Grinder falls are only 1.8% of deaths so
+it barely matters, but an arena built around a trapdoor or ejection gaps would have a large
+share of its best moments score nothing. **Decide this before finalising an arena whose
+drama depends on pits.**
+
 ## What is deliberately cut for this deadline
 
 Blender-baked sprite art, sound design, arenas 4 and 5, the Arena Builder, interior
