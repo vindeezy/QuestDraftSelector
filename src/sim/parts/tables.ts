@@ -264,8 +264,20 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-aluminium',
     label: 'Aluminium',
     category: 'armour',
+    // Aluminium was the worst part in the game at a 4.2% win rate and an average draft
+    // position of 6.43 — below Carbon Fibre, which has LESS effective HP (98 vs 100). So
+    // this was never a durability problem. It was the pure baseline: no mass, no speed, no
+    // reflect, no penalty, nothing. Every rival buys something, and a do-nothing option
+    // turns out to break the table's "no option is strictly better" rule from the far side.
+    //
+    // Grip is the fix because no other armour touches it, so it gives Aluminium an identity
+    // instead of a bigger number. It also creates a real build interaction: grip runs 0.04
+    // (Hover) to 0.60 (Tank Tracks) across the drive table, so +0.12 rescues a slippery
+    // drive and barely registers on a grippy one. Effective HP stays at 100 deliberately —
+    // this tests whether handling is worth anything at all, which the whole table needs to
+    // know.
     set: { armour: 1.0, damageReflect: 0 },
-    add: { maxHealth: 0, maxSpeed: 0, turnRate: 0 },
+    add: { maxHealth: 0, maxSpeed: 0, turnRate: 0, grip: 0.12 },
     scale: { mass: 1.0 },
   },
   {

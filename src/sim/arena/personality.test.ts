@@ -44,11 +44,22 @@ describe('PERSONALITIES', () => {
     expect(agg.riskTolerance).toBeGreaterThan(def.riskTolerance);
   });
 
-  it('makes hit-and-run the strongest disengager', () => {
+  // This used to assert hit-and-run held the highest disengage weight in the table, which
+  // it did at 1.0 — and that made it the strongest build in the game (26.4% win rate
+  // against a fair 10%). Now 0.5, which puts it below instigator's 0.7.
+  //
+  // That is intended, not a regression. Instigator's brief is "rarely commits to a fight
+  // itself", which is more disengagement than "strike, break off, repeat", and instigator
+  // measures weak (3.2%) — so a high disengage weight was never what made hit-and-run
+  // strong. The dangerous combination was breaking off WHILE hunting the wounded
+  // (`chaseWeakest` 0.8, `charge` 0.5), which instigator does not do.
+  //
+  // So the assertion is now the one that actually carries the design: hit-and-run breaks
+  // off more readily than every personality meant to commit to a fight.
+  it('makes hit-and-run break off more readily than the committed fighters', () => {
     const hr = weightsFor('hitAndRun');
-    for (const name of PERSONALITY_NAMES) {
-      if (name === 'hitAndRun' || name === 'defensive') continue;
-      expect(hr.disengage).toBeGreaterThanOrEqual(weightsFor(name).disengage);
+    for (const name of ['aggressive', 'defensive', 'thirdParty', 'showman'] as const) {
+      expect(hr.disengage).toBeGreaterThan(weightsFor(name).disengage);
     }
   });
 

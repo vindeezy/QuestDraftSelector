@@ -68,19 +68,31 @@ const OIL_SLICK_DISTANCE = 60;
 const SHOCKWAVE_RANGE = 240;
 const SHOCKWAVE_FORCE = 3.5;
 
-/** Repair: only heals once this many ticks have passed since the bot last took damage. 3s. */
-const REPAIR_DELAY_TICKS = 180;
+/**
+ * Repair: only heals once this many ticks have passed since the bot last took damage. 4s.
+ *
+ * Raised from 3s along with the rate cut below. The delay is the more interesting of the
+ * two levers: it prices the act of *breaking off*, not the healing itself, so a bot that
+ * stays in a fight is untouched by it and only one that runs away pays.
+ */
+const REPAIR_DELAY_TICKS = 240;
 /**
  * Repair: heal per tick, as a fraction of max health. Set by measurement, not by the
- * spec: a 200-match run at the original first-draft value (0.0015, 9% of max health per
- * second) had Repair winning 26.6% of matches against a fair-value baseline of 10%, by
- * far the most dominant option in any category. Retuned to 1 HP/sec at the 100-health
- * baseline — 0.000167 — so healing back from zero takes about 600 seconds once the 3s
- * delay has elapsed. Kept as a fraction of max health rather than a flat number so it
- * stays build-neutral: a 224-health tank and a 70-health sprinter heal the same
- * proportion of their pool per second.
+ * spec, and now twice.
+ *
+ * The first-draft 0.0015 (9 HP/sec) had Repair winning 26.6% against a fair value of 10%.
+ * Cutting it to 1 HP/sec barely helped — 27.3% — because match length had roughly doubled
+ * by then, so a slower trickle ran for twice as long. Now 0.5 HP/sec (0.0000833).
+ *
+ * Repair and the Hit-and-Run personality were the two largest outliers in the game and
+ * they are the same problem wearing two hats: both pay a bot for disengaging. That is
+ * also why adding points for eliminations did not dent either — a bot can strike, break
+ * off, heal, and still collect the kill credit.
+ *
+ * Kept as a fraction of max health rather than a flat number so it stays build-neutral: a
+ * 134-EHP tank and a 98-EHP sprinter heal the same proportion of their pool per second.
  */
-const REPAIR_HEAL_FRACTION = 0.000167;
+const REPAIR_HEAL_FRACTION = 0.0000833;
 
 /** Adrenaline: health fraction below which it activates. Exported so the metrics
  *  harness's on/off A/B (`tools/arena-metrics.ts`) can detect a "comeback" without

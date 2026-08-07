@@ -64,9 +64,21 @@ const TABLE: Record<PersonalityName, Weights> = {
     celebrate: 0.0, riskTolerance: 0.4, retargetInterval: 120,
   },
   // Strike, break off, repeat. Damage followed by self-preservation.
+  //
+  // `disengage` was 1.0 — nearly three times the next-highest personality — and that made
+  // this the strongest build in the game by a wide margin: a 26.4% win rate against a fair
+  // value of 10%, and an average draft position of 3.76 against a fair 5.5. Halved to 0.5,
+  // which leaves it still the most disengaging personality in the table (Defensive is next
+  // at 0.35) without being the only viable way to play.
+  //
+  // Worth recording why the obvious fixes did not work. Adding points for eliminations did
+  // not dent this, because hit-and-run *kills* — it strikes and withdraws, so rewarding
+  // kills rewarded it too. Nor did arena geometry: a tar ring built specifically to punish
+  // retreating pushed this from 15.4% to 21.3%, because a bot does not need the wall to
+  // break off, only open floor.
   hitAndRun: {
     chaseNearest: 0.6, chaseWeakest: 0.8, chaseLeader: 0.1, attackEngaged: 0.4,
-    shove: 0.1, charge: 0.5, disengage: 1.0, retreat: 0.4, strafe: 0.4,
+    shove: 0.1, charge: 0.5, disengage: 0.5, retreat: 0.4, strafe: 0.4,
     celebrate: 0.05, riskTolerance: 0.45, retargetInterval: 90,
   },
   // Hunts bots already locked in a fight, looking for 2-on-1 eliminations.

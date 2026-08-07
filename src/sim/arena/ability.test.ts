@@ -148,7 +148,7 @@ describe('stun', () => {
 });
 
 describe('repair', () => {
-  it('does not heal within 3s of taking damage, and does heal after', () => {
+  it('does not heal within 4s of taking damage, and does heal after', () => {
     const m = matchWith(2, 120);
     const bot = m.bots[0]!;
     bot.maxHealth = 100;
@@ -161,11 +161,11 @@ describe('repair', () => {
     expect(state.lastDamageTick).toBe(10);
     expect(bot.health).toBe(50); // no heal the same tick as the hit
 
-    m.world.tick = 10 + 180; // exactly 3s later: still within the window
+    m.world.tick = 10 + 240; // exactly 4s later: still within the window
     updateAbility(m, bot, state);
     expect(bot.health).toBe(50);
 
-    m.world.tick = 10 + 181; // just past it
+    m.world.tick = 10 + 241; // just past it
     updateAbility(m, bot, state);
     expect(bot.health).toBeGreaterThan(50);
   });
