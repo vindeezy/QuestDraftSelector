@@ -132,39 +132,67 @@ const CHASSIS: readonly Part[] = [
 ];
 
 // --- Category 2: Drive System. Spec §5. ----------------------------------------------
+//
+// SPEED COMPRESSED, 2026-08-10, from a 3.8-5.6 band (1.47:1) to 4.6-5.5 (1.20:1).
+//
+// The table's premise was that speed and agility are genuinely opposed, so a drive buys
+// top speed with grip and turn rate. Two measurements say that trade was never real:
+//
+//   Grinder    Hover 24.4%   Tank Tracks 5.0%   Omni Wheels 3.7%   (fair value 10%)
+//   Gauntlet   Hover 18.3%   Tank Tracks 7.1%   Omni Wheels 3.7%
+//
+// The ordering is almost exactly speed order in both. **Omni Wheels holds the best turn
+// rate in the table (+25) and the second-best grip (0.55), and is the worst part in the
+// game.** Grip has now failed twice — once as Aluminium's identity, once as the design
+// axis of an arena that is two-thirds ice — and turn rate looks no better. Both were
+// being sold as compensation that does not pay.
+//
+// The Gauntlet's ice is not inert: it cuts Hover from 24.4% to 18.3%, the only thing that
+// has dented it. It simply cannot overcome a 47% speed advantage.
+//
+// So the fix is here rather than in the arena. Ordering is preserved — Hover still
+// fastest, Tank Tracks still slowest — but the spread no longer decides matches on its
+// own. Thrust and grip are deliberately untouched, so the drives still FEEL different
+// even though they should now win about equally often.
 const DRIVE: readonly Part[] = [
   {
     id: 'drive-omni-wheels',
     label: 'Omni Wheels',
     category: 'drive',
-    set: { maxSpeed: 4.2, thrust: 0.3, grip: 0.55 },
+    // 4.2 -> 4.7. The worst part in the game at 3.7% in both arenas.
+    set: { maxSpeed: 4.7, thrust: 0.3, grip: 0.55 },
     add: { turnRate: 25 },
   },
   {
     id: 'drive-tank-tracks',
     label: 'Tank Tracks',
     category: 'drive',
-    set: { maxSpeed: 3.8, thrust: 0.45, grip: 0.6 },
+    // 3.8 -> 4.6. Still the slowest, but 3.8 against Hover's 5.6 was not a trade, it was
+    // a penalty: its 0.60 grip is the highest in the table and bought nothing.
+    set: { maxSpeed: 4.6, thrust: 0.45, grip: 0.6 },
     add: { turnRate: -10 },
   },
   {
     id: 'drive-4-wheels',
     label: '4 Wheels',
     category: 'drive',
-    set: { maxSpeed: 4.5, thrust: 0.35, grip: 0.25 },
+    // 4.5 -> 4.9.
+    set: { maxSpeed: 4.9, thrust: 0.35, grip: 0.25 },
     add: { turnRate: 0 },
   },
   {
     id: 'drive-6-wheels',
     label: '6 Wheels',
     category: 'drive',
-    set: { maxSpeed: 4.3, thrust: 0.38, grip: 0.35 },
+    // 4.3 -> 4.8.
+    set: { maxSpeed: 4.8, thrust: 0.38, grip: 0.35 },
     add: { turnRate: -5 },
   },
   {
     id: 'drive-2-wheels',
     label: '2 Wheels',
     category: 'drive',
+    // Unchanged. It sat closest to fair in both arenas at 11.6%.
     set: { maxSpeed: 5.2, thrust: 0.32, grip: 0.12 },
     add: { turnRate: 8 },
   },
@@ -172,7 +200,9 @@ const DRIVE: readonly Part[] = [
     id: 'drive-hover',
     label: 'Hover',
     category: 'drive',
-    set: { maxSpeed: 5.6, thrust: 0.28, grip: 0.04 },
+    // 5.6 -> 5.5. Still the fastest thing on the board; it just no longer wins a quarter
+    // of every match on that alone.
+    set: { maxSpeed: 5.5, thrust: 0.28, grip: 0.04 },
     add: { turnRate: 5 },
   },
 ];
