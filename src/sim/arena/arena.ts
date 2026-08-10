@@ -368,8 +368,13 @@ export const GAUNTLET_ARENA: ArenaConfig = {
   // one period and one activeTicks, and only their phase differs (240 vs 60), so they
   // are provably never on at the same time instead of merely unlikely to be.
   zones: [
-    { ...hazardPreset('saw').zone!, id: 'saw-t', x: 480, y: 120, heading: 0 },
-    { ...hazardPreset('saw').zone!, id: 'saw-b', x: 480, y: 600, heading: 0 },
+    // Tile CENTRES on rows 2 and 9, not y=120/600 as first specified. Two things were
+    // wrong with those: 120 and 600 are tile edges, so each saw straddled two rows; and
+    // with rows numbered 0-11 the mirror of row 2 is row 9, not row 10, so y=600 put the
+    // bottom saw one ring further out than the top one — on ice rather than normal floor.
+    // Both now sit on ring 2, the normal band, symmetric about the centre.
+    { ...hazardPreset('saw').zone!, id: 'saw-t', x: 480, y: 150, heading: 0 },
+    { ...hazardPreset('saw').zone!, id: 'saw-b', x: 480, y: 570, heading: 0 },
     // Top wall, pointing down (+y).
     { ...hazardPreset('flameJet').zone!, id: 'flame-t1', x: 320, y: 0, heading: 1024, activation: cycle(360, 60, 240) },
     { ...hazardPreset('flameJet').zone!, id: 'flame-t2', x: 640, y: 0, heading: 1024, activation: cycle(360, 60, 60) },
