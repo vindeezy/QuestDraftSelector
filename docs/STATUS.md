@@ -120,6 +120,30 @@ Recorded because each one cost hours and none is obvious from the code.
   disengaging.
 - **A "baseline" option with no upside is a trap.** Aluminium was the worst part in the game
   while having more effective HP than Carbon Fibre.
+- **Speed is a defensive stat, not an offensive one.** This one took three falsified
+  hypotheses and only fell to instrumentation. Per-appearance figures in The Grinder:
+
+  | | dealt | taken | alive | dealt ÷ alive | taken ÷ alive |
+  |---|---|---|---|---|---|
+  | Hover | 108.1 | 97.5 | 75.6% | 143.0 | **129.0** |
+  | Omni Wheels | 82.7 | 99.8 | 56.1% | 147.4 | **177.9** |
+
+  Damage taken is identical across all six drives (97.5–100.4), and **damage dealt per unit
+  of time alive is identical too** (141–147, with Omni Wheels highest). Drives do not differ
+  in how hard they fight. The whole difference is the *rate* at which they absorb damage: a
+  faster bot can break contact, a slower one is run down and hit in the rear, where chassis
+  vulnerability runs 1.7–2.2.
+
+  Two consequences. **Escape is a threshold, not a gradient** — once you are faster than
+  your pursuer the extra margin buys nothing, which is why compressing the speed band from
+  1.47:1 to 1.20:1 moved Hover only from 24.4% to 23.2%. And **rear vulnerability and drive
+  speed are coupled**: rear vulnerability is what makes speed valuable, so tuning either
+  one moves the other.
+
+- **Watch the sample size.** Omni Wheels appears ~217 times per 200-match run, so its win
+  count is single digits and the standard deviation is about 2.7 wins. A ratio between two
+  small counts is not a signal. Compare each part against fair value in standard deviations
+  before believing a change did anything.
 
 ## Known issues, unfixed by choice
 
