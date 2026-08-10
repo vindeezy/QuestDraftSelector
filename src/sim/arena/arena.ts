@@ -95,11 +95,12 @@ export const DEFAULT_ARENA: ArenaConfig = {
     { ...hazardPreset('saw').zone!, id: 'saw-r', x: 960, y: 420, heading: 0 },
     // Points down, into the arena.
     { ...hazardPreset('flameJet').zone!, id: 'flame-t', x: 300, y: 0, heading: 1024 },
-    // Different period from the top jet (220 vs the preset's 180). `cycle()` has no
-    // phase offset, so two jets sharing a period fire in lockstep and the arena reads
-    // as uniformly safe or uniformly dangerous the whole match. Different periods drift
-    // them in and out of sync instead. A phase parameter would be the better long-term
-    // fix; it belongs with the Arena Builder, not here.
+    // Different period from the top jet (220 vs the preset's 180), so two jets sharing a
+    // cycle don't fire in lockstep and read as uniformly safe or uniformly dangerous the
+    // whole match. Different periods drift them in and out of sync instead. `cycle()` now
+    // takes a phase offset too (see `activation.ts`), which is the more direct way to
+    // desync two hazards on the same period — GAUNTLET_ARENA's flame jets use it — but
+    // this arena is left on the mismatched-period trick it shipped with.
     {
       ...hazardPreset('flameJet').zone!,
       id: 'flame-b',
@@ -221,6 +222,32 @@ function tarRing(cols: number, rows: number): Array<readonly [number, number, Su
 }
 
 /**
+ * Concentric ice bands for GAUNTLET_ARENA, two tiles wide, generated rather than
+ * hand-typed for the same reason as `tarRing` above.
+ *
+ * A tile's ring index is `min(col, row, cols-1-col, rows-1-row)` -- 0 at the outer wall,
+ * increasing toward the centre. Rings 0-1 and 4-5 are ice; rings 2-3 sit between them as
+ * plain (unlisted) floor.
+ *
+ * Two tiles wide is deliberate, not decorative: a bot is 40 units across against a
+ * 60-unit tile, so a one-tile-wide band would leave a bot permanently straddling two
+ * surfaces, its grip flickering on and off as its centre crossed the tile boundary. Two
+ * tiles lets a bot actually settle onto a surface and commit to it.
+ */
+function iceBands(cols: number, rows: number): Array<readonly [number, number, SurfaceValue]> {
+  const tiles: Array<readonly [number, number, SurfaceValue]> = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const ring = Math.min(col, row, cols - 1 - col, rows - 1 - row);
+      if (ring === 0 || ring === 1 || ring === 4 || ring === 5) {
+        tiles.push([col, row, Surface.Ice]);
+      }
+    }
+  }
+  return tiles;
+}
+
+/**
  * Arena 3 (event slot 1): The Grinder.
  *
  * Why this exists: a 200-match measurement of `DEFAULT_ARENA` found Hit-and-Run and
@@ -300,6 +327,73 @@ export const GRINDER_ARENA: ArenaConfig = {
     createButton('cannon-bot-plate', 660, 240, 30, 90, 240),
   ],
   trapdoors: [],
+};
+
+/**
+ * Arena 2 (event slot 2): The Gauntlet.
+ *
+ * Design axis: speed and grip. Grip was measured as worth close to nothing -- Aluminium
+ * was given +0.12 grip with its durability held constant and got WORSE. Tank Tracks,
+ * built around 0.60 grip, is the weakest part in the game at 6.72 average draft
+ * position. Neither can pay off on ground that is mostly plain floor, where grip barely
+ * changes how a bot handles. This arena is deliberately soaked in ice -- see `iceBands`
+ * -- so that grip stops being a stat nobody feels.
+ *
+ * No static pits: falls are gated behind the two trapdoors, in keeping with the project
+ * owner's direction starting at PROVING_ARENA. No wall gaps either -- ejection is not
+ * part of this arena's design, so knockback into a wall just means knockback into a
+ * wall.
+ */
+export const GAUNTLET_ARENA: ArenaConfig = {
+  cols: 16,
+  rows: 12,
+  tileSize: 60,
+  pits: [],
+  wallGaps: [],
+  // Rings 0-1 and 4-5 are ice, ring 2-3 is a plain (unlisted) band between them. See
+  // `iceBands` for why the bands are two tiles wide.
+  surfaces: iceBands(16, 12),
+  emitters: [],
+  // Two saws, near top and bottom. `saw-t` at (480,120) sits on ring 2 (the plain
+  // band); `saw-b` at (480,600) — the exact coordinates given for this layout — actually
+  // falls on ring 1 (ice), one ring further out than its counterpart. Coordinates are
+  // implemented exactly as specified; this asymmetry is flagged, not corrected.
+  //
+  // Eight flame jets, two per wall, in two alternating groups (A/B) that travel around
+  // the perimeter. Each points into the arena (see the heading comment on each).
+  //
+  // The pacing is a four-beat rhythm on a shared 360-tick (6s) period: quiet, group A
+  // (60 ticks), quiet, group B (60 ticks) -- each quiet stretch twice the length of a
+  // burst. `cycle`'s new phase parameter is what makes this possible: both groups share
+  // one period and one activeTicks, and only their phase differs (240 vs 60), so they
+  // are provably never on at the same time instead of merely unlikely to be.
+  zones: [
+    { ...hazardPreset('saw').zone!, id: 'saw-t', x: 480, y: 120, heading: 0 },
+    { ...hazardPreset('saw').zone!, id: 'saw-b', x: 480, y: 600, heading: 0 },
+    // Top wall, pointing down (+y).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-t1', x: 320, y: 0, heading: 1024, activation: cycle(360, 60, 240) },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-t2', x: 640, y: 0, heading: 1024, activation: cycle(360, 60, 60) },
+    // Right wall, pointing left (-x).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-r1', x: 960, y: 240, heading: 2048, activation: cycle(360, 60, 240) },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-r2', x: 960, y: 480, heading: 2048, activation: cycle(360, 60, 60) },
+    // Bottom wall, pointing up (-y).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-b1', x: 640, y: 720, heading: 3072, activation: cycle(360, 60, 240) },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-b2', x: 320, y: 720, heading: 3072, activation: cycle(360, 60, 60) },
+    // Left wall, pointing right (+x).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-l1', x: 0, y: 480, heading: 0, activation: cycle(360, 60, 240) },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-l2', x: 0, y: 240, heading: 0, activation: cycle(360, 60, 60) },
+  ],
+  // Crossed wiring: each button opens the trapdoor on the OPPOSITE side of the arena, so
+  // the bot that opens a pit is never standing near it. Both plates sit on ring 2 (plain
+  // floor), reachable regardless of which ice band a bot is currently committed to.
+  buttons: [
+    createButton('trap-left-plate', 810, 330, 30, 240, 480),
+    createButton('trap-right-plate', 150, 330, 30, 240, 480),
+  ],
+  trapdoors: [
+    createTrapdoor('trap-left', [[3, 5], [4, 5], [3, 6], [4, 6]], triggered('trap-left-plate')),
+    createTrapdoor('trap-right', [[11, 5], [12, 5], [11, 6], [12, 6]], triggered('trap-right-plate')),
+  ],
 };
 
 /** Builds the wall segments for one side, split around its gaps. */

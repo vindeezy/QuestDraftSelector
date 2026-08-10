@@ -21,20 +21,26 @@ export interface ActivationSpec {
   period: number;
   /** Cycle: ticks at the start of each period during which it is on. */
   activeTicks: number;
+  /** Cycle: shifts the on-window later in the period. See `isActive` for the exact math. */
+  phase: number;
   /** Triggered: which button arms it. */
   buttonId: string;
 }
 
 export function always(): ActivationSpec {
-  return { mode: Activation.Always, period: 0, activeTicks: 0, buttonId: '' };
+  return { mode: Activation.Always, period: 0, activeTicks: 0, phase: 0, buttonId: '' };
 }
 
-export function cycle(period: number, activeTicks: number): ActivationSpec {
-  return { mode: Activation.Cycle, period, activeTicks, buttonId: '' };
+/**
+ * `phase` defaults to 0, which reduces `isActive`'s cycle check to the original
+ * `tick % period < activeTicks` — every arena built before phase existed is unaffected.
+ */
+export function cycle(period: number, activeTicks: number, phase = 0): ActivationSpec {
+  return { mode: Activation.Cycle, period, activeTicks, phase, buttonId: '' };
 }
 
 export function triggered(buttonId: string): ActivationSpec {
-  return { mode: Activation.Triggered, period: 0, activeTicks: 0, buttonId };
+  return { mode: Activation.Triggered, period: 0, activeTicks: 0, phase: 0, buttonId };
 }
 
 /**
@@ -117,7 +123,14 @@ export function isActive(
   if (spec.mode === Activation.Always) return true;
   if (spec.mode === Activation.Cycle) {
     if (spec.period <= 0) return true;
-    return tick % spec.period < spec.activeTicks;
+    // `tick` is always a non-negative integer, but `spec.phase` is arbitrary config data —
+    // it could be negative, fractional, or far larger than one period. Reduce it into
+    // [0, period) first: `Math.floor` forces an integer, and folding the negative branch
+    // back up by one period keeps the result non-negative without ever computing
+    // `tick + phase` directly, which would risk losing precision for a huge phase.
+    const rawPhase = Math.floor(spec.phase) % spec.period;
+    const phase = rawPhase < 0 ? rawPhase + spec.period : rawPhase;
+    return (tick + phase) % spec.period < spec.activeTicks;
   }
   const button = buttons.get(spec.buttonId);
   if (button === undefined) return false;

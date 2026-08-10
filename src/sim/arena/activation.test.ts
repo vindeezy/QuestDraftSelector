@@ -37,6 +37,63 @@ describe('cycle', () => {
       expect(isActive(spec, t, b)).toBe(isActive(spec, t + 120, b));
     }
   });
+
+  it('with phase 0 (the default) behaves exactly as before phase existed', () => {
+    // Pins the no-phase behaviour: every arena built before phase existed calls
+    // `cycle(period, activeTicks)` with no third argument, so this must never change.
+    const zeroPhase = cycle(120, 60, 0);
+    const noPhaseArg = cycle(120, 60);
+    for (let t = 0; t < 400; t++) {
+      expect(isActive(zeroPhase, t, b)).toBe(t % 120 < 60);
+      expect(isActive(noPhaseArg, t, b)).toBe(t % 120 < 60);
+      expect(isActive(noPhaseArg, t, b)).toBe(isActive(zeroPhase, t, b));
+    }
+  });
+});
+
+describe('cycle with a phase offset', () => {
+  const b = new Map();
+
+  it('shifts the on-window later in the period', () => {
+    // period 360, activeTicks 60, phase 240: (tick + 240) % 360 < 60, which works out to
+    // an on-window of ticks 120-179 of each 360-tick cycle.
+    const spec = cycle(360, 60, 240);
+    expect(isActive(spec, 119, b)).toBe(false);
+    expect(isActive(spec, 120, b)).toBe(true);
+    expect(isActive(spec, 179, b)).toBe(true);
+    expect(isActive(spec, 180, b)).toBe(false);
+    expect(isActive(spec, 299, b)).toBe(false);
+    // Repeats identically into the second cycle.
+    expect(isActive(spec, 480, b)).toBe(true);
+    expect(isActive(spec, 539, b)).toBe(true);
+    expect(isActive(spec, 540, b)).toBe(false);
+  });
+
+  it('normalizes a negative phase into the same [0, period) window', () => {
+    // phase -120 on a 360-period cycle is the same point as phase 240.
+    const negative = cycle(360, 60, -120);
+    const positive = cycle(360, 60, 240);
+    for (let t = 0; t < 400; t++) {
+      expect(isActive(negative, t, b)).toBe(isActive(positive, t, b));
+    }
+  });
+
+  it('normalizes a phase many periods larger than one cycle', () => {
+    // 240 + 10*360 lands on the same point in the cycle as phase 240.
+    const huge = cycle(360, 60, 240 + 10 * 360);
+    const plain = cycle(360, 60, 240);
+    for (let t = 0; t < 400; t++) {
+      expect(isActive(huge, t, b)).toBe(isActive(plain, t, b));
+    }
+  });
+
+  it('floors a fractional phase to stay integer-only', () => {
+    const fractional = cycle(360, 60, 240.9);
+    const integer = cycle(360, 60, 240);
+    for (let t = 0; t < 400; t++) {
+      expect(isActive(fractional, t, b)).toBe(isActive(integer, t, b));
+    }
+  });
 });
 
 describe('buttons — while-pressed', () => {

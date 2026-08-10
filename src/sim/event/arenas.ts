@@ -1,8 +1,7 @@
-import { GRINDER_ARENA, type ArenaConfig } from '../arena/arena';
+import { GRINDER_ARENA, GAUNTLET_ARENA, type ArenaConfig } from '../arena/arena';
 import { Surface } from '../arena/surface';
 import { hazardPreset } from '../arena/hazards';
 import { createEmitter } from '../arena/projectile';
-import { createButton, triggered } from '../arena/activation';
 
 /**
  * Three layout variants of the same 16 x 12 arena, one per battle.
@@ -24,63 +23,11 @@ const GRINDER: ArenaConfig = GRINDER_ARENA;
 /**
  * Variant 2 — "The Gauntlet."
  *
- * Positional rather than attritional. Conveyors on the long axis herd bots toward a
- * central pair of pits instead of relying on damage to thin the field.
+ * Now `GAUNTLET_ARENA`: ice-soaked concentric bands built specifically to make the
+ * `grip` stat matter, plus two crossed-wiring trapdoors. See the comment on
+ * `GAUNTLET_ARENA` in `arena.ts` for the full rationale.
  */
-const GAUNTLET: ArenaConfig = {
-  cols: 16,
-  rows: 12,
-  tileSize: 60,
-  pits: [
-    [7, 5],
-    [8, 6],
-  ],
-  // Gaps on the long sides rather than the ends, so knockback along the conveyors'
-  // axis is what ejects a bot, not knockback across it.
-  wallGaps: [
-    { side: 'left', from: 5, to: 7 },
-    { side: 'right', from: 5, to: 7 },
-  ],
-  surfaces: [
-    // Feeds east into the pit at [7, 5].
-    [3, 5, Surface.ConveyorE],
-    [4, 5, Surface.ConveyorE],
-    [5, 5, Surface.ConveyorE],
-    [6, 5, Surface.ConveyorE],
-    // Feeds west into the pit at [8, 6].
-    [9, 6, Surface.ConveyorW],
-    [10, 6, Surface.ConveyorW],
-    [11, 6, Surface.ConveyorW],
-    [12, 6, Surface.ConveyorW],
-    // Slow ground top and bottom centre, where a bot fleeing a conveyor is forced to cross.
-    [7, 2, Surface.Tar],
-    [8, 2, Surface.Tar],
-    [7, 9, Surface.Tar],
-    [8, 9, Surface.Tar],
-    [2, 8, Surface.Gravel],
-    [3, 8, Surface.Gravel],
-    [12, 3, Surface.Gravel],
-    [13, 3, Surface.Gravel],
-  ],
-  zones: [
-    { ...hazardPreset('saw').zone!, id: 'g-saw-tl', x: 0, y: 180, heading: 0 },
-    { ...hazardPreset('saw').zone!, id: 'g-saw-bl', x: 0, y: 540, heading: 0 },
-    { ...hazardPreset('saw').zone!, id: 'g-saw-tr', x: 960, y: 180, heading: 0 },
-    { ...hazardPreset('saw').zone!, id: 'g-saw-br', x: 960, y: 540, heading: 0 },
-    // Button-triggered rather than cycling, wired to the plate at arena centre.
-    {
-      ...hazardPreset('crusher').zone!,
-      id: 'g-crusher',
-      x: 480,
-      y: 360,
-      heading: 0,
-      activation: triggered('g-plate'),
-    },
-  ],
-  emitters: [],
-  buttons: [createButton('g-plate', 180, 360, 30, 90, 240)],
-  trapdoors: [],
-};
+const GAUNTLET: ArenaConfig = GAUNTLET_ARENA;
 
 /**
  * Variant 3 — "The Crossfire."

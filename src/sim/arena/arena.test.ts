@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { isOverHole, solidTileCount, TileState } from './tiles';
-import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, buildArena } from './arena';
+import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, GAUNTLET_ARENA, buildArena } from './arena';
 import { Surface } from './surface';
-import { Activation, createButton } from './activation';
+import { Activation, createButton, isActive } from './activation';
 import { DEFAULT_MATCH, createMatch, advanceMatch, runMatch } from './match';
 import { createEmitter, fireEmitters, stepProjectiles, type Projectile } from './projectile';
 
@@ -358,6 +358,160 @@ describe('GRINDER_ARENA', () => {
   it('runs full matches to completion', () => {
     for (let seed = 1; seed <= 10; seed++) {
       const r = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed, botCount: 10 });
+      expect(r.placements.length).toBe(10);
+    }
+  }, 30000);
+});
+
+describe('GAUNTLET_ARENA', () => {
+  it('is 16 by 12 tiles of 60 units, same as DEFAULT_ARENA', () => {
+    expect(GAUNTLET_ARENA.cols).toBe(16);
+    expect(GAUNTLET_ARENA.rows).toBe(12);
+    expect(GAUNTLET_ARENA.tileSize).toBe(60);
+  });
+
+  it('has no pits and no wall gaps', () => {
+    expect(GAUNTLET_ARENA.pits.length).toBe(0);
+    expect(GAUNTLET_ARENA.wallGaps.length).toBe(0);
+  });
+
+  it('has exactly two trapdoors, two buttons, no emitters, two saws and eight flame jets', () => {
+    expect(GAUNTLET_ARENA.trapdoors.length).toBe(2);
+    expect(GAUNTLET_ARENA.buttons.length).toBe(2);
+    expect(GAUNTLET_ARENA.emitters.length).toBe(0);
+
+    const saws = GAUNTLET_ARENA.zones.filter((z) => z.id.startsWith('saw'));
+    const flames = GAUNTLET_ARENA.zones.filter((z) => z.id.startsWith('flame'));
+    expect(saws.length).toBe(2);
+    expect(flames.length).toBe(8);
+    expect(GAUNTLET_ARENA.zones.length).toBe(10);
+  });
+
+  it('the ice bands are exactly rings 0-1 and 4-5, with rings 2-3 left as plain floor', () => {
+    const surfaceAt = (col: number, row: number): number | undefined => {
+      const hit = GAUNTLET_ARENA.surfaces.find(([c, r]) => c === col && r === row);
+      return hit?.[2];
+    };
+
+    // Ring 0 (the outer wall) and ring 1 (one tile in): ice.
+    expect(surfaceAt(0, 0)).toBe(Surface.Ice); // ring 0, corner
+    expect(surfaceAt(1, 5)).toBe(Surface.Ice); // ring 1, one tile in from the left edge
+
+    // Ring 2 and ring 3, the band in between: left as plain floor, no surface entry.
+    expect(surfaceAt(2, 5)).toBeUndefined(); // ring 2
+    expect(surfaceAt(3, 5)).toBeUndefined(); // ring 3
+
+    // Ring 4 and ring 5, the innermost band: ice again.
+    expect(surfaceAt(4, 5)).toBe(Surface.Ice); // ring 4
+    expect(surfaceAt(7, 5)).toBe(Surface.Ice); // ring 5, at the arena's centre
+
+    // Every listed surface tile is ice -- iceBands never emits anything else -- and the
+    // total count is exactly the four ice rings' tile count for a 16x12 grid.
+    expect(GAUNTLET_ARENA.surfaces.every(([, , surface]) => surface === Surface.Ice)).toBe(true);
+    expect(GAUNTLET_ARENA.surfaces.length).toBe(128);
+  });
+
+  it('wires each trapdoor to a triggered activation naming a button that exists', () => {
+    const buttonIds = new Set(GAUNTLET_ARENA.buttons.map((b) => b.id));
+    for (const trapdoor of GAUNTLET_ARENA.trapdoors) {
+      expect(trapdoor.activation.mode).toBe(Activation.Triggered);
+      expect(buttonIds.has(trapdoor.activation.buttonId)).toBe(true);
+    }
+  });
+
+  it('each button opens the trapdoor on the far side, not the near one', () => {
+    const leftButton = GAUNTLET_ARENA.buttons.find((b) => b.id === 'trap-left-plate')!;
+    const rightButton = GAUNTLET_ARENA.buttons.find((b) => b.id === 'trap-right-plate')!;
+    const leftTrap = GAUNTLET_ARENA.trapdoors.find((t) => t.id === 'trap-left')!;
+    const rightTrap = GAUNTLET_ARENA.trapdoors.find((t) => t.id === 'trap-right')!;
+
+    // The centre column is 8 (960 / 60 / 2). trap-left-plate sits on the right half of
+    // the arena and drives trap-left, which sits on the left half -- and vice versa for
+    // trap-right-plate / trap-right. The bot that opens a pit is never near it.
+    const centreX = (GAUNTLET_ARENA.cols * GAUNTLET_ARENA.tileSize) / 2;
+    expect(leftButton.x).toBeGreaterThan(centreX);
+    expect(rightButton.x).toBeLessThan(centreX);
+
+    const tileCentreX = (col: number): number => col * GAUNTLET_ARENA.tileSize + GAUNTLET_ARENA.tileSize / 2;
+    for (const [col] of leftTrap.tiles) expect(tileCentreX(col)).toBeLessThan(centreX);
+    for (const [col] of rightTrap.tiles) expect(tileCentreX(col)).toBeGreaterThan(centreX);
+
+    expect(leftTrap.activation.buttonId).toBe(leftButton.id);
+    expect(rightTrap.activation.buttonId).toBe(rightButton.id);
+  });
+
+  it('starts with both trapdoors solid -- the pits only appear once triggered', () => {
+    const arena = buildArena(GAUNTLET_ARENA);
+    for (const trapdoor of GAUNTLET_ARENA.trapdoors) {
+      for (const [col, row] of trapdoor.tiles) {
+        const size = GAUNTLET_ARENA.tileSize;
+        const x = col * size + size / 2;
+        const y = row * size + size / 2;
+        expect(isOverHole(arena.grid, x, y)).toBe(false);
+      }
+    }
+  });
+
+  describe('the flame jets’ four-beat rhythm', () => {
+    // Group A: flame-t1 / flame-r1 / flame-b1 / flame-l1, cycle(360, 60, 240).
+    // Group B: flame-t2 / flame-r2 / flame-b2 / flame-l2, cycle(360, 60, 60).
+    const groupAIds = ['flame-t1', 'flame-r1', 'flame-b1', 'flame-l1'];
+    const groupBIds = ['flame-t2', 'flame-r2', 'flame-b2', 'flame-l2'];
+    const buttons = new Map();
+
+    const specOf = (id: string) => GAUNTLET_ARENA.zones.find((z) => z.id === id)!.activation;
+
+    it('reads quiet (0-119) / group A (120-179) / quiet (180-299) / group B (300-359)', () => {
+      const groupA = specOf('flame-t1');
+      const groupB = specOf('flame-t2');
+
+      for (let t = 0; t < 360; t++) {
+        const aOn = isActive(groupA, t, buttons);
+        const bOn = isActive(groupB, t, buttons);
+
+        // The two groups are never on simultaneously.
+        expect(aOn && bOn).toBe(false);
+
+        if (t >= 120 && t < 180) {
+          expect(aOn).toBe(true);
+          expect(bOn).toBe(false);
+        } else if (t >= 300 && t < 360) {
+          expect(aOn).toBe(false);
+          expect(bOn).toBe(true);
+        } else {
+          expect(aOn).toBe(false);
+          expect(bOn).toBe(false);
+        }
+      }
+    });
+
+    it('every jet within a group fires in lockstep with the rest of its group', () => {
+      for (let t = 0; t < 360; t += 15) {
+        const aStates = groupAIds.map((id) => isActive(specOf(id), t, buttons));
+        expect(new Set(aStates).size).toBe(1);
+        const bStates = groupBIds.map((id) => isActive(specOf(id), t, buttons));
+        expect(new Set(bStates).size).toBe(1);
+      }
+    });
+
+    it('all eight flame jets share one 360-tick period and one 60-tick activeTicks window', () => {
+      for (const id of [...groupAIds, ...groupBIds]) {
+        expect(specOf(id).period).toBe(360);
+        expect(specOf(id).activeTicks).toBe(60);
+      }
+    });
+  });
+
+  it('produces identical results for the same seed, twice', () => {
+    const a = runMatch({ ...DEFAULT_MATCH, arena: GAUNTLET_ARENA, seed: 4242, botCount: 10 });
+    const b = runMatch({ ...DEFAULT_MATCH, arena: GAUNTLET_ARENA, seed: 4242, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.placements).toEqual(b.placements);
+  });
+
+  it('runs full matches to completion', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const r = runMatch({ ...DEFAULT_MATCH, arena: GAUNTLET_ARENA, seed, botCount: 10 });
       expect(r.placements.length).toBe(10);
     }
   }, 30000);
