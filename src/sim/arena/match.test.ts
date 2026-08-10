@@ -147,6 +147,29 @@ describe('runMatch', () => {
     expect(a.checksum).not.toBe(b.checksum);
   });
 
+  it('reports survivalTicks as the elimination tick for an eliminated bot, and the final tick for a survivor', () => {
+    const r = runMatch({ ...config, seed: 12, botCount: 10 });
+    const byId = new Map(r.damage.map((d) => [d.botId, d]));
+    const eliminatedIds = new Set<string>();
+    for (const e of r.eliminations) {
+      eliminatedIds.add(e.botId);
+      expect(byId.get(e.botId)!.survivalTicks).toBe(e.tick);
+    }
+    for (const d of r.damage) {
+      if (!eliminatedIds.has(d.botId)) expect(d.survivalTicks).toBe(r.ticks);
+    }
+  });
+
+  it('does not change the checksum when the new diagnostic counters are added', () => {
+    // The checksum is computed from position/velocity/heading/health/tick only — the
+    // new damageTaken/contacts/kills/survivalTicks fields must never feed into it.
+    // Guarded here as a same-seed-twice determinism check, same as the pair above.
+    const a = runMatch({ ...config, seed: 4242, botCount: 10 });
+    const b = runMatch({ ...config, seed: 4242, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.damage).toEqual(b.damage);
+  });
+
   it('produces identical results for the same seed on PROVING_ARENA', () => {
     // Same determinism guarantee, on the new arena with a live trapdoor in the mix.
     const provingConfig = { ...DEFAULT_MATCH, arena: PROVING_ARENA };

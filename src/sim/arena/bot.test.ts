@@ -119,6 +119,12 @@ describe('createBot', () => {
     expect(b.health).toBe(42);
     expect(b.maxHealth).toBe(42);
   });
+
+  it('starts damageTaken and contacts at zero', () => {
+    const b = createBot({ id: 'b', x: 0, y: 0, heading: 0 });
+    expect(b.damageTaken).toBe(0);
+    expect(b.contacts).toBe(0);
+  });
 });
 
 describe('steerToward', () => {

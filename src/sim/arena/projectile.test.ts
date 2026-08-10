@@ -138,4 +138,27 @@ describe('stepProjectiles', () => {
     expect(shots.length).toBe(0);
     expect(target.health).toBeLessThan(target.maxHealth);
   });
+
+  it('credits a projectile hit to damageTaken — documented rule: it counts, unlike a landed contact', () => {
+    const target = bot(100, 300);
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height);
+    expect(target.damageTaken).toBeCloseTo(18, 8);
+  });
+
+  it('does not increment contacts — an emitter has no attacking bot', () => {
+    const target = bot(100, 300);
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height);
+    expect(target.contacts).toBe(0);
+  });
+
+  it('caps damageTaken at what the bot actually had left, not the nominal shot damage', () => {
+    const target = bot(100, 300);
+    target.health = 5;
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height);
+    expect(target.health).toBe(0);
+    expect(target.damageTaken).toBe(5);
+  });
 });

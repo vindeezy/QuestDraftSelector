@@ -103,16 +103,24 @@ export function resolveHit(
   target.health -= dealt;
   if (target.health < 0) target.health = 0;
   attacker.damageDealt += dealt;
+  // `contacts` is a landed-hit counter, credited in lockstep with `damageDealt` above:
+  // same call, same guards already passed (alive, not stunned, off cooldown, in arc).
+  attacker.contacts += 1;
+  target.damageTaken += dealt;
   attacker.nextAttackTick = tick + attacker.attackCooldown;
 
   // Reflect. Spiked Composite is the only thing that changes the ATTACKER's maths.
   // Deliberately not counted in either bot's `damageDealt` — that stat is the event's
   // second tiebreaker and measures damage a bot went out and inflicted, not damage that
-  // bounced off it.
+  // bounced off it. It DOES count toward the attacker's `damageTaken`, though: that
+  // field tracks every point of health a bot actually lost, regardless of source, and a
+  // reflected hit is real health lost by the attacker.
   if (target.damageReflect > 0) {
     const back = dealt * target.damageReflect;
-    attacker.health -= back > attacker.health ? attacker.health : back;
+    const reflected = back > attacker.health ? attacker.health : back;
+    attacker.health -= reflected;
     if (attacker.health < 0) attacker.health = 0;
+    attacker.damageTaken += reflected;
   }
 
   return dealt;

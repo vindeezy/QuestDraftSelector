@@ -115,4 +115,23 @@ describe('applyZone', () => {
     applyZone(z, b, 0, noButtons);
     expect(b.health).toBe(0);
   });
+
+  it('credits hazard damage to damageTaken — documented rule: it counts, unlike a landed contact', () => {
+    const b = bot(110, 100);
+    applyZone(circle(0.5), b, 0, noButtons);
+    expect(b.damageTaken).toBeCloseTo(0.5, 8);
+  });
+
+  it('does not increment contacts — a zone has no attacking bot', () => {
+    const b = bot(110, 100);
+    applyZone(circle(0.5), b, 0, noButtons);
+    expect(b.contacts).toBe(0);
+  });
+
+  it('caps damageTaken at what the bot actually had left, not the nominal per-tick amount', () => {
+    const z = circle(999);
+    const b = bot(110, 100);
+    applyZone(z, b, 0, noButtons);
+    expect(b.damageTaken).toBe(b.maxHealth);
+  });
 });

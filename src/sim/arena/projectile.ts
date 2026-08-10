@@ -128,8 +128,13 @@ export function stepProjectiles(
     }
 
     if (hit !== null) {
-      hit.health -= shot.damage;
+      // Same "actual health lost, not nominal damage" rule as `zone.ts` — caps at what
+      // the bot had left, so a killing shot never overcounts `damageTaken`. Emitters have
+      // no attacking bot, so this never increments anyone's `contacts`.
+      const dealt = shot.damage > hit.health ? hit.health : shot.damage;
+      hit.health -= dealt;
       if (hit.health < 0) hit.health = 0;
+      hit.damageTaken += dealt;
       shot.alive = false;
       continue;
     }

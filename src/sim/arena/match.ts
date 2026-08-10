@@ -85,13 +85,26 @@ export interface Match {
 export interface DamageDealt {
   botId: string;
   damageDealt: number;
+  /** Total damage this bot sustained, from every source. See `Bot.damageTaken`. */
+  damageTaken: number;
+  /** Landed weapon hits this bot scored on another bot. See `Bot.contacts`. */
+  contacts: number;
+  /** Eliminations this bot caused. Mirrors `Bot.kills`, surfaced here for convenience. */
+  kills: number;
+  /**
+   * The tick this bot was eliminated, or the match's final tick if it survived to the
+   * end. Diagnostic only, alongside the rest of this record — nothing in the simulation
+   * reads it.
+   */
+  survivalTicks: number;
 }
 
 export interface MatchResult {
   seed: number;
   placements: Placement[];
   eliminations: Elimination[];
-  /** Total damage each bot dealt this match. The event's second tiebreaker. */
+  /** Per-bot totals for this match. The event's second tiebreaker (`damageDealt`) lives
+   * here, alongside diagnostic-only fields that nothing in the simulation reads. */
   damage: DamageDealt[];
   ticks: number;
   checksum: string;
@@ -415,11 +428,23 @@ export function runMatch(config: MatchConfig): MatchResult {
   }
   values.push(match.world.tick);
 
+  // Elimination tick per bot id, for `survivalTicks` below. A bot not in this map
+  // survived to the final tick.
+  const eliminationTick = new Map<string, number>();
+  for (const e of match.eliminations) eliminationTick.set(e.botId, e.tick);
+
   return {
     seed: config.seed,
     placements: buildPlacements(match),
     eliminations: match.eliminations,
-    damage: match.bots.map((bot) => ({ botId: bot.body.id, damageDealt: bot.damageDealt })),
+    damage: match.bots.map((bot) => ({
+      botId: bot.body.id,
+      damageDealt: bot.damageDealt,
+      damageTaken: bot.damageTaken,
+      contacts: bot.contacts,
+      kills: bot.kills,
+      survivalTicks: eliminationTick.get(bot.body.id) ?? match.world.tick,
+    })),
     ticks: match.world.tick,
     checksum: hashNumbers(values),
   };

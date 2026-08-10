@@ -247,6 +247,45 @@ describe('damage tracking', () => {
   });
 });
 
+describe('damageTaken and contacts', () => {
+  it('start at zero', () => {
+    const attacker = at(0, 0, 0);
+    expect(attacker.damageTaken).toBe(0);
+    expect(attacker.contacts).toBe(0);
+  });
+
+  it('credits the target with the damage it took, matching what resolveHit reports dealing', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const dealt = resolveHit(attacker, target, 4, 0);
+    expect(target.damageTaken).toBeCloseTo(dealt, 8);
+  });
+
+  it('increments the attacker\'s contacts once per landed hit', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    resolveHit(attacker, target, 4, 0);
+    expect(attacker.contacts).toBe(1);
+    resolveHit(attacker, target, 4, 1000);
+    expect(attacker.contacts).toBe(2);
+  });
+
+  it('leaves contacts at zero for a bot that lands no hits', () => {
+    const attacker = at(0, 0, 2048); // facing away, every hit is blocked
+    const target = at(40, 0, 0);
+    resolveHit(attacker, target, 4, 0);
+    resolveHit(attacker, target, 4, 1000);
+    expect(attacker.contacts).toBe(0);
+  });
+
+  it('does not credit the target with contacts — only the attacker landed a hit', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    resolveHit(attacker, target, 4, 0);
+    expect(target.contacts).toBe(0);
+  });
+});
+
 describe('damage reflection', () => {
   it('returns 35% of what the target took, back at the attacker', () => {
     const attacker = at(0, 0, 0);
@@ -285,5 +324,30 @@ describe('damage reflection', () => {
     expect(attacker.damageDealt).toBeCloseTo(dealt, 8);
     // The target never dealt anything at all — reflection is not an attack it made.
     expect(target.damageDealt).toBe(0);
+  });
+
+  it('DOES count the reflected bounce toward the attacker\'s damageTaken', () => {
+    // Documented rule: damageTaken tracks every point of health a bot actually lost,
+    // regardless of source, unlike damageDealt which excludes reflect entirely.
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    const dealt = resolveHit(attacker, target, 4, 0);
+    expect(attacker.damageTaken).toBeCloseTo(dealt * 0.35, 8);
+  });
+
+  it('caps the attacker\'s damageTaken credit at what it actually had left to lose', () => {
+    const attacker = at(0, 0, 0);
+    attacker.health = 1;
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    resolveHit(attacker, target, 100, 0);
+    expect(attacker.health).toBe(0);
+    expect(attacker.damageTaken).toBe(1);
+  });
+
+  it('does not increment the target\'s contacts for reflect — the target never landed a hit', () => {
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    resolveHit(attacker, target, 4, 0);
+    expect(target.contacts).toBe(0);
   });
 });

@@ -39,9 +39,20 @@
  *    board, not of balance. Wins-per-appearance is the number that means something, and
  *    every category's fair value is the same: 1 in `botCount`, i.e. 10%, since a build's
  *    category doesn't change how many bot-slots are in the match.
+ * 5. Damage profile by part, printed right after each category's win-rate table. Win
+ *    rate alone cannot tell "this part wins more because it deals more damage" apart
+ *    from "this part wins more because it simply avoids dying" — two different stories
+ *    that call for opposite balance fixes. Four PER-APPEARANCE averages, same reasoning
+ *    as #4: damage dealt, damage taken, contacts (landed hits), and time alive as a
+ *    PERCENTAGE OF THAT MATCH'S LENGTH rather than raw ticks. Matches run anywhere from
+ *    about 4,700 to 16,000 ticks, so a raw tick average would mostly measure which
+ *    matches happened to run long, not which parts survive. All four numbers are read
+ *    straight off `Bot`/`MatchResult` counters that the simulation writes but never
+ *    reads back — see `damageTaken` and `contacts` in `src/sim/arena/bot.ts`.
  */
 import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, GAUNTLET_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
+import type { Bot } from '../src/sim/arena/bot';
 import { ADRENALINE_THRESHOLD } from '../src/sim/arena/ability';
 import { buildsForSeed } from '../src/sim/parts/forge';
 import { type AssembledBot } from '../src/sim/parts/assemble';
@@ -63,19 +74,40 @@ function pct(n: number, d: number): string {
 interface PartTally {
   appearances: Record<string, number>;
   wins: Record<string, number>;
+  /** Sums, per label. Divided by `appearances` at print time for the per-appearance averages. */
+  dmgDealt: Record<string, number>;
+  dmgTaken: Record<string, number>;
+  contacts: Record<string, number>;
+  /** Sum of each appearance's survivalTicks/matchTicks fraction, not raw ticks — see
+   * the header comment on why raw ticks would be misleading. */
+  aliveFrac: Record<string, number>;
 }
 
 function newTally(): PartTally {
-  return { appearances: {}, wins: {} };
+  return { appearances: {}, wins: {}, dmgDealt: {}, dmgTaken: {}, contacts: {}, aliveFrac: {} };
 }
 
-function recordMatch(tallies: Record<CategoryName, PartTally>, builds: AssembledBot[], winnerIndex: number | null): void {
+function recordMatch(
+  tallies: Record<CategoryName, PartTally>,
+  builds: AssembledBot[],
+  winnerIndex: number | null,
+  bots: readonly Bot[],
+  matchTicks: number,
+  eliminationTick: ReadonlyMap<string, number>,
+): void {
   builds.forEach((build, i) => {
+    const bot = bots[i]!;
+    const survivalTicks = eliminationTick.get(bot.body.id) ?? matchTicks;
+    const aliveFrac = matchTicks === 0 ? 0 : survivalTicks / matchTicks;
     for (const category of CATEGORIES) {
       const label = build.partLabels[category];
       const tally = tallies[category];
       tally.appearances[label] = (tally.appearances[label] ?? 0) + 1;
       if (i === winnerIndex) tally.wins[label] = (tally.wins[label] ?? 0) + 1;
+      tally.dmgDealt[label] = (tally.dmgDealt[label] ?? 0) + bot.damageDealt;
+      tally.dmgTaken[label] = (tally.dmgTaken[label] ?? 0) + bot.damageTaken;
+      tally.contacts[label] = (tally.contacts[label] ?? 0) + bot.contacts;
+      tally.aliveFrac[label] = (tally.aliveFrac[label] ?? 0) + aliveFrac;
     }
   });
 }
@@ -96,6 +128,33 @@ function printCategory(category: CategoryName, tally: PartTally): void {
     const flag = row.appearances < LOW_SAMPLE_THRESHOLD ? '  <- low sample, noise' : '';
     console.log(
       `     ${row.label.padEnd(20)} ${row.rate.toFixed(1).padStart(5)}%   (${row.wins}/${row.appearances})${flag}`,
+    );
+  }
+}
+
+/**
+ * Second table per category: per-appearance damage dealt, damage taken, contacts, and
+ * survival — see item 5 in the header comment for why each of these exists and why
+ * `alive` is a percentage of match length rather than raw ticks. Sorted by damage dealt,
+ * descending, so the table itself surfaces which parts hit hardest before you even read
+ * the numbers.
+ */
+function printMetricsCategory(category: CategoryName, tally: PartTally): void {
+  console.log(`\n  ${category.toUpperCase()}   (per appearance)`);
+  const rows = Object.keys(tally.appearances)
+    .map((label) => {
+      const appearances = tally.appearances[label]!;
+      const dmgDealt = appearances === 0 ? 0 : tally.dmgDealt[label]! / appearances;
+      const dmgTaken = appearances === 0 ? 0 : tally.dmgTaken[label]! / appearances;
+      const contacts = appearances === 0 ? 0 : tally.contacts[label]! / appearances;
+      const alive = appearances === 0 ? 0 : (tally.aliveFrac[label]! / appearances) * 100;
+      return { label, appearances, dmgDealt, dmgTaken, contacts, alive };
+    })
+    .sort((a, b) => b.dmgDealt - a.dmgDealt);
+  for (const row of rows) {
+    const flag = row.appearances < LOW_SAMPLE_THRESHOLD ? '  <- low sample, noise' : '';
+    console.log(
+      `     ${row.label.padEnd(20)} dealt ${row.dmgDealt.toFixed(1).padStart(6)}   taken ${row.dmgTaken.toFixed(1).padStart(6)}   contacts ${row.contacts.toFixed(1).padStart(5)}   alive ${row.alive.toFixed(1).padStart(5)}%   (n=${row.appearances})${flag}`,
     );
   }
 }
@@ -125,6 +184,10 @@ function runReport(runs: number, seedStart: number, arena: ArenaConfig, arenaLab
     ticks.push(match.world.tick);
     if (match.world.tick >= DEFAULT_MATCH.maxTicks) capped++;
 
+    // Elimination tick per bot id, for the damage-profile table's `alive` column. A bot
+    // absent from this map survived to the match's final tick.
+    const eliminationTick = new Map<string, number>();
+
     for (const e of match.eliminations) {
       // `destroyed` conflates two very different deaths: a `byId` means another bot
       // landed the killing blow (combat); a null `byId` means a hazard did (a saw, a
@@ -136,12 +199,13 @@ function runReport(runs: number, seedStart: number, arena: ArenaConfig, arenaLab
       const bucket = Math.min(4, Math.floor((e.tick / Math.max(1, match.world.tick)) * 5));
       quintiles[bucket]!++;
       if (e.tick >= 3600) lateElims++;
+      eliminationTick.set(e.botId, e.tick);
     }
 
     const winner = match.bots.find((b) => b.alive);
     const winnerIndex = winner ? botIndex(winner.body.id) : null;
     if (winnerIndex === null) noWinner++;
-    recordMatch(tallies, builds, winnerIndex);
+    recordMatch(tallies, builds, winnerIndex, match.bots, match.world.tick, eliminationTick);
   }
 
   const elapsed = (Date.now() - started) / 1000;
@@ -170,7 +234,11 @@ function runReport(runs: number, seedStart: number, arena: ArenaConfig, arenaLab
   if (noWinner > 0) console.log(`     matches with no surviving winner: ${noWinner}`);
 
   console.log('\n  4. WIN RATE BY PART   (wins per appearance, not raw win count -- see header comment)');
-  for (const category of CATEGORIES) printCategory(category, tallies[category]!);
+  console.log('  5. DAMAGE PROFILE BY PART   (per-appearance averages, printed right after each category above)');
+  for (const category of CATEGORIES) {
+    printCategory(category, tallies[category]!);
+    printMetricsCategory(category, tallies[category]!);
+  }
 
   // Legacy framing, kept because it is the number the spec's history refers to directly:
   // "Hit-and-Run and Defensive have historically held roughly half of all wins." That is

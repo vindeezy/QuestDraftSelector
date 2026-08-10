@@ -74,8 +74,15 @@ export function applyZone(
   if (!zoneHits(zone, bot)) return;
 
   if (zone.damagePerTick > 0) {
-    bot.health -= zone.damagePerTick;
+    // `damageTaken` counts actual health lost, not the nominal per-tick amount, so it
+    // never overcounts a tick that finishes the bot off with less than a full dose —
+    // mirrors how `resolveHit` caps `dealt` at the target's remaining health. Zones have
+    // no attacking bot, so this is a hazard death for `damageTaken` purposes but never a
+    // `contacts` increment for anyone.
+    const dealt = zone.damagePerTick > bot.health ? bot.health : zone.damagePerTick;
+    bot.health -= dealt;
     if (bot.health < 0) bot.health = 0;
+    bot.damageTaken += dealt;
   }
 
   if (zone.knockback === 0) return;

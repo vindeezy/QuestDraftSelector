@@ -32,6 +32,24 @@ export interface Bot {
   kills: number;
   /** Total damage this bot has dealt to others. The final tiebreaker. */
   damageDealt: number;
+  /**
+   * Total damage this bot has sustained, from every source that actually reduces its
+   * health: a weapon hit landed on it (`resolveHit`), a hazard zone (`applyZone`), a
+   * projectile (`stepProjectiles`), and — unlike `damageDealt` — reflect damage bounced
+   * back onto an attacker in `resolveHit`. Reflect is real health the receiving bot lost,
+   * even though it is not something that bot "dealt", so it belongs here but not there.
+   * Diagnostic only: nothing in the simulation reads this field.
+   */
+  damageTaken: number;
+  /**
+   * Landed weapon hits this bot has scored on another bot. Incremented in lockstep with
+   * `damageDealt` — same call, same guard clauses in `resolveHit` — so it counts only
+   * bot-vs-bot blows. Hazard and projectile damage have no attacking bot and so are never
+   * a "contact"; a reflect bounce is damage the original attacker receives, not a hit it
+   * landed, so it does not increment this either. Diagnostic only: nothing in the
+   * simulation reads this field.
+   */
+  contacts: number;
   /** Damage multiplier for a hit landing on the front. Chassis shape owns this. */
   frontVulnerability: number;
   /** Damage multiplier for a hit landing on the side. Chassis shape owns this. */
@@ -174,6 +192,8 @@ export function createBot(init: BotInit, stats: BotStats = DEFAULT_BOT): Bot {
     lastContactId: null,
     kills: 0,
     damageDealt: 0,
+    damageTaken: 0,
+    contacts: 0,
     frontVulnerability: stats.frontVulnerability,
     sideVulnerability: stats.sideVulnerability,
     rearVulnerability: stats.rearVulnerability,
