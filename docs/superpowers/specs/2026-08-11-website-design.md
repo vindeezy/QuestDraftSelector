@@ -1,7 +1,7 @@
 # The Website — Design Spec
 
 **Date:** 2026-08-11
-**Status:** Awaiting review (revision 2)
+**Status:** Awaiting review (revision 3)
 **Parent specs:** `2026-08-03-quest-draft-selector-design.md`, `2026-08-05-bot-categories-design.md`
 **Deadline:** end of August 2026
 
@@ -30,19 +30,20 @@ the one-minute mark, and that build only reads at 1×.
 |---|---|---|
 | 1 | **Landing** | Title, tone, one button: Begin. |
 | 2 | **Name select** | Ten names. Picking yours sets the member you follow. |
-| 3–8 | **The Forge**, six boards | One per category, in `CATEGORIES` order: chassis, drive, weapon, armour, ability, personality. Ten balls drop at once. A panel on the right reveals each member's result **progressively, as their ball settles** — the trickle is better television than a dump at the end. |
-| 9 | **The build reveal** | Your bot full-screen, every part labelled. Scout the other nine. See §5.3. |
-| 10 | **Battle 1** — The Grinder | |
-| 11 | **Standing after battle 1** | Placement points, kill points, total. One screen: with one battle played, the round result *is* the standing. |
-| 12 | **Battle 2** — The Gauntlet | |
-| 13 | **Battle 2 result** | That battle alone, ordered by who scored most **in it**. |
-| 14 | **Standings after two** | Cut to the cumulative board: battles 1 and 2 broken out, grand total, ordered by total. |
-| 15 | **Battle 3** — The Crossfire | |
-| 16 | **Battle 3 result** | That battle alone, ordered by who scored most in it. |
-| 17 | **THE DRAFT ORDER** | All three battles broken out, grand total, counted up from tenth to first. The payoff. |
-| 18 | **Complete** | Final board persists. Skip navigation unlocks. Rewatchable. |
+| 3 | **What to expect** | The orientation. Three things explained fast: the Forge, the battles, the scoring. Ends with the button that truly starts the event. See §2.1. |
+| 4–9 | **The Forge**, six boards | One per category, in `CATEGORIES` order: chassis, drive, weapon, armour, ability, personality. Ten balls drop at once. A panel on the right reveals each member's result **progressively, as their ball settles** — the trickle is better television than a dump at the end. |
+| 10 | **The build reveal** | Your bot full-screen, every part labelled. Scout the other nine. See §5.3. |
+| 11 | **Battle 1** — The Grinder | |
+| 12 | **Standing after battle 1** | Placement points, kill points, total. One screen: with one battle played, the round result *is* the standing. |
+| 13 | **Battle 2** — The Gauntlet | |
+| 14 | **Battle 2 result** | That battle alone, ordered by who scored most **in it**. |
+| 15 | **Standings after two** | Cut to the cumulative board: battles 1 and 2 broken out, grand total, ordered by total. |
+| 16 | **Battle 3** — The Crossfire | |
+| 17 | **Battle 3 result** | That battle alone, ordered by who scored most in it. |
+| 18 | **THE DRAFT ORDER** | All three battles broken out, grand total, counted up from tenth to first. The payoff. |
+| 19 | **Complete** | Final board persists. Skip navigation unlocks. Rewatchable. |
 
-The order flips between beats 13 and 14, and again between 16 and 17. Someone can win
+The order flips between beats 14 and 15, and again between 17 and 18. Someone can win
 battle 3 outright and still land sixth overall. **That gap is the drama**, and it comes free
 from the format.
 
@@ -50,9 +51,43 @@ Battle 1 gets one screen where 2 and 3 get two. That asymmetry is correct — in
 second screen showing identical data would be worse — but it means the walkthrough's rhythm
 is not uniform, and the transitions should not pretend otherwise.
 
+### 2.1 What to expect — the orientation
+
+Beat 3 is the true start of the experience. Name select is admin; this is where the excitement
+is manufactured. It has to be punchy, quick to read, and fun to look at, and it ends with the
+button that begins the event proper.
+
+Three things, in this order, because that is the order they happen:
+
+**The Forge.** Six boards. Ten balls. Nobody chooses anything — the ball decides which chassis
+you get, which weapon, which armour. Everyone gets a bot; nobody gets to pick it.
+
+**The battles.** Three arenas, each built to punish something different. Last bot standing.
+
+**The scoring.** Where you finish scores points. Kills score more. Three battles added
+together decide the draft order. The honest one-liner is **"survive to score, fight to score
+more"** — at 3 points a kill, kills sharpen a placement but rarely overturn it, and the copy
+should not oversell them.
+
+One more thing belongs here, and it is the frame for everything that follows: **this already
+happened.** Nobody is playing, nothing is being decided live, and no outcome can be
+influenced. That is a more interesting promise than pretending otherwise — it makes the whole
+event a reveal rather than a match.
+
+**Show, don't tell.** The renderer already exists, so this page can *demonstrate* instead of
+describing: a short looping ball drop beside the Forge explanation, a miniature live arena
+beside the battles one. Far better than paragraphs, and nearly free given the machinery is
+built.
+
+**Any demo loop must use a seed that is not the official one.** Rendering the real Forge or a
+real battle here would spoil the event on its own orientation screen. The demo seed is a fixed
+constant, unrelated to the record, and that constraint is not optional.
+
+Skippable after the unlock, like every other beat.
+
 ### The final reveal
 
-Beat 17 is the whole event's payoff and is built differently from every other board.
+Beat 18 is the whole event's payoff and is built differently from every other board.
 Positions resolve from **tenth up to first**, one at a time, slow enough to be unbearable.
 Everything else — the per-battle boards, the cumulative boards — simply appears.
 
@@ -166,7 +201,7 @@ collide, rather than silently rendering two identical labels.
 The member you claimed gets a **persistent glow** on their bot for the whole event. Colour and
 initials identify everyone; the glow identifies *you*.
 
-Beat 9 shows **your bot full-screen**, with every one of its six parts labelled — the result
+Beat 10 shows **your bot full-screen**, with every one of its six parts labelled — the result
 plus a short, punchy line on what it does. A selector lets you browse the other nine members'
 bots and scout the competition.
 
@@ -355,5 +390,5 @@ and it is the check that catches exactly the thing averages hide.
   on whether the site reads as designed or generic. Pending the style guide.
 - **Palette.** Ten colours, checked at bot size in motion, not as swatches. Pending the style
   guide.
-- **How the build-reveal member selector is presented** — dropdown, icon row, or something
+- **How the build-reveal (beat 10) member selector is presented** — dropdown, icon row, or something
   else. Decide once it can be seen.
