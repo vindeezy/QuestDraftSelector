@@ -395,7 +395,10 @@ if (twoRemainTick === null) {
     for (let tick = twoRemainTick; tick <= finalTick; tick += ENDGAME_SAMPLE_TICKS) {
       const sa = byTickA.get(tick);
       const sb = byTickB.get(tick);
-      if (!sa || !sb) break; // one of them was eliminated before this sample tick.
+      // A sample exists for every bot at every tick up to `finalTick` regardless of
+      // `alive` (a dead bot's body freezes but is still sampled), so this only guards
+      // against a tick genuinely outside the recorded range.
+      if (!sa || !sb) break;
       const dx = sa.x - sb.x;
       const dy = sa.y - sb.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
@@ -406,10 +409,16 @@ if (twoRemainTick === null) {
       );
       windowStart = tick;
     }
-    if (finalTick % ENDGAME_SAMPLE_TICKS !== 0 || finalTick === twoRemainTick) {
+    // The loop above steps in fixed 300-tick strides from `twoRemainTick`, so it lands on
+    // `finalTick` only when `(finalTick - twoRemainTick)` happens to be an exact multiple
+    // of 300 -- not implied by `finalTick % 300 === 0` alone, since `twoRemainTick` is
+    // itself an arbitrary tick. Comparing directly against `windowStart` (the last tick
+    // the loop actually printed) is what correctly catches every case, including a
+    // trailing partial window shorter than 300 ticks.
+    if (windowStart !== finalTick) {
       const sa = byTickA.get(finalTick);
       const sb = byTickB.get(finalTick);
-      if (sa && sb && finalTick !== windowStart) {
+      if (sa && sb) {
         const dx = sa.x - sb.x;
         const dy = sa.y - sb.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
