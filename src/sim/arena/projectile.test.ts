@@ -7,6 +7,7 @@ import {
   stepProjectiles,
   segmentHitsCircle,
 } from './projectile';
+import { hazardHitIntensity, type Effect } from './effects';
 
 const bot = (x: number, y: number) => createBot({ id: 'b', x, y, heading: 0 });
 const noButtons = new Map();
@@ -160,5 +161,88 @@ describe('stepProjectiles', () => {
     for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height);
     expect(target.health).toBe(0);
     expect(target.damageTaken).toBe(5);
+  });
+});
+
+describe('fireEmitters — effect bus', () => {
+  it('pushes exactly one cannonFire effect on the tick it fires', () => {
+    const e = emitter();
+    const shots: ReturnType<typeof fireEmitters> = [];
+    const effects: Effect[] = [];
+    fireEmitters([e], 0, noButtons, shots, effects);
+    expect(effects.length).toBe(1);
+    expect(effects[0]!.kind).toBe('cannonFire');
+    expect(effects[0]!.intensity).toBe(1);
+  });
+
+  it('positions the effect at the emitter, not about any one bot', () => {
+    const e = emitter();
+    const shots: ReturnType<typeof fireEmitters> = [];
+    const effects: Effect[] = [];
+    fireEmitters([e], 0, noButtons, shots, effects);
+    expect(effects[0]!.x).toBe(e.x);
+    expect(effects[0]!.y).toBe(e.y);
+    expect(effects[0]!.botId).toBeNull();
+  });
+
+  it('fires once per activation, not once per active tick — same rising-edge rule as the projectile itself', () => {
+    const e = emitter(always());
+    const shots: ReturnType<typeof fireEmitters> = [];
+    const effects: Effect[] = [];
+    for (let t = 0; t < 100; t++) fireEmitters([e], t, noButtons, shots, effects);
+    expect(effects.length).toBe(1);
+  });
+
+  it('pushes nothing on a tick the emitter does not fire', () => {
+    const e = emitter(cycle(120, 1));
+    const shots: ReturnType<typeof fireEmitters> = [];
+    const effects: Effect[] = [];
+    fireEmitters([e], 5, noButtons, shots, effects);
+    expect(effects.length).toBe(0);
+  });
+});
+
+describe('stepProjectiles — effect bus', () => {
+  const arena = { width: 960, height: 720 };
+
+  it('pushes exactly one hazardHit effect on a landed hit', () => {
+    const target = bot(100, 300);
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    const effects: Effect[] = [];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height, effects);
+    expect(effects.length).toBe(1);
+    expect(effects[0]!.kind).toBe('hazardHit');
+  });
+
+  it('positions the effect on the bot it hit and attributes it to that bot', () => {
+    const target = bot(100, 300);
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    const effects: Effect[] = [];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height, effects);
+    expect(effects[0]!.x).toBe(target.body.x);
+    expect(effects[0]!.y).toBe(target.body.y);
+    expect(effects[0]!.botId).toBe(target.body.id);
+  });
+
+  it('reports intensity as the normalised damage dealt', () => {
+    const target = bot(100, 300);
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    const effects: Effect[] = [];
+    for (let t = 0; t < 20; t++) stepProjectiles(shots, [target], arena.width, arena.height, effects);
+    expect(effects[0]!.intensity).toBeCloseTo(hazardHitIntensity(18), 8);
+  });
+
+  it('pushes nothing on a tick with no hit', () => {
+    const shots = [{ x: 10, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    const effects: Effect[] = [];
+    stepProjectiles(shots, [], arena.width, arena.height, effects);
+    expect(effects.length).toBe(0);
+  });
+
+  it('pushes nothing for an expiring shot that never hit anything', () => {
+    const shots = [{ x: 950, y: 300, vx: 14, vy: 0, damage: 18, radius: 5, alive: true }];
+    const effects: Effect[] = [];
+    stepProjectiles(shots, [], arena.width, arena.height, effects);
+    expect(effects.length).toBe(0);
   });
 });

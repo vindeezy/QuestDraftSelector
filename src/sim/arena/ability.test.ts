@@ -348,3 +348,54 @@ describe('emp', () => {
     expect(caster.stunnedUntil).toBe(0);
   });
 });
+
+describe('triggered abilities — effect bus', () => {
+  it('pushes exactly one abilityFire effect on trigger', () => {
+    const m = matchWith(2, 190);
+    const bot = m.bots[0]!;
+    bot.maxHealth = 100;
+    bot.health = 100;
+    const state = createAbilityState('nitro', bot);
+
+    bot.health = 84; // crosses the first 15% threshold
+    m.world.tick = 1;
+    updateAbility(m, bot, state);
+
+    const fires = m.effects.filter((e) => e.kind === 'abilityFire');
+    expect(fires.length).toBe(1);
+    expect(fires[0]!.intensity).toBe(1);
+    expect(fires[0]!.botId).toBe(bot.body.id);
+    expect(fires[0]!.x).toBe(bot.body.x);
+    expect(fires[0]!.y).toBe(bot.body.y);
+  });
+
+  it('pushes one abilityFire per threshold crossed in a single tick, not one for the whole call', () => {
+    const m = matchWith(2, 191);
+    const bot = m.bots[0]!;
+    bot.maxHealth = 100;
+    bot.health = 100;
+    const state = createAbilityState('nitro', bot);
+
+    // A single hit crossing three 15%-of-100 thresholds at once (100 -> 55, three
+    // thresholds: 85, 70, 55) must fire three times, not once.
+    bot.health = 55;
+    m.world.tick = 1;
+    updateAbility(m, bot, state);
+
+    const fires = m.effects.filter((e) => e.kind === 'abilityFire');
+    expect(fires.length).toBe(3);
+  });
+
+  it('pushes nothing for a conditional ability (repair) that never crosses a trigger threshold', () => {
+    const m = matchWith(2, 192);
+    const bot = m.bots[0]!;
+    bot.maxHealth = 100;
+    bot.health = 100;
+    const state = createAbilityState('repair', bot);
+
+    m.world.tick = 1;
+    updateAbility(m, bot, state);
+
+    expect(m.effects.some((e) => e.kind === 'abilityFire')).toBe(false);
+  });
+});

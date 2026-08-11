@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_ARENA, PROVING_ARENA } from './arena';
+import { DEFAULT_ARENA, PROVING_ARENA, type ArenaConfig } from './arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, runMatch } from './match';
 import { assemble, type AssembledBot, type BotBuild } from '../parts/assemble';
 import { slotCountFor } from '../parts/tables';
+import type { Effect, EffectKind } from './effects';
 
 const config = { ...DEFAULT_MATCH, arena: DEFAULT_ARENA };
 
@@ -272,5 +273,189 @@ describe('createMatch: builds', () => {
     const r = runMatch({ ...config, seed: 13, botCount: 10, builds });
     expect(r.placements.length).toBe(10);
     expect(new Set(r.placements.map((p) => p.botId)).size).toBe(10);
+  });
+});
+
+// A bare arena with no hazards of any kind, so a lone survivor can produce no effect at
+// all — the control case for the "cleared at the start of a tick" tests below.
+const EMPTY_ARENA: ArenaConfig = {
+  cols: 8,
+  rows: 8,
+  tileSize: 60,
+  pits: [],
+  wallGaps: [],
+  surfaces: [],
+  zones: [],
+  emitters: [],
+  buttons: [],
+  trapdoors: [],
+};
+
+describe('effect bus', () => {
+  it('starts empty on a freshly created match', () => {
+    const m = createMatch({ ...config, seed: 1, botCount: 4 });
+    expect(m.effects).toEqual([]);
+  });
+
+  it('is cleared at the start of a tick, not accumulated across ticks', () => {
+    // Three bots, not two: eliminating one must leave two alive so the match keeps
+    // running — with only two bots, one elimination ends the match and `advanceMatch`
+    // becomes a permanent no-op (same as the existing "is a no-op once the match is
+    // over" test), which would make the second call below vacuously pass for the wrong
+    // reason.
+    const m = createMatch({ ...DEFAULT_MATCH, arena: EMPTY_ARENA, seed: 1, botCount: 3 });
+    const [victim, survivorA, survivorB] = m.bots as [
+      (typeof m.bots)[number],
+      (typeof m.bots)[number],
+      (typeof m.bots)[number],
+    ];
+    // Spread everyone far apart so nothing else fires this tick or the next.
+    survivorA.body.x = 50;
+    survivorA.body.y = 50;
+    survivorB.body.x = 50;
+    survivorB.body.y = 400;
+    victim.body.x = 400;
+    victim.body.y = 50;
+    victim.health = 0;
+
+    advanceMatch(m); // the tick the victim is eliminated
+    expect(m.done).toBe(false); // two of three still alive
+    expect(m.effects.some((e) => e.kind === 'elimination')).toBe(true);
+
+    advanceMatch(m); // a quiet tick: no hazards, two living bots kept apart
+    expect(m.effects).toEqual([]);
+  });
+
+  it('pushes exactly one elimination effect, positioned on the eliminated bot, when health reaches zero', () => {
+    const m = createMatch({ ...DEFAULT_MATCH, arena: EMPTY_ARENA, seed: 2, botCount: 2 });
+    const victim = m.bots[0]!;
+    victim.body.x = 100;
+    victim.body.y = 100;
+    victim.health = 0;
+
+    advanceMatch(m);
+
+    const kills = m.effects.filter((e) => e.kind === 'elimination');
+    expect(kills.length).toBe(1);
+    expect(kills[0]!.intensity).toBe(1);
+    expect(kills[0]!.botId).toBe(victim.body.id);
+    expect(kills[0]!.x).toBe(victim.body.x);
+    expect(kills[0]!.y).toBe(victim.body.y);
+  });
+
+  it('pushes an elimination effect for a fall, same as for a destroyed bot', () => {
+    const m = createMatch({ ...config, seed: 3, botCount: 4 });
+    const victim = m.bots[0]!;
+    const [col, row] = DEFAULT_ARENA.pits[0]!;
+    victim.body.x = col * DEFAULT_ARENA.tileSize + DEFAULT_ARENA.tileSize / 2;
+    victim.body.y = row * DEFAULT_ARENA.tileSize + DEFAULT_ARENA.tileSize / 2;
+
+    advanceMatch(m);
+
+    const kills = m.effects.filter((e) => e.kind === 'elimination' && e.botId === victim.body.id);
+    expect(kills.length).toBe(1);
+  });
+
+  it('keeps every effect kind\'s intensity within 0-1 across full matches, including hazard-heavy ones', () => {
+    for (let seed = 1; seed <= 3; seed++) {
+      const provingConfig = { ...DEFAULT_MATCH, arena: PROVING_ARENA };
+      const m = createMatch({ ...provingConfig, seed, botCount: 10, builds: makeVariedBuilds(10) });
+      while (!m.done) {
+        advanceMatch(m);
+        for (const e of m.effects) {
+          expect(e.intensity).toBeGreaterThanOrEqual(0);
+          expect(e.intensity).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  }, 60000);
+
+  it('produces the identical effect sequence for the same seed twice — full determinism, not just the count', () => {
+    const provingConfig = { ...DEFAULT_MATCH, arena: PROVING_ARENA };
+    const builds = makeVariedBuilds(10);
+
+    function collect(seed: number): Effect[] {
+      const m = createMatch({ ...provingConfig, seed, botCount: 10, builds });
+      const all: Effect[] = [];
+      while (!m.done) {
+        advanceMatch(m);
+        all.push(...m.effects);
+      }
+      return all;
+    }
+
+    const a = collect(4242);
+    const b = collect(4242);
+    expect(a).toEqual(b);
+    expect(a.length).toBeGreaterThan(0);
+  }, 30000);
+
+  it('produces a plausible mix over full matches: mostly weaponHit, some collision, eliminations matching the tally', () => {
+    const provingConfig = { ...DEFAULT_MATCH, arena: PROVING_ARENA };
+    const counts: Record<EffectKind, number> = {
+      weaponHit: 0,
+      hazardHit: 0,
+      collision: 0,
+      elimination: 0,
+      trapdoor: 0,
+      cannonFire: 0,
+      abilityFire: 0,
+    };
+    let totalEliminations = 0;
+
+    for (let seed = 1; seed <= 5; seed++) {
+      const m = createMatch({ ...provingConfig, seed, botCount: 10, builds: makeVariedBuilds(10) });
+      while (!m.done) {
+        advanceMatch(m);
+        for (const e of m.effects) counts[e.kind]++;
+      }
+      totalEliminations += m.eliminations.length;
+    }
+
+    expect(counts.weaponHit).toBeGreaterThan(0);
+    expect(counts.collision).toBeGreaterThan(0);
+    // weaponHit dominates the mix, as combat contact happens far more often than any
+    // single hazard or ability trigger.
+    expect(counts.weaponHit).toBeGreaterThan(counts.collision);
+    expect(counts.weaponHit).toBeGreaterThan(counts.hazardHit);
+    expect(counts.weaponHit).toBeGreaterThan(counts.abilityFire);
+    expect(counts.elimination).toBe(totalEliminations);
+  }, 60000);
+
+  it('pushes a collision effect for a hard bot-vs-bot impact, but not for a gentle one', () => {
+    const hard = createMatch({ ...DEFAULT_MATCH, arena: EMPTY_ARENA, seed: 5, botCount: 2 });
+    const [hardA, hardB] = hard.bots as [(typeof hard.bots)[number], (typeof hard.bots)[number]];
+    hardA.body.x = 300;
+    hardA.body.y = 300;
+    hardA.body.vx = 5;
+    hardA.body.vy = 0;
+    hardB.body.x = 330; // overlapping (30 apart, radii sum to 40)
+    hardB.body.y = 300;
+    hardB.body.vx = -5;
+    hardB.body.vy = 0;
+    advanceMatch(hard);
+    expect(hard.effects.some((e) => e.kind === 'collision')).toBe(true);
+
+    const gentle = createMatch({ ...DEFAULT_MATCH, arena: EMPTY_ARENA, seed: 6, botCount: 2 });
+    const [gentleA, gentleB] = gentle.bots as [(typeof gentle.bots)[number], (typeof gentle.bots)[number]];
+    gentleA.body.x = 300;
+    gentleA.body.y = 300;
+    gentleA.body.vx = 0.02;
+    gentleA.body.vy = 0;
+    gentleB.body.x = 330;
+    gentleB.body.y = 300;
+    gentleB.body.vx = -0.02;
+    gentleB.body.vy = 0;
+    advanceMatch(gentle);
+    expect(gentle.effects.some((e) => e.kind === 'collision')).toBe(false);
+  });
+
+  it('does not change the pinned event checksum — see src/sim/event/event.test.ts for the authoritative check', () => {
+    // A same-seed-twice sanity check local to this file, so a regression here is caught
+    // without needing to run the full event suite. The authoritative guard is the pinned
+    // '2bcb9b13' checksum in event.test.ts, which exercises the whole event pipeline.
+    const a = runMatch({ ...config, seed: 4242, botCount: 10 });
+    const b = runMatch({ ...config, seed: 4242, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
   });
 });

@@ -1,5 +1,6 @@
 import { isActive, type ActivationSpec, type Button } from './activation';
 import { TileState, setTileState, type TileGrid } from './tiles';
+import { pushEffect, type Effect } from './effects';
 
 /**
  * A patch of floor that opens and closes on cue, driven by the shared `ActivationSpec` /
@@ -39,12 +40,28 @@ export function updateTrapdoors(
   grid: TileGrid,
   tick: number,
   buttons: Map<string, Button>,
+  effects?: Effect[],
 ): void {
   for (const trapdoor of trapdoors) {
+    const wasOpen = trapdoor.open;
     trapdoor.open = isActive(trapdoor.activation, tick, buttons);
     const state = trapdoor.open ? TileState.Gone : TileState.Solid;
     for (const [col, row] of trapdoor.tiles) {
       setTileState(grid, row * grid.cols + col, state);
+    }
+
+    // trapdoor: 1.0 always, fired once on the rising edge (closed -> open), the same
+    // "fire on activation, not on every active tick" rule `fireEmitters` follows for
+    // cannons. Positioned at the centroid of the tiles it opens.
+    if (effects && trapdoor.open && !wasOpen) {
+      let sumX = 0;
+      let sumY = 0;
+      for (const [col, row] of trapdoor.tiles) {
+        sumX += col * grid.tileSize + grid.tileSize / 2;
+        sumY += row * grid.tileSize + grid.tileSize / 2;
+      }
+      const count = trapdoor.tiles.length;
+      pushEffect(effects, 'trapdoor', count > 0 ? sumX / count : 0, count > 0 ? sumY / count : 0, 1, null);
     }
   }
 }

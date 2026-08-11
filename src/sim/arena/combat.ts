@@ -1,5 +1,6 @@
 import { cosOf, sinOf } from '../trig';
 import { isStunned, type Bot } from './bot';
+import { pushEffect, weaponHitIntensity, type Effect } from './effects';
 
 /**
  * How squarely a bot is facing a point, from 0 to 1.
@@ -79,12 +80,17 @@ export function damageFrom(
  *
  * Callers invoke this once per direction, so a head-on collision hurts both bots and a
  * flank attack is one-sided. That asymmetry is what makes positioning matter.
+ *
+ * `effects` is optional so every existing direct call (this function is exercised
+ * directly in combat.test.ts, with no match in sight) keeps working unchanged. `match.ts`
+ * passes `match.effects` so a landed hit is on the bus.
  */
 export function resolveHit(
   attacker: Bot,
   target: Bot,
   impactSpeed: number,
   tick: number,
+  effects?: Effect[],
 ): number {
   if (!attacker.alive || !target.alive) return 0;
   // A stunned bot deals no damage on contact — it is EMPed, not driving the hit.
@@ -109,12 +115,25 @@ export function resolveHit(
   target.damageTaken += dealt;
   attacker.nextAttackTick = tick + attacker.attackCooldown;
 
+  // One weaponHit per landed blow, positioned on the bot that got hit — where the
+  // sparks belong. Intensity is normalised damage, not the raw number, so a consumer
+  // never needs to know the game's damage scale.
+  if (effects) {
+    pushEffect(effects, 'weaponHit', target.body.x, target.body.y, weaponHitIntensity(dealt), target.body.id);
+  }
+
   // Reflect. Spiked Composite is the only thing that changes the ATTACKER's maths.
   // Deliberately not counted in either bot's `damageDealt` — that stat is the event's
   // second tiebreaker and measures damage a bot went out and inflicted, not damage that
   // bounced off it. It DOES count toward the attacker's `damageTaken`, though: that
   // field tracks every point of health a bot actually lost, regardless of source, and a
   // reflected hit is real health lost by the attacker.
+  //
+  // Deliberately NOT its own effect. The weaponHit pushed above already marks this exact
+  // moment — attacker and target are in contact, right now, at this position — so a
+  // second effect would be two sparks for one clash. Reflect only changes whose health
+  // pays for it, not where or when the hit happened, and the effect bus answers "what hit
+  // what, where, and how hard", not "who ended up paying for it".
   if (target.damageReflect > 0) {
     const back = dealt * target.damageReflect;
     const reflected = back > attacker.health ? attacker.health : back;

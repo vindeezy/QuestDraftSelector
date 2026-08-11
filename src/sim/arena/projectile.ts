@@ -1,6 +1,7 @@
 import { cosOf, sinOf } from '../trig';
 import { isActive, type ActivationSpec, type Button } from './activation';
 import type { Bot } from './bot';
+import { pushEffect, hazardHitIntensity, type Effect } from './effects';
 
 export interface Projectile {
   x: number;
@@ -41,6 +42,7 @@ export function fireEmitters(
   tick: number,
   buttons: Map<string, Button>,
   out: Projectile[],
+  effects?: Effect[],
 ): Projectile[] {
   for (const emitter of emitters) {
     const active = isActive(emitter.activation, tick, buttons);
@@ -54,6 +56,9 @@ export function fireEmitters(
         radius: emitter.radius,
         alive: true,
       });
+      // cannonFire: 1.0 always. This marks the muzzle flash moment, not a hit -- there
+      // is no damage yet to normalise against, the shot has not travelled anywhere.
+      if (effects) pushEffect(effects, 'cannonFire', emitter.x, emitter.y, 1, null);
     }
     emitter.wasActive = active;
   }
@@ -100,6 +105,7 @@ export function stepProjectiles(
   bots: readonly Bot[],
   arenaWidth: number,
   arenaHeight: number,
+  effects?: Effect[],
 ): void {
   for (const shot of projectiles) {
     if (!shot.alive) continue;
@@ -135,6 +141,9 @@ export function stepProjectiles(
       hit.health -= dealt;
       if (hit.health < 0) hit.health = 0;
       hit.damageTaken += dealt;
+      if (effects) {
+        pushEffect(effects, 'hazardHit', hit.body.x, hit.body.y, hazardHitIntensity(dealt), hit.body.id);
+      }
       shot.alive = false;
       continue;
     }

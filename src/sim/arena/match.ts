@@ -19,6 +19,7 @@ import { updateTrapdoors } from './trapdoor';
 import { effectOf, surfaceAt } from './surface';
 import { applyZone } from './zone';
 import { fireEmitters, stepProjectiles, type Projectile } from './projectile';
+import { pushEffect, collisionIntensity, COLLISION_MIN_SPEED, type Effect } from './effects';
 
 export type EliminationCause = 'destroyed' | 'fell';
 
@@ -80,6 +81,14 @@ export interface Match {
   collapseOrder: number[];
   /** Shots in flight from emitters, live for the ticks between firing and impact. */
   projectiles: Projectile[];
+  /**
+   * Impact moments from this tick only — weapon hits, hazard contact, hard collisions,
+   * eliminations and so on — for the renderer and audio layer to react to. Cleared at
+   * the START of every `advanceMatch` call, so this always describes exactly one tick.
+   * Derived, never causal: nothing in `src/sim/` reads this to make a decision, and it is
+   * never part of the checksum. See `effects.ts` for the full contract.
+   */
+  effects: Effect[];
 }
 
 export interface DamageDealt {
@@ -266,6 +275,7 @@ export function createMatch(config: MatchConfig): Match {
     abilityStates,
     collapseOrder,
     projectiles: [],
+    effects: [],
   };
 }
 
@@ -286,6 +296,8 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
   bot.body.vx = 0;
   bot.body.vy = 0;
   match.eliminations.push({ botId: bot.body.id, cause, tick: match.world.tick, byId });
+  // elimination: 1.0 always -- there is no "how hard", a bot is either out or it isn't.
+  pushEffect(match.effects, 'elimination', bot.body.x, bot.body.y, 1, bot.body.id);
 
   if (byId !== null) {
     const killer = match.bots.find((other) => other.body.id === byId);
@@ -302,6 +314,10 @@ function eliminate(match: Match, bot: Bot, cause: EliminationCause, byId: string
 export function advanceMatch(match: Match): void {
   if (match.done) return;
 
+  // Cleared at the START of the tick, so `match.effects` always describes exactly the
+  // tick that just ran, never a mix of this tick and stale carryover from the last.
+  match.effects.length = 0;
+
   // Buttons update before the AI drives, so a plate armed this tick is already
   // dangerous this tick rather than one tick late.
   const tick = match.world.tick;
@@ -312,7 +328,7 @@ export function advanceMatch(match: Match): void {
   // owns on every call, so a trapdoor that wrongly tries to reopen ground the collapse
   // has already claimed gets overwritten back to `Gone` a few lines below, in the same
   // tick, before anything reads the grid. Swap this order and that stops being true.
-  updateTrapdoors(match.arena.trapdoors, match.arena.grid, tick, match.arena.buttons);
+  updateTrapdoors(match.arena.trapdoors, match.arena.grid, tick, match.arena.buttons, match.effects);
 
   updateCollapse(match);
 
@@ -334,12 +350,18 @@ export function advanceMatch(match: Match): void {
     bot.body.vy = bot.body.vy * effect.drag + effect.pushY;
 
     for (const zone of match.arena.zones) {
-      applyZone(zone, bot, tick, match.arena.buttons);
+      applyZone(zone, bot, tick, match.arena.buttons, match.effects);
     }
   }
 
-  fireEmitters(match.arena.emitters, tick, match.arena.buttons, match.projectiles);
-  stepProjectiles(match.projectiles, match.bots, match.arena.grid.width, match.arena.grid.height);
+  fireEmitters(match.arena.emitters, tick, match.arena.buttons, match.projectiles, match.effects);
+  stepProjectiles(
+    match.projectiles,
+    match.bots,
+    match.arena.grid.width,
+    match.arena.grid.height,
+    match.effects,
+  );
 
   // Sync each bot's effective speed cap onto its body before physics runs this tick,
   // so a launch from a hit earlier this tick (or a decaying one from a prior tick) is
@@ -365,12 +387,21 @@ export function advanceMatch(match: Match): void {
     b.lastContactTick = match.world.tick;
     b.lastContactId = a.body.id;
 
-    if (resolveHit(a, b, contact.speed, match.world.tick) > 0) {
+    // collision: every touching pair generates a contact every tick they overlap, most
+    // of which is two bots resting against each other -- not an impact. COLLISION_MIN_SPEED
+    // keeps only the ones that actually look/sound like a hit; see effects.ts for the
+    // real-match data behind that number. botId is null: this is about the pair, not
+    // either bot individually.
+    if (contact.speed >= COLLISION_MIN_SPEED) {
+      pushEffect(match.effects, 'collision', contact.x, contact.y, collisionIntensity(contact.speed), null);
+    }
+
+    if (resolveHit(a, b, contact.speed, match.world.tick, match.effects) > 0) {
       maybeDisengage(match, a);
       launch(b, b.body.x - a.body.x, b.body.y - a.body.y, a.weaponKnockback, match.world.tick);
       if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
     }
-    if (b.alive && resolveHit(b, a, contact.speed, match.world.tick) > 0) {
+    if (b.alive && resolveHit(b, a, contact.speed, match.world.tick, match.effects) > 0) {
       maybeDisengage(match, b);
       launch(a, a.body.x - b.body.x, a.body.y - b.body.y, b.weaponKnockback, match.world.tick);
       if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);

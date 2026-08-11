@@ -1,6 +1,7 @@
 import { cosOf, sinOf } from '../trig';
 import { isActive, type ActivationSpec, type Button } from './activation';
 import type { Bot } from './bot';
+import { pushEffect, hazardHitIntensity, type Effect } from './effects';
 
 export const ZoneShape = {
   /** Omnidirectional, like a spinning blade or a pressure plate. */
@@ -68,6 +69,7 @@ export function applyZone(
   bot: Bot,
   tick: number,
   buttons: Map<string, Button>,
+  effects?: Effect[],
 ): void {
   if (!bot.alive) return;
   if (!isActive(zone.activation, tick, buttons)) return;
@@ -83,6 +85,9 @@ export function applyZone(
     bot.health -= dealt;
     if (bot.health < 0) bot.health = 0;
     bot.damageTaken += dealt;
+    if (effects) {
+      pushEffect(effects, 'hazardHit', bot.body.x, bot.body.y, hazardHitIntensity(dealt), bot.body.id);
+    }
   }
 
   if (zone.knockback === 0) return;

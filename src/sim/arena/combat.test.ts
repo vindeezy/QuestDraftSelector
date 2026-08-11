@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createBot, DEFAULT_BOT, type BotStats } from './bot';
 import { arcAlignment, damageFrom, resolveHit, vulnerability } from './combat';
+import { weaponHitIntensity, type Effect } from './effects';
 
 const at = (x: number, y: number, heading: number) =>
   createBot({ id: `${x},${y}`, x, y, heading });
@@ -349,5 +350,92 @@ describe('damage reflection', () => {
     const target = atStats(40, 0, 0, { damageReflect: 0.35 });
     resolveHit(attacker, target, 4, 0);
     expect(target.contacts).toBe(0);
+  });
+});
+
+describe('resolveHit — effect bus', () => {
+  it('is unaffected when no effects array is passed — every existing call site above', () => {
+    // Not a new assertion so much as documentation: `effects` is optional, and every
+    // test above this describe block calls resolveHit with the original 4-argument
+    // signature. If that ever stopped compiling or behaving identically, this whole
+    // file would already be failing.
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    expect(() => resolveHit(attacker, target, 4, 0)).not.toThrow();
+  });
+
+  it('pushes exactly one weaponHit effect for a landed hit', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects.length).toBe(1);
+    expect(effects[0]!.kind).toBe('weaponHit');
+  });
+
+  it('positions the effect on the target, not the attacker', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects[0]!.x).toBe(target.body.x);
+    expect(effects[0]!.y).toBe(target.body.y);
+  });
+
+  it('attributes the effect to the target\'s botId', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects[0]!.botId).toBe(target.body.id);
+  });
+
+  it('reports intensity as the normalised damage dealt', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    const effects: Effect[] = [];
+    const dealt = resolveHit(attacker, target, 4, 0, effects);
+    expect(effects[0]!.intensity).toBeCloseTo(weaponHitIntensity(dealt), 8);
+  });
+
+  it('pushes nothing for a blocked hit (attacker facing away)', () => {
+    const attacker = at(0, 0, 2048);
+    const target = at(40, 0, 0);
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects.length).toBe(0);
+  });
+
+  it('pushes nothing when either bot is already eliminated', () => {
+    const attacker = at(0, 0, 0);
+    const target = at(40, 0, 0);
+    target.alive = false;
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects.length).toBe(0);
+  });
+
+  it('pushes exactly one weaponHit, not a second one for reflect', () => {
+    // Documented decision in combat.ts: reflect changes whose health pays for the hit,
+    // not where or when it happened, so it is not a second effect.
+    const attacker = at(0, 0, 0);
+    const target = atStats(40, 0, 0, { damageReflect: 0.35 });
+    const effects: Effect[] = [];
+    resolveHit(attacker, target, 4, 0, effects);
+    expect(effects.length).toBe(1);
+    expect(effects[0]!.kind).toBe('weaponHit');
+  });
+
+  it('keeps intensity within 0-1 across a wide range of impact speeds and weapons', () => {
+    for (let speed = 0; speed <= 20; speed += 0.5) {
+      const attacker = atStats(0, 0, 0, { weaponDamage: 2.6 });
+      const target = atStats(40, 0, 0, { rearVulnerability: 2.2, frontVulnerability: 0.4 });
+      const effects: Effect[] = [];
+      resolveHit(attacker, target, speed, 0, effects);
+      if (effects.length > 0) {
+        expect(effects[0]!.intensity).toBeGreaterThanOrEqual(0);
+        expect(effects[0]!.intensity).toBeLessThanOrEqual(1);
+      }
+    }
   });
 });

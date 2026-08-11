@@ -5,6 +5,7 @@ import { launch } from './launch';
 import { setSurface, Surface } from './surface';
 import { tileIndexAt } from './tiles';
 import type { Match } from './match';
+import { pushEffect } from './effects';
 
 /**
  * The ability framework.
@@ -174,6 +175,11 @@ function nearbyBots(match: Match, self: Bot, range: number): Bot[] {
 
 /** Fires one activation of a triggered ability. Called once per threshold crossed. */
 function fireTrigger(match: Match, bot: Bot, state: AbilityState, tick: number): void {
+  // abilityFire: 1.0 always, one per activation — same "fire on the trigger, not every
+  // tick it's live" shape as `cannonFire`. Pushed once here rather than in every branch
+  // below, so a ninth ability added later cannot forget to wire it.
+  pushEffect(match.effects, 'abilityFire', bot.body.x, bot.body.y, 1, bot.body.id);
+
   switch (state.name) {
     case 'emp':
       for (const other of nearbyBots(match, bot, EMP_RANGE)) {

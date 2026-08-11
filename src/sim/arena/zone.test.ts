@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createBot } from './bot';
 import { always, cycle } from './activation';
 import { ZoneShape, createZone, zoneHits, applyZone } from './zone';
+import { hazardHitIntensity, type Effect } from './effects';
 
 const bot = (x: number, y: number) => createBot({ id: 'b', x, y, heading: 0 });
 const noButtons = new Map();
@@ -133,5 +134,63 @@ describe('applyZone', () => {
     const b = bot(110, 100);
     applyZone(z, b, 0, noButtons);
     expect(b.damageTaken).toBe(b.maxHealth);
+  });
+});
+
+describe('applyZone — effect bus', () => {
+  it('pushes exactly one hazardHit effect when it damages a bot', () => {
+    const b = bot(110, 100);
+    const effects: Effect[] = [];
+    applyZone(circle(0.5), b, 0, noButtons, effects);
+    expect(effects.length).toBe(1);
+    expect(effects[0]!.kind).toBe('hazardHit');
+  });
+
+  it('positions the effect on the bot and attributes it to that bot', () => {
+    const b = bot(110, 100);
+    const effects: Effect[] = [];
+    applyZone(circle(0.5), b, 0, noButtons, effects);
+    expect(effects[0]!.x).toBe(b.body.x);
+    expect(effects[0]!.y).toBe(b.body.y);
+    expect(effects[0]!.botId).toBe(b.body.id);
+  });
+
+  it('reports intensity as the normalised damage dealt', () => {
+    const b = bot(110, 100);
+    const effects: Effect[] = [];
+    applyZone(circle(0.5), b, 0, noButtons, effects);
+    expect(effects[0]!.intensity).toBeCloseTo(hazardHitIntensity(0.5), 8);
+  });
+
+  it('pushes nothing for a zero-damage, knockback-only zone (air blaster)', () => {
+    const blaster = circle(0, 2.5);
+    const b = bot(120, 100);
+    const effects: Effect[] = [];
+    applyZone(blaster, b, 0, noButtons, effects);
+    expect(effects.length).toBe(0);
+  });
+
+  it('pushes nothing while the zone is off', () => {
+    const b = bot(150, 100);
+    const effects: Effect[] = [];
+    applyZone(cone(), b, 70, noButtons, effects); // off phase
+    expect(effects.length).toBe(0);
+  });
+
+  it('pushes nothing for an eliminated bot', () => {
+    const b = bot(110, 100);
+    b.alive = false;
+    const effects: Effect[] = [];
+    applyZone(circle(), b, 0, noButtons, effects);
+    expect(effects.length).toBe(0);
+  });
+
+  it('caps the reported intensity at 1 even when the nominal damage would exceed the reference', () => {
+    const z = circle(999);
+    const b = bot(110, 100);
+    const effects: Effect[] = [];
+    applyZone(z, b, 0, noButtons, effects);
+    expect(effects[0]!.intensity).toBeLessThanOrEqual(1);
+    expect(effects[0]!.intensity).toBeGreaterThanOrEqual(0);
   });
 });

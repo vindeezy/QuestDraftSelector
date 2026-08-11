@@ -7,6 +7,7 @@ import { DEFAULT_MATCH, createMatch, advanceMatch } from './match';
 import { PROVING_ARENA, type ArenaConfig } from './arena';
 import { COLLAPSE_END_TICK, COLLAPSE_START_TICK } from './collapse';
 import { Surface } from './surface';
+import type { Effect } from './effects';
 
 const bot = (x: number, y: number) => createBot({ id: 'b', x, y, heading: 0 });
 
@@ -155,6 +156,60 @@ describe('trapdoor vs. the collapse', () => {
     expect(COLLAPSE_START_TICK).toBeGreaterThan(0);
     advanceMatch(m);
     expect(m.arena.grid.tiles[2 * 5 + 2]).toBe(TileState.Solid);
+  });
+});
+
+describe('updateTrapdoors — effect bus', () => {
+  it('pushes exactly one trapdoor effect on the tick it opens (rising edge)', () => {
+    const grid = createTileGrid(5, 5, 60);
+    const button = createButton('plate', 100, 100, 30, 90, 0);
+    const buttons = new Map<string, Button>([[button.id, button]]);
+    const trapdoor = createTrapdoor('t1', [[2, 2]], triggered('plate'));
+
+    updateButtons(buttons, [], 0);
+    const closedEffects: Effect[] = [];
+    updateTrapdoors([trapdoor], grid, 0, buttons, closedEffects);
+    expect(closedEffects.length).toBe(0);
+
+    updateButtons(buttons, [bot(105, 100)], 1);
+    const openEffects: Effect[] = [];
+    updateTrapdoors([trapdoor], grid, 1, buttons, openEffects);
+    expect(openEffects.length).toBe(1);
+    expect(openEffects[0]!.kind).toBe('trapdoor');
+    expect(openEffects[0]!.intensity).toBe(1);
+    expect(openEffects[0]!.botId).toBeNull();
+  });
+
+  it('does not push again on a tick it merely stays open', () => {
+    const grid = createTileGrid(5, 5, 60);
+    const button = createButton('plate', 100, 100, 30, 90, 90);
+    const buttons = new Map<string, Button>([[button.id, button]]);
+    const trapdoor = createTrapdoor('t1', [[2, 2]], triggered('plate'));
+
+    updateButtons(buttons, [bot(105, 100)], 0);
+    updateTrapdoors([trapdoor], grid, 0, buttons, []);
+
+    updateButtons(buttons, [bot(900, 900)], 1);
+    const effects: Effect[] = [];
+    updateTrapdoors([trapdoor], grid, 1, buttons, effects); // still armed, still open
+    expect(trapdoor.open).toBe(true);
+    expect(effects.length).toBe(0);
+  });
+
+  it('positions the effect at the centroid of the tiles it opens', () => {
+    const grid = createTileGrid(5, 5, 60);
+    const button = createButton('plate', 100, 100, 30, 90, 0);
+    const buttons = new Map<string, Button>([[button.id, button]]);
+    const trapdoor = createTrapdoor('t1', [[1, 1], [2, 1], [1, 2], [2, 2]], triggered('plate'));
+
+    updateButtons(buttons, [bot(105, 100)], 0);
+    const effects: Effect[] = [];
+    updateTrapdoors([trapdoor], grid, 0, buttons, effects);
+
+    // Tile centres: (1,1)->(90,90), (2,1)->(150,90), (1,2)->(90,150), (2,2)->(150,150).
+    // Centroid: (120, 120).
+    expect(effects[0]!.x).toBeCloseTo(120, 8);
+    expect(effects[0]!.y).toBeCloseTo(120, 8);
   });
 });
 
