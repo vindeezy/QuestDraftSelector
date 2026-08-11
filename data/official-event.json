@@ -5,56 +5,56 @@
   "masterSeed": 2058548378,
   "members": [
     {
-      "id": "m1",
-      "name": "Member 1",
-      "colour": "#e6194b"
+      "id": "paden",
+      "name": "Paden Simmons",
+      "colour": "#2E6FF2"
     },
     {
-      "id": "m2",
-      "name": "Member 2",
-      "colour": "#3cb44b"
+      "id": "tommy",
+      "name": "Tommy McCormick",
+      "colour": "#1C1F26"
     },
     {
-      "id": "m3",
-      "name": "Member 3",
-      "colour": "#ffe119"
+      "id": "colby",
+      "name": "Colby Thompson",
+      "colour": "#E03131"
     },
     {
-      "id": "m4",
-      "name": "Member 4",
-      "colour": "#4363d8"
+      "id": "pat",
+      "name": "Pat Driscoll",
+      "colour": "#2FB344"
     },
     {
-      "id": "m5",
-      "name": "Member 5",
-      "colour": "#f58231"
+      "id": "spencer",
+      "name": "Spencer Lalk",
+      "colour": "#FF7A18"
     },
     {
-      "id": "m6",
-      "name": "Member 6",
-      "colour": "#911eb4"
+      "id": "rob",
+      "name": "Rob Arena",
+      "colour": "#D9A520"
     },
     {
-      "id": "m7",
-      "name": "Member 7",
-      "colour": "#46f0f0"
+      "id": "erik",
+      "name": "Erik Gundersen",
+      "colour": "#FF3FA4"
     },
     {
-      "id": "m8",
-      "name": "Member 8",
-      "colour": "#f032e6"
+      "id": "nickc",
+      "name": "Nick Cinotti",
+      "colour": "#FFE81F"
     },
     {
-      "id": "m9",
-      "name": "Member 9",
-      "colour": "#bcf60c"
+      "id": "vin",
+      "name": "Vin Cinotti",
+      "colour": "#FFFFFF"
     },
     {
-      "id": "m10",
-      "name": "Member 10",
-      "colour": "#fabebe"
+      "id": "nickl",
+      "name": "Nick Lenker",
+      "colour": "#9FB0C0"
     }
   ],
-  "checksum": "13675a2f",
-  "recordedAt": "2026-08-05T19:23:33.992Z"
+  "checksum": "c36834b2",
+  "recordedAt": "2026-08-11T23:46:03.255Z"
 }

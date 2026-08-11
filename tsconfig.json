@@ -9,7 +9,8 @@
     "noUnusedLocals": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["vitest/globals"]
+    "resolveJsonModule": true,
+    "types": ["vitest/globals", "vite/client"]
   },
-  "include": ["src", "tools", "tests", "*.config.ts"]
+  "include": ["src", "tools", "tests", "*.config.ts", "data"]
 }
