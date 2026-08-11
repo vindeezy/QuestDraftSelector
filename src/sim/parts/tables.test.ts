@@ -39,6 +39,33 @@ describe('partsFor', () => {
     }
   });
 
+  // Player-facing copy, shown when a league member sees their bot for the first time.
+  // 120 characters is the chosen sane maximum: comfortably over the longest blurb actually
+  // written (105) with room to breathe, while still forcing one or two short sentences.
+  const MAX_BLURB_LENGTH = 120;
+
+  it('gives every part a non-empty blurb', () => {
+    for (const category of CATEGORIES) {
+      for (const part of partsFor(category)) {
+        expect(typeof part.blurb).toBe('string');
+        expect(part.blurb.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it(`keeps every blurb at or under ${MAX_BLURB_LENGTH} characters`, () => {
+    for (const category of CATEGORIES) {
+      for (const part of partsFor(category)) {
+        expect(part.blurb.length).toBeLessThanOrEqual(MAX_BLURB_LENGTH);
+      }
+    }
+  });
+
+  it('has no duplicate blurbs across all six categories', () => {
+    const blurbs = CATEGORIES.flatMap((category) => partsFor(category).map((part) => part.blurb));
+    expect(new Set(blurbs).size).toBe(blurbs.length);
+  });
+
   it('tags every part with the category it came from', () => {
     for (const category of CATEGORIES) {
       for (const part of partsFor(category)) {

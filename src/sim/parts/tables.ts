@@ -34,6 +34,12 @@ export interface Part {
   id: string;
   label: string;
   category: CategoryName;
+  /**
+   * Player-facing description, shown alongside the label when a league member sees their
+   * bot for the first time. One or two sentences, under ~120 characters, naming the trade
+   * the part makes rather than restating the stats already on screen.
+   */
+  blurb: string;
   /** Absolute stat overrides. Applied first, in `assemble()`. */
   set?: Partial<BotStats>;
   /** Additive modifiers. Applied after every `set`. */
@@ -70,6 +76,7 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-wedge',
     label: 'Wedge',
     category: 'chassis',
+    blurb: "Nearly untouchable head-on. Turn your back and you're paper.",
     set: { frontVulnerability: 0.4, sideVulnerability: 1.4, rearVulnerability: 2.2 },
     add: { maxHealth: -10 },
   },
@@ -77,6 +84,7 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-diamond',
     label: 'Diamond',
     category: 'chassis',
+    blurb: "Strong facing forward or backward. Turn side-on and it's the softest spot in the game.",
     set: { frontVulnerability: 0.75, sideVulnerability: 1.7, rearVulnerability: 1.0 },
     add: { turnRate: 8 },
   },
@@ -84,12 +92,14 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-square',
     label: 'Square',
     category: 'chassis',
+    blurb: 'No bonus, no penalty — the plain shape every other chassis gets measured against.',
     set: { frontVulnerability: 0.75, sideVulnerability: 1.2, rearVulnerability: 1.7 },
   },
   {
     id: 'chassis-circle',
     label: 'Circle',
     category: 'chassis',
+    blurb: 'The only chassis with no weak side, and the easiest one to send flying when hit.',
     // Restitution 0.55 against a 0.3 baseline. A circle has no flat face to absorb an
     // impact, so it is thrown much further by every hit, saw and air blaster. That plus
     // the low mass is the price of uniform armour: averaged across all angles a circle
@@ -106,6 +116,7 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-box',
     label: 'Box',
     category: 'chassis',
+    blurb: 'The most health and the most mass of any chassis — heavy enough that turning costs you.',
     set: { frontVulnerability: 0.7, sideVulnerability: 1.25, rearVulnerability: 1.8 },
     // +15 -> +10 health. Box drafted at 4.12 against a fair 5.5, the best part in the game.
     // Its +20% mass is untouched — that is its real identity, and shoving is not what made
@@ -117,6 +128,7 @@ const CHASSIS: readonly Part[] = [
     id: 'chassis-tower',
     label: 'Tower',
     category: 'chassis',
+    blurb: "The smallest target on the floor and the fastest to turn — just don't expect it to take a hit.",
     set: { frontVulnerability: 0.7, sideVulnerability: 1.5, rearVulnerability: 1.9 },
     // -20 -> -6 health. Tower drafted at 7.02, the worst part in the game, because its
     // premise does not survive the arena it now fights in: "survives by not being hit"
@@ -159,6 +171,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-omni-wheels',
     label: 'Omni Wheels',
     category: 'drive',
+    blurb: "The tightest turn in the game — it just won't get you there fast.",
     // 4.2 -> 4.7. The worst part in the game at 3.7% in both arenas.
     set: { maxSpeed: 4.7, thrust: 0.3, grip: 0.55 },
     add: { turnRate: 25 },
@@ -167,6 +180,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-tank-tracks',
     label: 'Tank Tracks',
     category: 'drive',
+    blurb: 'The best grip and the quickest acceleration in the game — also the slowest top speed.',
     // 3.8 -> 4.6. Still the slowest, but 3.8 against Hover's 5.6 was not a trade, it was
     // a penalty: its 0.60 grip is the highest in the table and bought nothing.
     set: { maxSpeed: 4.6, thrust: 0.45, grip: 0.6 },
@@ -176,6 +190,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-4-wheels',
     label: '4 Wheels',
     category: 'drive',
+    blurb: 'No strengths, no weaknesses — the default every other drive gets judged against.',
     // 4.5 -> 4.9.
     set: { maxSpeed: 4.9, thrust: 0.35, grip: 0.25 },
     add: { turnRate: 0 },
@@ -184,6 +199,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-6-wheels',
     label: '6 Wheels',
     category: 'drive',
+    blurb: 'A touch more grip than 4 Wheels, a touch less speed to go with it.',
     // 4.3 -> 4.8.
     set: { maxSpeed: 4.8, thrust: 0.38, grip: 0.35 },
     add: { turnRate: -5 },
@@ -192,6 +208,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-2-wheels',
     label: '2 Wheels',
     category: 'drive',
+    blurb: 'One of the fastest drives here, riding on almost no grip at all.',
     // Unchanged. It sat closest to fair in both arenas at 11.6%.
     set: { maxSpeed: 5.2, thrust: 0.32, grip: 0.12 },
     add: { turnRate: 8 },
@@ -200,6 +217,7 @@ const DRIVE: readonly Part[] = [
     id: 'drive-hover',
     label: 'Hover',
     category: 'drive',
+    blurb: 'The fastest thing on the floor, and it never quite goes where you point it.',
     // 5.6 -> 5.5. Still the fastest thing on the board; it just no longer wins a quarter
     // of every match on that alone.
     set: { maxSpeed: 5.5, thrust: 0.28, grip: 0.04 },
@@ -213,36 +231,42 @@ const WEAPON: readonly Part[] = [
     id: 'weapon-vertical-spinner',
     label: 'Vertical Spinner',
     category: 'weapon',
+    blurb: "One of the narrowest windows in the game, but nothing launches them further when it lands.",
     set: { weaponArc: 250, weaponDamage: 2.2, attackCooldown: 50, weaponKnockback: 4.0 },
   },
   {
     id: 'weapon-hammer',
     label: 'Hammer',
     category: 'weapon',
+    blurb: 'Hits harder than anything else here, then makes you wait for the next swing.',
     set: { weaponArc: 205, weaponDamage: 2.6, attackCooldown: 75, weaponKnockback: 2.2 },
   },
   {
     id: 'weapon-saw-blade',
     label: 'Saw Blade',
     category: 'weapon',
+    blurb: "Nothing about it stands out, which is exactly why it's easy to land.",
     set: { weaponArc: 512, weaponDamage: 1.0, attackCooldown: 30, weaponKnockback: 0.5 },
   },
   {
     id: 'weapon-spinning-bar',
     label: 'Spinning Bar',
     category: 'weapon',
+    blurb: 'Wide enough to catch what Saw Blade misses, with real shove behind it.',
     set: { weaponArc: 694, weaponDamage: 1.15, attackCooldown: 34, weaponKnockback: 1.4 },
   },
   {
     id: 'weapon-ram-plate',
     label: 'Ram Plate',
     category: 'weapon',
+    blurb: "Barely hurts per hit, but it's almost always hitting and always pushing.",
     set: { weaponArc: 899, weaponDamage: 0.6, attackCooldown: 16, weaponKnockback: 2.0 },
   },
   {
     id: 'weapon-flamethrower',
     label: 'Flamethrower',
     category: 'weapon',
+    blurb: 'No knockback at all, which means they stay in the fire.',
     set: { weaponArc: 796, weaponDamage: 0.35, attackCooldown: 8, weaponKnockback: 0 },
   },
 ];
@@ -272,6 +296,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-depleted-uranium',
     label: 'Depleted Uranium',
     category: 'armour',
+    blurb: 'The toughest armour in the game, and the slowest to turn or get out of the way.',
     // 200 -> 155 -> 134 EHP across two rounds. Still the toughest, heaviest and slowest
     // thing on the board; it just no longer wins four times as often as the field. Its
     // real identity was always +55% mass, which is untouched.
@@ -283,6 +308,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-carbon-fibre',
     label: 'Carbon Fibre',
     category: 'armour',
+    blurb: 'Barely any protection at all, but nothing else turns or tops out faster wearing it.',
     // 72 -> 90 -> 98 EHP. At 72 it was unplayable (1.1%) and at 90 still near-dead (3.7%),
     // which matters more here than in a normal game: this picks a draft order, so a dead
     // slot on the Forge board tells a league member their result before the fighting
@@ -296,6 +322,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-alloy',
     label: 'Alloy',
     category: 'armour',
+    blurb: 'A modest step up in protection over the baseline, for a modest step up in weight.',
     // 121 -> 116 EHP, a nudge to keep it below Hardened Steel now the band is narrow.
     set: { armour: 1.12, damageReflect: 0 },
     add: { maxHealth: 4, maxSpeed: -0.1, turnRate: 0 },
@@ -305,6 +332,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-aluminium',
     label: 'Aluminium',
     category: 'armour',
+    blurb: 'No weight penalty, no speed penalty — just steady armour and a bit of extra grip.',
     // Aluminium was the worst part in the game at a 4.2% win rate and an average draft
     // position of 6.43 — below Carbon Fibre, which has LESS effective HP (98 vs 100). So
     // this was never a durability problem. It was the pure baseline: no mass, no speed, no
@@ -330,6 +358,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-titanium',
     label: 'Titanium',
     category: 'armour',
+    blurb: 'Less health than most, but lighter, faster, and every hit that lands stings less.',
     // 1.3/-20 -> 1.2/-8: 104 EHP up to 110. Barely moved on paper, but it was winning
     // 5.6% — below Aluminium's baseline despite costing more health for better armour.
     // The health penalty was doing more harm than the armour multiplier was undoing.
@@ -341,6 +370,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-hardened-steel',
     label: 'Hardened Steel',
     category: 'armour',
+    blurb: 'Second-toughest armour in the game, and the weight shows every time you turn.',
     // 155 -> 138 -> 124 EHP. Second-toughest, as designed, but the gap to the middle of
     // the table was never paid for by -0.35 speed.
     set: { armour: 1.2, damageReflect: 0 },
@@ -351,6 +381,7 @@ const ARMOUR: readonly Part[] = [
     id: 'armour-spiked-composite',
     label: 'Spiked Composite',
     category: 'armour',
+    blurb: 'Every hit they land gives them 35% of it straight back.',
     set: { armour: 1.1, damageReflect: 0.35 },
     add: { maxHealth: 0, maxSpeed: -0.15, turnRate: 0 },
     scale: { mass: 1.1 },
@@ -359,25 +390,109 @@ const ARMOUR: readonly Part[] = [
 
 // --- Category 5: Special Ability. Spec §8. --------------------------------------------
 const ABILITY: readonly Part[] = [
-  { id: 'ability-emp', label: 'EMP Pulse', category: 'ability', ability: 'emp' },
-  { id: 'ability-nitro', label: 'Nitro Boost', category: 'ability', ability: 'nitro' },
-  { id: 'ability-oil-slick', label: 'Oil Slick', category: 'ability', ability: 'oilSlick' },
-  { id: 'ability-shockwave', label: 'Shockwave', category: 'ability', ability: 'shockwave' },
-  { id: 'ability-repair', label: 'Repair System', category: 'ability', ability: 'repair' },
-  { id: 'ability-adrenaline', label: 'Adrenaline', category: 'ability', ability: 'adrenaline' },
-  { id: 'ability-smoke-screen', label: 'Smoke Screen', category: 'ability', ability: 'smokeScreen' },
+  {
+    id: 'ability-emp',
+    label: 'EMP Pulse',
+    category: 'ability',
+    blurb: "Freezes everyone nearby for two seconds when you take a beating — they can't even brace for the shove.",
+    ability: 'emp',
+  },
+  {
+    id: 'ability-nitro',
+    label: 'Nitro Boost',
+    category: 'ability',
+    blurb: 'Every real hit earns you a burst at almost double speed for a second and a half.',
+    ability: 'nitro',
+  },
+  {
+    id: 'ability-oil-slick',
+    label: 'Oil Slick',
+    category: 'ability',
+    blurb: "Leaves an ice patch behind you every time you're hurt — hope whoever's chasing enjoys it.",
+    ability: 'oilSlick',
+  },
+  {
+    id: 'ability-shockwave',
+    label: 'Shockwave',
+    category: 'ability',
+    blurb: 'No damage at all — just a hard shove in every direction, right when you need the room.',
+    ability: 'shockwave',
+  },
+  {
+    id: 'ability-repair',
+    label: 'Repair System',
+    category: 'ability',
+    blurb: "Heals you, but only once nobody's landed a hit for four seconds.",
+    ability: 'repair',
+  },
+  {
+    id: 'ability-adrenaline',
+    label: 'Adrenaline',
+    category: 'ability',
+    blurb: "Does nothing until you're almost dead, then hits harder and moves faster for as long as you're desperate.",
+    ability: 'adrenaline',
+  },
+  {
+    id: 'ability-smoke-screen',
+    label: 'Smoke Screen',
+    category: 'ability',
+    blurb: 'Take a real hit and vanish from every targeting system on the floor for two seconds.',
+    ability: 'smokeScreen',
+  },
 ];
 
 // --- Category 6: Driver Personality. Spec §9. Already-built personalities, in the same -
 // --- order as `PERSONALITY_NAMES`. ----------------------------------------------------
 const PERSONALITY: readonly Part[] = [
-  { id: 'personality-aggressive', label: 'Aggressive', category: 'personality', personality: 'aggressive' },
-  { id: 'personality-defensive', label: 'Defensive', category: 'personality', personality: 'defensive' },
-  { id: 'personality-hit-and-run', label: 'Hit-and-Run', category: 'personality', personality: 'hitAndRun' },
-  { id: 'personality-third-party', label: 'Third Party Predator', category: 'personality', personality: 'thirdParty' },
-  { id: 'personality-chaos', label: 'Agent of Chaos', category: 'personality', personality: 'chaos' },
-  { id: 'personality-showman', label: 'Showman', category: 'personality', personality: 'showman' },
-  { id: 'personality-instigator', label: 'Instigator', category: 'personality', personality: 'instigator' },
+  {
+    id: 'personality-aggressive',
+    label: 'Aggressive',
+    category: 'personality',
+    blurb: "Attacks whoever's closest and almost never breaks off — there's no plan B.",
+    personality: 'aggressive',
+  },
+  {
+    id: 'personality-defensive',
+    label: 'Defensive',
+    category: 'personality',
+    blurb: "Picks off whoever's already hurt, and knows exactly when to back away.",
+    personality: 'defensive',
+  },
+  {
+    id: 'personality-hit-and-run',
+    label: 'Hit-and-Run',
+    category: 'personality',
+    blurb: 'Hits hard, breaks off, and comes right back to do it again.',
+    personality: 'hitAndRun',
+  },
+  {
+    id: 'personality-third-party',
+    label: 'Third Party Predator',
+    category: 'personality',
+    blurb: 'Ignores clean fights and waits for two other bots to wear each other down first.',
+    personality: 'thirdParty',
+  },
+  {
+    id: 'personality-chaos',
+    label: 'Agent of Chaos',
+    category: 'personality',
+    blurb: 'No fixed style at all — it rewrites its own instincts mid-fight.',
+    personality: 'chaos',
+  },
+  {
+    id: 'personality-showman',
+    label: 'Showman',
+    category: 'personality',
+    blurb: 'Goes straight for the leader and takes the biggest risks on the floor.',
+    personality: 'showman',
+  },
+  {
+    id: 'personality-instigator',
+    label: 'Instigator',
+    category: 'personality',
+    blurb: 'Shoves everyone toward each other and the hazards, then bails before it becomes a fight.',
+    personality: 'instigator',
+  },
 ];
 
 const TABLE: Record<CategoryName, readonly Part[]> = {
