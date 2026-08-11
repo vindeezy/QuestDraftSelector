@@ -1,7 +1,7 @@
 # The Website — Design Spec
 
 **Date:** 2026-08-11
-**Status:** Awaiting review (revision 3)
+**Status:** Approved
 **Parent specs:** `2026-08-03-quest-draft-selector-design.md`, `2026-08-05-bot-categories-design.md`
 **Deadline:** end of August 2026
 
@@ -69,15 +69,24 @@ together decide the draft order. The honest one-liner is **"survive to score, fi
 more"** — at 3 points a kill, kills sharpen a placement but rarely overturn it, and the copy
 should not oversell them.
 
-One more thing belongs here, and it is the frame for everything that follows: **this already
-happened.** Nobody is playing, nothing is being decided live, and no outcome can be
-influenced. That is a more interesting promise than pretending otherwise — it makes the whole
-event a reveal rather than a match.
+**Do not tell the viewer the event is pre-recorded.** It is, and the architecture depends on
+it, but saying so drains the wonder. The site should feel live. That is a copy decision, not
+an engineering one — the mechanics in §3 and §4 are unchanged, they simply are not announced.
 
-**Show, don't tell.** The renderer already exists, so this page can *demonstrate* instead of
-describing: a short looping ball drop beside the Forge explanation, a miniature live arena
-beside the battles one. Far better than paragraphs, and nearly free given the machinery is
-built.
+### Words and pictures, side by side
+
+Each of the three gets **both** a short written description **and** a live visual beside it.
+Neither alone does the job: the visuals make it exciting, the words make it understood, and a
+viewer who grasps the scoring before battle 1 gets far more out of every scoreboard that
+follows.
+
+| Section | Words | Picture |
+|---|---|---|
+| The Forge | What the boards are, that the ball decides, that nobody picks | A short looping ball drop |
+| The battles | Three arenas, each punishing something different, last bot standing | A miniature live arena |
+| The scoring | Placement points, kill points, three battles totalled | The points table, plainly laid out |
+
+The renderer already exists, so the two live panels are nearly free.
 
 **Any demo loop must use a seed that is not the official one.** Rendering the real Forge or a
 real battle here would spoil the event on its own orientation screen. The demo seed is a fixed
