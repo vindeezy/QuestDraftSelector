@@ -401,6 +401,156 @@ export const GAUNTLET_ARENA: ArenaConfig = {
   ],
 };
 
+/**
+ * The 20 tar tiles for CROSSFIRE_ARENA: the four tar corners, one tile in from each
+ * corner along the top/bottom rows, plus the mid-height runs against the left and right
+ * walls. Generated from four small coordinate lists rather than 20 literal triples, so
+ * the (deliberate) asymmetry between the row set and the column set stays visible in the
+ * source instead of being hidden inside a single uniform loop.
+ */
+function crossfireTarTiles(): Array<readonly [number, number, SurfaceValue]> {
+  const tiles: Array<readonly [number, number, SurfaceValue]> = [];
+  // Row 1 and row 10: six tar tiles apiece, including the four trapdoor tiles.
+  for (const col of [1, 3, 5, 10, 12, 14]) {
+    tiles.push([col, 1, Surface.Tar]);
+    tiles.push([col, 10, Surface.Tar]);
+  }
+  // Col 0 and col 15: the four rows flanking the middle of the arena.
+  for (const row of [4, 5, 6, 7]) {
+    tiles.push([0, row, Surface.Tar]);
+    tiles.push([15, row, Surface.Tar]);
+  }
+  return tiles;
+}
+
+/**
+ * The 28 ice tiles for CROSSFIRE_ARENA: cols 1-2 and cols 13-14, rows 2-9 -- 32 tiles by
+ * that rule alone -- with the four saw tiles ([1,4], [1,7], [14,4], [14,7]) explicitly
+ * excluded so they stay normal floor. The exclusion is a live check inside the loop, not
+ * a trimmed row range, so it stays visible rather than folded away as an implementation
+ * detail.
+ */
+function crossfireIceTiles(): Array<readonly [number, number, SurfaceValue]> {
+  const tiles: Array<readonly [number, number, SurfaceValue]> = [];
+  for (const col of [1, 2, 13, 14]) {
+    for (let row = 2; row <= 9; row++) {
+      const isSawTile = (col === 1 || col === 14) && (row === 4 || row === 7);
+      if (isSawTile) continue;
+      tiles.push([col, row, Surface.Ice]);
+    }
+  }
+  return tiles;
+}
+
+/**
+ * Arena 3 (event slot 3): The Crossfire.
+ *
+ * Measurement across the first two arenas found speed acting as a DEFENSIVE stat: a fast
+ * bot can break contact before a hit lands on its rear, where chassis vulnerability runs
+ * 1.7-2.2, so the Hover drive keeps winning regardless of what GRINDER_ARENA and
+ * GAUNTLET_ARENA otherwise punish. This arena is the direct counter to that. Every
+ * hazard here sits on the perimeter -- the four trapdoors, four saw zones, sixteen flame
+ * jets and four cannons are all wall- or corner-mounted -- and every trigger sits in the
+ * middle, on the 28-button circuit that rings the fighting area one tile in from the
+ * centre. Fleeing to open ground does not put a bot somewhere safe; it puts the whole
+ * perimeter one press away from being lethal, aimed at whoever is standing out there. The
+ * bots left brawling in the middle are the ones pressing the buttons -- involuntarily,
+ * just by being there -- so the safest place to stand is also the one most likely to
+ * trigger something. Running is what gets punished; nobody can simply out-drive it.
+ *
+ * The 28 buttons are wired one-to-one to the 28 hazards (button N always drives hazard N)
+ * and form a clockwise circuit around the centre: b1-b8 across row 4, b9-b12 down column
+ * L, b13-b20 back along row 9, b21-b24 up column E, and b25-b28 on the dead-centre 2x2.
+ * That ordering is deliberate -- it is what makes "brawling in the centre" and "pressing
+ * buttons" the same behaviour, rather than something a bot has to detour for.
+ *
+ * No static pits and no wall gaps: the four trapdoors are the only way to fall, in
+ * keeping with the project owner's direction starting at PROVING_ARENA.
+ */
+export const CROSSFIRE_ARENA: ArenaConfig = {
+  cols: 16,
+  rows: 12,
+  tileSize: 60,
+  pits: [],
+  wallGaps: [],
+  surfaces: [...crossfireTarTiles(), ...crossfireIceTiles()],
+  zones: [
+    // --- Saws: the four tar corners' opposite numbers, on the ice flanks. -------------
+    { ...hazardPreset('saw').zone!, id: 'saw-10', x: 90, y: 450, heading: 0, activation: triggered('b10') },
+    { ...hazardPreset('saw').zone!, id: 'saw-11', x: 90, y: 270, heading: 0, activation: triggered('b11') },
+    { ...hazardPreset('saw').zone!, id: 'saw-22', x: 870, y: 270, heading: 0, activation: triggered('b22') },
+    { ...hazardPreset('saw').zone!, id: 'saw-23', x: 870, y: 450, heading: 0, activation: triggered('b23') },
+
+    // --- Flame jets: 16 wall-mounted, pointing inward. --------------------------------
+    // Top wall, y = 0, pointing down (+y).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-14', x: 150, y: 0, heading: 1024, activation: triggered('b14') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-15', x: 270, y: 0, heading: 1024, activation: triggered('b15') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-16', x: 390, y: 0, heading: 1024, activation: triggered('b16') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-17', x: 570, y: 0, heading: 1024, activation: triggered('b17') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-18', x: 690, y: 0, heading: 1024, activation: triggered('b18') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-19', x: 810, y: 0, heading: 1024, activation: triggered('b19') },
+    // Bottom wall, y = 720, pointing up (-y).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-7', x: 150, y: 720, heading: 3072, activation: triggered('b7') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-6', x: 270, y: 720, heading: 3072, activation: triggered('b6') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-5', x: 390, y: 720, heading: 3072, activation: triggered('b5') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-4', x: 570, y: 720, heading: 3072, activation: triggered('b4') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-3', x: 690, y: 720, heading: 3072, activation: triggered('b3') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-2', x: 810, y: 720, heading: 3072, activation: triggered('b2') },
+    // Left wall, x = 0, pointing right (+x).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-12', x: 0, y: 150, heading: 0, activation: triggered('b12') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-9', x: 0, y: 570, heading: 0, activation: triggered('b9') },
+    // Right wall, x = 960, pointing left (-x).
+    { ...hazardPreset('flameJet').zone!, id: 'flame-21', x: 960, y: 150, heading: 2048, activation: triggered('b21') },
+    { ...hazardPreset('flameJet').zone!, id: 'flame-24', x: 960, y: 570, heading: 2048, activation: triggered('b24') },
+  ],
+  // Four cannons sweeping the perimeter clockwise: top L->R, right edge down, bottom
+  // R->L, left edge up. See the class comment for how that pairs with the button circuit.
+  emitters: [
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-28', x: 0, y: 30, heading: 0, activation: triggered('b28') }),
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-27', x: 930, y: 0, heading: 1024, activation: triggered('b27') }),
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-25', x: 960, y: 690, heading: 2048, activation: triggered('b25') }),
+    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'cannon-26', x: 30, y: 720, heading: 3072, activation: triggered('b26') }),
+  ],
+  // The 28-button circuit. See the class comment for the clockwise ordering.
+  buttons: [
+    createButton('b1', 270, 210, 30, 150, 240),
+    createButton('b2', 330, 210, 30, 90, 150),
+    createButton('b3', 390, 210, 30, 90, 150),
+    createButton('b4', 450, 210, 30, 90, 150),
+    createButton('b5', 510, 210, 30, 90, 150),
+    createButton('b6', 570, 210, 30, 90, 150),
+    createButton('b7', 630, 210, 30, 90, 150),
+    createButton('b8', 690, 210, 30, 150, 240),
+    createButton('b9', 690, 270, 30, 90, 150),
+    createButton('b10', 690, 330, 30, 90, 240),
+    createButton('b11', 690, 390, 30, 90, 240),
+    createButton('b12', 690, 450, 30, 90, 150),
+    createButton('b13', 690, 510, 30, 150, 240),
+    createButton('b14', 630, 510, 30, 90, 150),
+    createButton('b15', 570, 510, 30, 90, 150),
+    createButton('b16', 510, 510, 30, 90, 150),
+    createButton('b17', 450, 510, 30, 90, 150),
+    createButton('b18', 390, 510, 30, 90, 150),
+    createButton('b19', 330, 510, 30, 90, 150),
+    createButton('b20', 270, 510, 30, 150, 240),
+    createButton('b21', 270, 450, 30, 90, 150),
+    createButton('b22', 270, 390, 30, 90, 240),
+    createButton('b23', 270, 330, 30, 90, 240),
+    createButton('b24', 270, 270, 30, 90, 150),
+    createButton('b25', 450, 330, 30, 90, 150),
+    createButton('b26', 510, 330, 30, 90, 150),
+    createButton('b27', 450, 390, 30, 90, 150),
+    createButton('b28', 510, 390, 30, 90, 150),
+  ],
+  // Four trapdoors, one tile each, on the tar corners.
+  trapdoors: [
+    createTrapdoor('pit-1', [[14, 10]], triggered('b1')),
+    createTrapdoor('pit-8', [[1, 10]], triggered('b8')),
+    createTrapdoor('pit-13', [[1, 1]], triggered('b13')),
+    createTrapdoor('pit-20', [[14, 1]], triggered('b20')),
+  ],
+};
+
 /** Builds the wall segments for one side, split around its gaps. */
 function buildSide(
   side: WallSide,

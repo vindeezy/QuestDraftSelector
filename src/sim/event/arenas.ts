@@ -1,7 +1,4 @@
-import { GRINDER_ARENA, GAUNTLET_ARENA, type ArenaConfig } from '../arena/arena';
-import { Surface } from '../arena/surface';
-import { hazardPreset } from '../arena/hazards';
-import { createEmitter } from '../arena/projectile';
+import { GRINDER_ARENA, GAUNTLET_ARENA, CROSSFIRE_ARENA, type ArenaConfig } from '../arena/arena';
 
 /**
  * Three layout variants of the same 16 x 12 arena, one per battle.
@@ -32,63 +29,11 @@ const GAUNTLET: ArenaConfig = GAUNTLET_ARENA;
 /**
  * Variant 3 — "The Crossfire."
  *
- * Firing lanes and a slippery middle, so bots slide through them rather than choosing to
- * cross. The two cannons fire along different rows (240 and 480) so their lanes do not
- * overlap into one corridor of death, and the two lasers cross those lanes perpendicular.
+ * Now `CROSSFIRE_ARENA`: every hazard on the perimeter, every trigger in the middle, so
+ * fleeing to open ground is what gets a bot killed rather than what keeps it alive. See
+ * the comment on `CROSSFIRE_ARENA` in `arena.ts` for the full rationale.
  */
-const CROSSFIRE: ArenaConfig = {
-  cols: 16,
-  rows: 12,
-  tileSize: 60,
-  pits: [
-    [3, 2],
-    [12, 9],
-  ],
-  wallGaps: [
-    { side: 'top', from: 3, to: 5 },
-    { side: 'bottom', from: 11, to: 13 },
-  ],
-  surfaces: [
-    // Slippery centre.
-    [6, 5, Surface.Ice],
-    [7, 5, Surface.Ice],
-    [8, 5, Surface.Ice],
-    [9, 5, Surface.Ice],
-    [6, 6, Surface.Ice],
-    [7, 6, Surface.Ice],
-    [8, 6, Surface.Ice],
-    [9, 6, Surface.Ice],
-    // Sticky at the ends, where the ice would otherwise fling a bot straight into a wall.
-    [2, 5, Surface.Tar],
-    [2, 6, Surface.Tar],
-    [13, 5, Surface.Tar],
-    [13, 6, Surface.Tar],
-  ],
-  zones: [
-    { ...hazardPreset('flameJet').zone!, id: 'c-flame-l', x: 0, y: 660, heading: 0 },
-    { ...hazardPreset('flameJet').zone!, id: 'c-flame-r', x: 960, y: 60, heading: 2048 },
-  ],
-  emitters: [
-    createEmitter({ ...hazardPreset('cannon').emitter!, id: 'c-cannon-w', x: 0, y: 240, heading: 0 }),
-    createEmitter({
-      ...hazardPreset('cannon').emitter!,
-      id: 'c-cannon-e',
-      x: 960,
-      y: 480,
-      heading: 2048,
-    }),
-    createEmitter({ ...hazardPreset('laser').emitter!, id: 'c-laser-n', x: 300, y: 0, heading: 1024 }),
-    createEmitter({
-      ...hazardPreset('laser').emitter!,
-      id: 'c-laser-s',
-      x: 660,
-      y: 720,
-      heading: 3072,
-    }),
-  ],
-  buttons: [],
-  trapdoors: [],
-};
+const CROSSFIRE: ArenaConfig = CROSSFIRE_ARENA;
 
 export const ARENA_VARIANTS: readonly ArenaConfig[] = [GRINDER, GAUNTLET, CROSSFIRE];
 

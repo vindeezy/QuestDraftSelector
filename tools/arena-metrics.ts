@@ -24,6 +24,12 @@
  *                                            stat, and Tank Tracks specifically, pay
  *                                            off. Same applicability and header
  *                                            guarantee as `--arena=proving`.
+ *   ... --arena=crossfire                   Run against `CROSSFIRE_ARENA` instead -- the
+ *                                            perimeter-hazard arena built to make speed,
+ *                                            currently a purely defensive stat, pay for
+ *                                            fleeing rather than only for surviving.
+ *                                            Same applicability and header guarantee as
+ *                                            `--arena=proving`.
  *
  * Numbers that matter, in this order:
  *
@@ -50,7 +56,7 @@
  *    straight off `Bot`/`MatchResult` counters that the simulation writes but never
  *    reads back — see `damageTaken` and `contacts` in `src/sim/arena/bot.ts`.
  */
-import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, GAUNTLET_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
+import { DEFAULT_ARENA, PROVING_ARENA, GRINDER_ARENA, GAUNTLET_ARENA, CROSSFIRE_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
 import type { Bot } from '../src/sim/arena/bot';
 import { ADRENALINE_THRESHOLD } from '../src/sim/arena/ability';
@@ -400,11 +406,11 @@ const runs = Number(positional[0] ?? 100);
 // are provably reading the same ones.
 const seedStart = Number(positional[1] ?? 1);
 
-// --arena=proving / --arena=grinder / --arena=gauntlet switch both the standard report
-// and --ability-ab to `PROVING_ARENA` / `GRINDER_ARENA` / `GAUNTLET_ARENA` respectively,
-// so arenas' numbers can be compared directly. Default is `DEFAULT_ARENA`. The arena
-// actually used is always printed in the report header -- a set of numbers whose arena
-// is ambiguous is worse than no numbers.
+// --arena=proving / --arena=grinder / --arena=gauntlet / --arena=crossfire switch both
+// the standard report and --ability-ab to `PROVING_ARENA` / `GRINDER_ARENA` /
+// `GAUNTLET_ARENA` / `CROSSFIRE_ARENA` respectively, so arenas' numbers can be compared
+// directly. Default is `DEFAULT_ARENA`. The arena actually used is always printed in the
+// report header -- a set of numbers whose arena is ambiguous is worse than no numbers.
 const arenaArg = args.find((a) => a.startsWith('--arena='));
 const arenaName = arenaArg ? arenaArg.slice('--arena='.length) : 'default';
 const arena =
@@ -414,7 +420,9 @@ const arena =
       ? GRINDER_ARENA
       : arenaName === 'gauntlet'
         ? GAUNTLET_ARENA
-        : DEFAULT_ARENA;
+        : arenaName === 'crossfire'
+          ? CROSSFIRE_ARENA
+          : DEFAULT_ARENA;
 const arenaLabel =
   arenaName === 'proving'
     ? 'proving (The Proving Ground)'
@@ -422,7 +430,9 @@ const arenaLabel =
       ? 'grinder (The Grinder)'
       : arenaName === 'gauntlet'
         ? 'gauntlet (The Gauntlet)'
-        : 'default (The Grinder)';
+        : arenaName === 'crossfire'
+          ? 'crossfire (The Crossfire)'
+          : 'default (The Grinder)';
 
 if (abilityAB) {
   runAbilityAB(runs, seedStart, arena, arenaLabel);
