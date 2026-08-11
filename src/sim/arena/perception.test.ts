@@ -1,7 +1,60 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_ARENA } from './arena';
-import { DEFAULT_MATCH, createMatch } from './match';
+import { DEFAULT_ARENA, GRINDER_ARENA, type ArenaConfig } from './arena';
+import { cycle } from './activation';
+import { createEmitter } from './projectile';
+import { DEFAULT_MATCH, createMatch, runMatch } from './match';
 import { ENGAGE_MEMORY, areEngaged, perceive } from './perception';
+
+/**
+ * A 960x720 arena (same dimensions as GRINDER_ARENA) with two cannons for the
+ * emitter-repulsion regression tests below:
+ *
+ * - 'cannon-top' sits at (0, 30), firing along +x -- identical placement to
+ *   GRINDER_ARENA's wall-hugging cannon, whose lane (y = -30 to 90, clipped by the top
+ *   wall at y = 0) is what trapped bots against the wall before the fix.
+ * - 'cannon-mid' sits at (0, 360), firing along +x through the vertical centre, far
+ *   enough from every wall that a bot on its centreline picks up zero hole-repulsion --
+ *   needed to test the emitter's own on/off contribution in isolation.
+ *
+ * Both use `cycle(200, 1)`, same as the 'cannon' preset, so tick 0 is active and every
+ * other tick (until the next multiple of 200) is inactive -- full control over "armed"
+ * without needing to simulate a button press.
+ */
+const LANE_ARENA: ArenaConfig = {
+  cols: 16,
+  rows: 12,
+  tileSize: 60,
+  pits: [],
+  wallGaps: [],
+  surfaces: [],
+  zones: [],
+  emitters: [
+    createEmitter({
+      id: 'cannon-top',
+      x: 0,
+      y: 30,
+      heading: 0,
+      speed: 14,
+      damage: 18,
+      radius: 6,
+      activation: cycle(200, 1),
+    }),
+    createEmitter({
+      id: 'cannon-mid',
+      x: 0,
+      y: 360,
+      heading: 0,
+      speed: 14,
+      damage: 18,
+      radius: 6,
+      activation: cycle(200, 1),
+    }),
+  ],
+  buttons: [],
+  trapdoors: [],
+};
+
+const laneMatch = () => createMatch({ ...DEFAULT_MATCH, arena: LANE_ARENA, seed: 1, botCount: 2 });
 
 const match = (botCount: number) =>
   createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed: 1, botCount });
@@ -220,5 +273,80 @@ describe('perceive', () => {
     self.body.y = 610;
     const view = perceive(m, self);
     expect(view.avoidY).toBeGreaterThan(10);
+  });
+});
+
+describe('emitterRepulsion threat gating and wall-safe escape direction', () => {
+  it('gives zero repulsion for a bot inside a lane whose emitter is inactive', () => {
+    // (300, 360) sits on cannon-mid's centreline, four tiles from every wall -- outside
+    // the hole scan's reach in every direction -- so a nonzero reading here can only be
+    // attributed to the lane itself.
+    const m = laneMatch();
+    m.world.tick = 5; // cycle(200, 1): active only at tick 0 (and 200, 400, ...)
+    const self = m.bots[0]!;
+    self.body.x = 300;
+    self.body.y = 360;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBe(0);
+    expect(view.avoidY).toBe(0);
+  });
+
+  it('pushes a bot out of the same lane once its emitter is active', () => {
+    const m = laneMatch();
+    m.world.tick = 0; // cycle(200, 1)'s one active tick
+    const self = m.bots[0]!;
+    self.body.x = 300;
+    self.body.y = 360;
+    const view = perceive(m, self);
+    expect(view.avoidY).not.toBe(0);
+  });
+
+  it('pushes a bot trapped against the top wall downward, into the arena, not into the wall', () => {
+    // Direct regression test for the wall-trap bug: cannon-top's lane runs from
+    // y = -30 to y = 90, clipped by the top wall at y = 0. A bot at (663, 21) is only
+    // 21 units from that wall and 9 units above the emitter's centreline (across = -9).
+    // The old code pushed further in whichever direction the bot already leaned --
+    // here, further up, into the wall. The fix must push it down (+y) instead, since
+    // that is the only direction that actually leaves the lane without leaving the
+    // arena.
+    const m = laneMatch();
+    m.world.tick = 0;
+    const self = m.bots[0]!;
+    self.body.x = 663;
+    self.body.y = 21;
+    const view = perceive(m, self);
+    expect(view.avoidY).toBeGreaterThan(0);
+  });
+
+  it('still pushes a bot on the interior side of the same lane further into the interior', () => {
+    // Same lane as the wall-trap case, opposite side: (663, 39) is across = +9, on the
+    // arena-interior side (away from the top wall). The fix must not invert this --
+    // it should still push further down/south, same direction as before the fix.
+    const m = laneMatch();
+    m.world.tick = 0;
+    const self = m.bots[0]!;
+    self.body.x = 663;
+    self.body.y = 39;
+    const view = perceive(m, self);
+    expect(view.avoidY).toBeGreaterThan(0);
+  });
+
+  it('gives a finite, deterministic push for a bot exactly on the lane centreline', () => {
+    const m = laneMatch();
+    m.world.tick = 0;
+    const self = m.bots[0]!;
+    self.body.x = 663;
+    self.body.y = 30; // across = 0 exactly: on cannon-top's own centreline
+    const view = perceive(m, self);
+    expect(Number.isFinite(view.avoidX)).toBe(true);
+    expect(Number.isFinite(view.avoidY)).toBe(true);
+    expect(view.avoidY).not.toBe(0);
+  });
+
+  it('produces the same checksum for the same seed, twice, on an arena with wall-hugging cannons', () => {
+    const a = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 496446, botCount: 10 });
+    const b = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 496446, botCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.placements).toEqual(b.placements);
   });
 });

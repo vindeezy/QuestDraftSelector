@@ -139,15 +139,41 @@ const LANE_HALF_WIDTH_TILES = 1;
  * sidestepping the lane -- never straight back along the axis the shot travels, which
  * would just line the bot up for a shot down a straight retreat instead of clearing it.
  *
- * Unlike zones, an emitter's lane is dangerous regardless of whether it happens to be
- * mid-cycle right now: the shot travels fast and arrives on its own schedule, so a bot
- * has no way to time a crossing safely and should treat the lane as always live.
+ * Two defects here were found from a replay on GRINDER_ARENA where two bots sat pinned
+ * against the top wall for 80+ seconds, inside cannon-top's lane, each eventually
+ * killed by the very cannon they were "avoiding":
+ *
+ * 1. Threat gating was missing entirely. Every emitter repelled unconditionally, so a
+ *    button-triggered cannon that's idle most of the match still projected a permanent
+ *    no-go lane -- wrong the same way `zoneRepulsion` would be wrong without its
+ *    `isActive` check, so this now has the same gate. Rule: an emitter is a threat when
+ *    `isActive` says it's armed (it can fire the moment a bot is in its lane, or -- for
+ *    a Triggered emitter -- already fired recently and the trigger may cycle again
+ *    before the latch drops), OR when a live projectile is currently sitting inside its
+ *    lane geometry even though the emitter itself has since gone inactive. That second
+ *    half matters because `fireEmitters` only fires on the rising edge: a Cycle emitter
+ *    can drop back to inactive long before a slow shot finishes crossing the arena (the
+ *    active window only has to be long enough to catch the edge, not the whole flight),
+ *    and a bot that stops avoiding the instant the window closes would wander back into
+ *    a shot still crossing the lane. The live-shot check is done by geometry, not an
+ *    emitter->projectile link (`Projectile` carries no such id) -- a shot occupying the
+ *    lane is a threat regardless of which emitter launched it.
+ *
+ * 2. Direction was blind to walls. It always pushed further in whichever direction the
+ *    bot already leaned, via `sign = across < 0 ? -1 : 1`, with no check that direction
+ *    led out of the lane rather than into a wall. Both of GRINDER_ARENA's cannons run
+ *    along the arena's outermost row, so their lanes hug a wall on one side; a bot
+ *    already on the wall side got pushed further into the wall, since the wall is
+ *    closer than the lane's far edge and the push never noticed. This now computes
+ *    where each of the lane's two edges actually is and only picks a direction whose
+ *    edge stays inside the arena.
  */
 function emitterRepulsion(match: Match, bot: Bot): { x: number; y: number } {
-  const size = match.arena.grid.tileSize;
+  const grid = match.arena.grid;
+  const size = grid.tileSize;
   const halfWidth = LANE_HALF_WIDTH_TILES * size;
   // Long enough to cover the whole arena along any heading.
-  const range = match.arena.grid.width + match.arena.grid.height;
+  const range = grid.width + grid.height;
 
   let x = 0;
   let y = 0;
@@ -168,12 +194,67 @@ function emitterRepulsion(match: Match, bot: Bot): { x: number; y: number } {
     const across = dx * nx + dy * ny;
     if (across > halfWidth || across < -halfWidth) continue;
 
+    const armed = isActive(emitter.activation, match.world.tick, match.arena.buttons);
+    let threat = armed;
+    if (!threat) {
+      for (const shot of match.projectiles) {
+        if (!shot.alive) continue;
+        const sdx = shot.x - emitter.x;
+        const sdy = shot.y - emitter.y;
+        const salong = sdx * ax + sdy * ay;
+        if (salong < 0 || salong > range) continue;
+        const sacross = sdx * nx + sdy * ny;
+        if (sacross > halfWidth || sacross < -halfWidth) continue;
+        threat = true;
+        break;
+      }
+    }
+    if (!threat) continue;
+
     const distSq = across * across;
     // Standing exactly on the centreline is the most dangerous spot of all, so it gets
-    // the strongest push rather than dividing by zero into nothing. Which side it picks
-    // is arbitrary but deterministic, same as the tie-break in `steerToward`.
+    // the strongest push rather than dividing by zero into nothing.
     const strength = distSq === 0 ? size * size : (size * size) / distSq;
-    const sign = across < 0 ? -1 : 1;
+
+    // Which side to push toward: whichever of the lane's two edges actually lands
+    // inside the arena. Continuing in the direction the bot already leans is the
+    // shorter route out (closing `halfWidth - |across|` rather than crossing the whole
+    // lane), so that stays the default when both edges are in bounds -- unchanged
+    // behaviour for every lane that isn't hugging a wall. When only one edge is in
+    // bounds, that edge is the only real way out regardless of which side is shorter.
+    // When neither is (a lane pinned into a corner of a very small arena), fall back to
+    // whichever edge overshoots the bounds by less, i.e. leaves more room.
+    const posEdgeX = bot.body.x + (halfWidth - across) * nx;
+    const posEdgeY = bot.body.y + (halfWidth - across) * ny;
+    const negEdgeX = bot.body.x + (-halfWidth - across) * nx;
+    const negEdgeY = bot.body.y + (-halfWidth - across) * ny;
+
+    const posValid =
+      posEdgeX >= 0 && posEdgeX < grid.width && posEdgeY >= 0 && posEdgeY < grid.height;
+    const negValid =
+      negEdgeX >= 0 && negEdgeX < grid.width && negEdgeY >= 0 && negEdgeY < grid.height;
+
+    let sign: number;
+    if (posValid && negValid) {
+      sign = across < 0 ? -1 : 1;
+    } else if (posValid) {
+      sign = 1;
+    } else if (negValid) {
+      sign = -1;
+    } else {
+      const posOver =
+        Math.max(0, -posEdgeX) +
+        Math.max(0, posEdgeX - grid.width) +
+        Math.max(0, -posEdgeY) +
+        Math.max(0, posEdgeY - grid.height);
+      const negOver =
+        Math.max(0, -negEdgeX) +
+        Math.max(0, negEdgeX - grid.width) +
+        Math.max(0, -negEdgeY) +
+        Math.max(0, negEdgeY - grid.height);
+      sign = posOver <= negOver ? 1 : -1;
+    }
+
     x += nx * sign * strength;
     y += ny * sign * strength;
   }
