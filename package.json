@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "distribution": "vite-node tools/distribution.ts",
     "arena": "vite-node tools/arena-metrics.ts",
+    "replay": "vite-node tools/replay.ts",
     "draft": "vite-node tools/draft-metrics.ts",
     "record": "vite-node tools/record-event.ts"
   },

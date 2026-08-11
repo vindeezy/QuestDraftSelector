@@ -66,6 +66,17 @@ export interface AiState {
   /** Where a relocating bot is heading. */
   relocateX: number;
   relocateY: number;
+  /**
+   * DIAGNOSTIC ONLY — added for `tools/replay.ts`, which has no other way to see what a
+   * single tick's action decision was (the winner of `chooseAction`'s scoring is normally
+   * a local variable, discarded the instant `driveWithAi` finishes steering). Written on
+   * every call to `chooseAction`, below, and never read by any decision logic in this
+   * file or anywhere else in `src/sim` — grep confirms the only reader is the replay
+   * tool. Because nothing reads it back into a decision, it cannot change which action
+   * gets chosen, which target gets picked, or any physics this tick produces, so it
+   * changes no behaviour and no match checksum.
+   */
+  lastAction: ActionName | null;
 }
 
 export function createAiState(personality: PersonalityName): AiState {
@@ -82,6 +93,7 @@ export function createAiState(personality: PersonalityName): AiState {
     anchorTick: 0,
     relocateX: 0,
     relocateY: 0,
+    lastAction: null,
   };
 }
 
@@ -220,7 +232,11 @@ export function chooseAction(
 ): ActionName {
   const tick = match.world.tick;
 
-  if (state.lockedAction !== null && tick < state.lockedUntil) return state.lockedAction;
+  if (state.lockedAction !== null && tick < state.lockedUntil) {
+    // See `AiState.lastAction`'s doc comment: diagnostic mirror only, never read back.
+    state.lastAction = state.lockedAction;
+    return state.lockedAction;
+  }
   state.lockedAction = null;
 
   const w = state.weights;
@@ -257,6 +273,8 @@ export function chooseAction(
   consider('retreat', w.retreat * hurt);
   consider('disengage', w.disengage * hurt * 0.4);
 
+  // See `AiState.lastAction`'s doc comment: diagnostic mirror only, never read back.
+  state.lastAction = best;
   return best;
 }
 
