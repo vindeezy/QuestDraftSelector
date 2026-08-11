@@ -65,11 +65,15 @@ const TABLE: Record<PersonalityName, Weights> = {
   },
   // Strike, break off, repeat. Damage followed by self-preservation.
   //
-  // `disengage` was 1.0 — nearly three times the next-highest personality — and that made
-  // this the strongest build in the game by a wide margin: a 26.4% win rate against a fair
-  // value of 10%, and an average draft position of 3.76 against a fair 5.5. Halved to 0.5,
-  // which leaves it still the most disengaging personality in the table (Defensive is next
-  // at 0.35) without being the only viable way to play.
+  // `disengage` was 1.0 — the highest in the table — and that made this the strongest build
+  // in the game by a wide margin: a 26.4% win rate against a fair value of 10%, and an
+  // average draft position of 3.76 against a fair 5.5. Halved to 0.5.
+  //
+  // That puts it BELOW instigator's 0.7, which is fine and deliberate: "rarely commits to a
+  // fight itself" is more disengagement than "strike, break off, repeat", and instigator
+  // measures weak (3.2%), so a high disengage weight was never what made this strong. The
+  // dangerous combination was breaking off WHILE hunting the wounded (`chaseWeakest` 0.8,
+  // `charge` 0.5), which instigator does not do.
   //
   // Worth recording why the obvious fixes did not work. Adding points for eliminations did
   // not dent this, because hit-and-run *kills* — it strikes and withdraws, so rewarding

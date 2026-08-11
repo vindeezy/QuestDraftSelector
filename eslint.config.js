@@ -9,7 +9,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'node_modules/**', 'docs/**'],
+    // `.claude/**` is locally installed tooling, not project source — vendoring the
+    // impeccable design skill put ~2300 lint errors of somebody else's Node scripts into
+    // every run, which makes "read the whole lint output" useless and would hide a real
+    // error in the noise.
+    ignores: ['dist/**', 'node_modules/**', 'docs/**', '.claude/**'],
   },
   {
     // The determinism contract. See docs/superpowers/specs — section 6.1.
