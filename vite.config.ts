@@ -9,7 +9,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts', 'tools/**/*.test.ts'],
     // Vitest defaults to 5 seconds, which suits unit tests. Many tests here run whole
     // simulations — twenty full battles is tens of thousands of physics ticks — and are
     // legitimately slower than that. Worse, how much slower depends on the machine: the
