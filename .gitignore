@@ -27,3 +27,10 @@ desktop.ini
 # these are autosave/backup artifacts only
 *.blend1
 *.blend2
+
+# Installed tooling under .claude/ — not project source.
+# `.claude/launch.json` IS committed (the dev-server config); these are a local
+# install of the `impeccable` design skill and are 3.4MB of vendored files.
+.claude/skills/
+.claude/agents/
+.claude/settings.local.json
