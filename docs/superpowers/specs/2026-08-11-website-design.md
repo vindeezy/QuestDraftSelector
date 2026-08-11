@@ -1,7 +1,7 @@
 # The Website — Design Spec
 
 **Date:** 2026-08-11
-**Status:** Awaiting review
+**Status:** Awaiting review (revision 2)
 **Parent specs:** `2026-08-03-quest-draft-selector-design.md`, `2026-08-05-bot-categories-design.md`
 **Deadline:** end of August 2026
 
@@ -29,14 +29,14 @@ the one-minute mark, and that build only reads at 1×.
 | # | Beat | What happens |
 |---|---|---|
 | 1 | **Landing** | Title, tone, one button: Begin. |
-| 2 | **Name select** | Ten names. Picking yours sets "you" for the rest of the event. |
-| 3–8 | **The Forge**, six boards | One per category, in `CATEGORIES` order: chassis, drive, weapon, armour, ability, personality. Ten balls drop at once; when they settle, the board pauses and names what everyone got, with your own result highlighted. |
-| 9 | **The build reveal** | Your bot, assembled from its six parts, named. Then the other nine. This is the Forge's payoff and the last calm moment before fighting. |
+| 2 | **Name select** | Ten names. Picking yours sets the member you follow. |
+| 3–8 | **The Forge**, six boards | One per category, in `CATEGORIES` order: chassis, drive, weapon, armour, ability, personality. Ten balls drop at once. A panel on the right reveals each member's result **progressively, as their ball settles** — the trickle is better television than a dump at the end. |
+| 9 | **The build reveal** | Your bot full-screen, every part labelled. Scout the other nine. See §5.3. |
 | 10 | **Battle 1** — The Grinder | |
 | 11 | **Standing after battle 1** | Placement points, kill points, total. One screen: with one battle played, the round result *is* the standing. |
 | 12 | **Battle 2** — The Gauntlet | |
 | 13 | **Battle 2 result** | That battle alone, ordered by who scored most **in it**. |
-| 14 | **Standings after two** | Cut to the cumulative board: battle 1 and battle 2 broken out, grand total, ordered by total. |
+| 14 | **Standings after two** | Cut to the cumulative board: battles 1 and 2 broken out, grand total, ordered by total. |
 | 15 | **Battle 3** — The Crossfire | |
 | 16 | **Battle 3 result** | That battle alone, ordered by who scored most in it. |
 | 17 | **THE DRAFT ORDER** | All three battles broken out, grand total, counted up from tenth to first. The payoff. |
@@ -78,32 +78,107 @@ src/render/  PixiJS. Draws simulation state. May use wall-clock time.
 src/shell/   The site. Screens, state, routing, audio, progress.
 ```
 
-### Replay, and the check on load
+### Beat state, progress, and re-watching
 
-The site holds **one seed**. On load it runs `runEvent(config)` — about 2.5 seconds — which
-produces the Forge boards, the three battles, and the standings.
+A linear state machine over the beats in §2. Two **separate** pieces of stored state, and
+keeping them separate is what makes re-watching work:
 
-**It then compares the checksum against the recorded one and refuses to continue if they
-disagree.** That single check is what guarantees the league sees the event the admin
-approved. A mismatch means the simulation changed after recording, and showing a different
-draft order would be worse than showing an error.
-
-Visual playback re-runs each simulation locally, tick by tick, so the shell needs the
-per-battle seeds exposed alongside the results.
-
-### Beat state and progress
-
-A linear state machine over the beats in §2. Progress — the furthest beat reached — is
-stored in `localStorage`, keyed by the event seed so a new recording resets everyone.
+| Stored | Lifetime | Purpose |
+|---|---|---|
+| `hasCompletedOnce` | Sticky | The unlock. Once the event has been watched through, skip navigation stays available forever. |
+| Current watch: claimed member + furthest beat | Resettable | Where this viewing is up to, and whose bot is highlighted. |
 
 **Resume where you left off.** A member who closes the tab at minute ten returns to the next
-unwatched beat. They cannot jump forward. After beat 18 the whole event unlocks and any beat
-becomes reachable.
+unwatched beat and cannot jump forward.
 
-Keying by seed matters: if the admin re-records, every member starts fresh rather than
-resuming into an event that no longer exists.
+**"Watch again as someone else" clears only the current watch.** Pick a different name, see
+the whole event from their side — and because `hasCompletedOnce` survives, you are never
+re-locked. Nobody is stuck with their first choice.
 
-## 4. The effect bus — sound and VFX on one wire
+Both are keyed by the event seed, so a re-recording resets everyone rather than resuming
+them into an event that no longer exists.
+
+## 4. The seed and the official record
+
+**One master seed decides everything.** `deriveSubSeeds(masterSeed)` draws all six Forge
+seeds and all three battle seeds from a single stream in fixed order. There is no per-board
+or per-battle seed to choose.
+
+**Valid range: 1 to 2,147,483,647.**
+
+The admin flow is a shortlist, not a lottery:
+
+```bash
+npm run record -- 10            # roll ten random candidates, print their draft orders
+npm run record -- --seed <n>    # preview ONE specific seed        [TO BUILD]
+npm run replay -- <battle-seed> # screen a battle for stalls
+npm run record -- --save <n>    # write it as the official record
+```
+
+`--seed <n>` does not exist yet and is a prerequisite (§8). It exists so a seed can be handed
+over, inspected, watched in the browser, and only then committed.
+
+### The check on load
+
+On load the site runs `runEvent(config)` — about 2.5 seconds — producing the Forge boards,
+the three battles and the standings. **It then compares the checksum against the recorded one
+and refuses to continue if they disagree.**
+
+That single check is what guarantees the league sees the event the admin approved. A mismatch
+means the simulation changed after recording, and showing a different draft order would be
+worse than showing an error.
+
+Visual playback re-runs each simulation locally, tick by tick, so the per-battle seeds must
+be exposed alongside the results.
+
+## 5. Identity — how you find yourself
+
+Ten similar shapes in a brawl are unfollowable. Three mechanisms, doing three different jobs.
+
+### 5.1 A distinct colour per member
+
+Every member owns one colour, used for **both** their Plinko ball and their bot. This is what
+makes a ten-way fight legible at a glance.
+
+**Status: specified, not built.** `EventMember` carries a `colour` field and the test
+fixtures use a ten-colour palette, but no roster config exists and nothing wires member colour
+through to bot tint or ball tint. It is real work.
+
+**Do not inherit the test palette unexamined.** It contains pairs that are risky in motion at
+small size — magenta `#f032e6` against pink `#fabebe`, yellow `#ffe119` against lime
+`#bcf60c`. Ten moving targets is the hardest case for colour discrimination. Pick the palette
+deliberately, alongside the style guide, and check it at actual bot size rather than as
+swatches.
+
+### 5.2 Initials on every ball and bot
+
+Two characters — first initial, last initial — rendered small and unobtrusive on each ball
+and bot. Colour answers "which one is mine" at a glance; initials answer "who is that" when
+two colours are momentarily confusable.
+
+`BitmapText` is the right primitive: it updates per frame cheaply, which `Text` does not.
+
+**The roster config must validate that initials are unique** and fail loudly if two members
+collide, rather than silently rendering two identical labels.
+
+### 5.3 The highlight, and the build reveal
+
+The member you claimed gets a **persistent glow** on their bot for the whole event. Colour and
+initials identify everyone; the glow identifies *you*.
+
+Beat 9 shows **your bot full-screen**, with every one of its six parts labelled — the result
+plus a short, punchy line on what it does. A selector lets you browse the other nine members'
+bots and scout the competition.
+
+**Browsing never changes who you claimed.** Looking at someone else's build is scouting, not
+switching; the highlight in battle stays on your own bot regardless of who you last viewed.
+(Changing allegiance is a deliberate act, and it lives in "watch again as someone else" — §3.)
+
+This needs **39 part descriptions** written as a new field in `tables.ts` — 6 chassis, 6
+drives, 6 weapons, 7 armour, 7 abilities, 7 personalities. A writing task, not a config
+toggle.
+
+## 6. The effect bus — sound and VFX on one wire
 
 The single most important architectural decision here, because it is expensive to retrofit.
 
@@ -142,7 +217,7 @@ answered: what hit what, where, and how hard.
 - The shell may advance several ticks in one frame. It drains effects **after each**
   `advanceMatch` into a per-frame buffer, or dropped frames silently swallow events.
 
-## 5. Sound
+## 7. Sound
 
 Deliberately narrow: **weapon clashes, hazard contact, collisions, eliminations.** No crowd,
 no announcer, no engine noise.
@@ -172,7 +247,7 @@ The AudioContext must be resumed from a user interaction. **The Begin button on 
 screen is that gesture** — which is convenient, because it is the one click guaranteed to
 happen before anything makes noise.
 
-## 6. Visual treatment
+## 8. Visual treatment
 
 Gritty base, neon accents. The renderer today draws coloured shapes; the awe-factor comes
 from three things, in descending order of value per hour:
@@ -186,19 +261,48 @@ from three things, in descending order of value per hour:
 ### Art is optional and hot-swappable
 
 **The renderer takes textures if present and falls back to its current primitives if not.**
-This is deliberate: the site can be built and finished on greybox-plus-effects, with art
-dropped in later without blocking anything or forcing a rebuild.
+The site can be built, finished and deployed on greybox-plus-effects, with art dropped in
+later without blocking anything. If the art never comes together, there is still a working
+event.
 
-Three asset sets are worth making, in order:
+### Four visual channels, four jobs
 
-| Asset | Count | Why |
+Art is worth making for **three** categories: chassis shape, armour material, front weapon.
+The other three are correctly excluded — driver personality is a behaviour not a look,
+special ability is about what happens rather than what it looks like, and drive system is
+barely visible from directly above.
+
+But 6 chassis × 7 armour × 6 weapons is **252 combinations**, so they cannot be pre-rendered
+together. They must composite, which means each has to own a **different visual channel** or
+they will fight for the same pixels:
+
+| Channel | Carries | Why |
 |---|---|---|
-| Style guide | 1–2 images | Establishes palette and material feel. Highest leverage — once it exists, filters and primitives can match it without needing art for everything else. |
-| Chassis silhouettes | 6 | The most visible build differentiator, and only six files. |
-| Arena floor tiles | 3 | Seamless, one per arena. |
+| **Silhouette** | chassis shape | The strongest read at a glance, and the most distinctive spec difference |
+| **Fill colour** | member identity | Must win. Following your own bot is the entire emotional hook |
+| **Rim / edge treatment** | armour material | Heavy dark rim for Depleted Uranium, visible spikes for Spiked Composite, a thin bright edge for Carbon Fibre |
+| **Front attachment** | weapon | A separate sprite, mounted and animated |
 
-Per-part art is **out of scope**. 74,000 combinations cannot be pre-rendered and compositing
-six layers per bot is next year's work.
+**Armour as edge rather than fill is the key move.** If armour claimed the fill it would
+collide with member colour, and member colour cannot lose that fight.
+
+Each chassis therefore needs a **weapon mount point** — six coordinates saying where the
+weapon attaches. Small, but it must exist before weapon art is usable.
+
+### Weapon animation
+
+Everything needed already exists in the simulation. Two kinds:
+
+**Continuous** — Vertical Spinner, Saw Blade and Spinning Bar simply spin. Purely cosmetic,
+driven by the ticker, never touching simulation state.
+
+**Triggered** — the Hammer winds up and swings. `bot.nextAttackTick` is already on the bot,
+so the renderer knows when the next attack lands and can start the windup *before* it, then
+the `weaponHit` effect confirms the connection. **Anticipation for free, with no new
+simulation data.**
+
+Ram Plate gets a shove flash rather than a moving part. Flamethrower emits a jet cone off its
+hits — at an 8-tick cooldown that reads as near-continuous fire.
 
 ### Constraints on generated art
 
@@ -206,31 +310,34 @@ Four requirements that are easy to miss and expensive to discover late:
 
 - **Top-down orthographic.** Image models default to three-quarter perspective. A bot drawn
   in perspective cannot rotate on a 2D plane — it will look wrong at every heading but one.
-- **Greyscale or near-white.** Each member's bot is tinted with their colour at runtime.
-  Baked-in colour cannot be tinted, and the per-member identity is lost.
-- **No baked glow.** Neon comes from blend modes so it can pulse and react. Glow painted
-  into a texture is dead light.
-- **Identical canvas size and consistent scale** across the six chassis, or they will not
-  sit together.
+- **Greyscale or near-white.** Bots are tinted with member colour at runtime. Baked-in colour
+  cannot be tinted, and the per-member identity is lost.
+- **No baked glow.** Neon comes from blend modes so it can pulse and react. Glow painted into
+  a texture is dead light.
+- **Identical canvas size and consistent scale** across the six chassis, or they will not sit
+  together.
 
-### Finding yourself
+## 9. Prerequisites that do not exist yet
 
-Each member has a colour, and the member who picked their name gets a **persistent
-highlight** on their bot — a ring or glow that survives the whole event. Without it, ten
-similar shapes in a brawl are unfollowable, and following your own bot is the entire
-emotional hook.
+Found while checking this spec against the code. All small, all blocking:
 
-## 7. Out of scope
+| Missing | Needed for |
+|---|---|
+| **A roster config file** | Everything. Members currently exist only in test fixtures. Needs id, name, initials, colour — with uniqueness validation on initials. |
+| **`npm run record -- --seed <n>`** | Previewing a specific seed before committing to it |
+| **A `blurb` field on all 39 parts** | The build reveal (§5.3) |
+| **Weapon mount points per chassis** | Weapon art and animation (§8) |
+
+## 10. Out of scope
 
 - **Multiple leagues.** One roster this year.
-- **An admin UI.** Recording is already done and works: `npm run record -- 10` rolls
-  candidates, `--save <seed>` writes the official record.
+- **An admin UI.** Recording is a CLI flow and stays one.
 - **Mobile-first.** Desktop is the target. It should not be *broken* on a phone, but the
   layout is designed for a shared screen.
 - **Crowd, announcer, engine audio.**
-- **Per-part bot art.**
+- **Art for drive system, ability, or personality.**
 
-## 8. Before recording the official event
+## 11. Before recording the official event
 
 Aggregate metrics cannot protect a single viewing. A defect appearing in 5% of matches is
 statistically invisible across 200 matches and still has roughly a one-in-seven chance of
@@ -242,10 +349,11 @@ aggregate measurement missed both.
 for stall events and a healthy combat timeline before the event is saved.** It takes seconds
 and it is the check that catches exactly the thing averages hide.
 
-## 9. Open decisions
+## 12. Open decisions
 
 - **Font.** Self-hosted so GitHub Pages serves it offline and free. One of the largest levers
   on whether the site reads as designed or generic. Pending the style guide.
-- **Palette.** Pending the style guide.
-- **Whether beat 9 (the build reveal) shows all ten bots or only yours.** All ten is more
-  informative and slower; only yours is punchier. Decide once it can be seen.
+- **Palette.** Ten colours, checked at bot size in motion, not as swatches. Pending the style
+  guide.
+- **How the build-reveal member selector is presented** — dropdown, icon row, or something
+  else. Decide once it can be seen.
