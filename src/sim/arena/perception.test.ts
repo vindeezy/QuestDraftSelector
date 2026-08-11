@@ -3,7 +3,7 @@ import { DEFAULT_ARENA, GRINDER_ARENA, type ArenaConfig } from './arena';
 import { cycle } from './activation';
 import { createEmitter } from './projectile';
 import { DEFAULT_MATCH, createMatch, runMatch } from './match';
-import { ENGAGE_MEMORY, areEngaged, perceive } from './perception';
+import { ENGAGE_MEMORY, WALL_REPULSION_SCALE, areEngaged, perceive } from './perception';
 
 /**
  * A 960x720 arena (same dimensions as GRINDER_ARENA) with two cannons for the
@@ -348,5 +348,109 @@ describe('emitterRepulsion threat gating and wall-safe escape direction', () => 
     const b = runMatch({ ...DEFAULT_MATCH, arena: GRINDER_ARENA, seed: 496446, botCount: 10 });
     expect(a.checksum).toBe(b.checksum);
     expect(a.placements).toEqual(b.placements);
+  });
+});
+
+/**
+ * Regression tests for the wall-repulsion fix: `holeRepulsion` treated `index < 0`
+ * (off-grid, i.e. the solid perimeter wall) exactly like a real `TileState.Gone` hole,
+ * so bots fled solid concrete as hard as they fled a lethal pit. `WALL_REPULSION_SCALE`
+ * now scales down only the off-grid case; a real hole -- including the floor tile
+ * `buildArena` removes behind every wall gap -- is untouched.
+ */
+describe('holeRepulsion: wall vs. real hole (WALL_REPULSION_SCALE)', () => {
+  it('gives an off-grid sample strictly weaker repulsion than a real Gone tile at the same distance, by exactly WALL_REPULSION_SCALE', () => {
+    // Grid A: a bare 16x12 arena (no pits, no gaps, no zones/emitters). The bot sits at
+    // (col 8, row 11) -- the last valid row -- so its 7x3 scan window catches rows
+    // 12-14, all off-grid, at columns 5-11 (all on-grid), with nothing else in range.
+    const bareArena: ArenaConfig = {
+      cols: 16,
+      rows: 12,
+      tileSize: 60,
+      pits: [],
+      wallGaps: [],
+      surfaces: [],
+      zones: [],
+      emitters: [],
+      buttons: [],
+      trapdoors: [],
+    };
+    const mOffGrid = createMatch({ ...DEFAULT_MATCH, arena: bareArena, seed: 1, botCount: 4 });
+    const offGridSelf = mOffGrid.bots[0]!;
+    offGridSelf.body.x = 8 * 60 + 30;
+    offGridSelf.body.y = 11 * 60 + 30;
+    const offGridView = perceive(mOffGrid, offGridSelf);
+
+    // Grid B: the same arena extended by three rows, with exactly the tiles that were
+    // off-grid in Grid A (rows 12-14, cols 5-11) marked as real pits instead. Same bot
+    // position, so every (dx, dy) offset into those tiles is identical between the two
+    // -- the only difference is that these are now genuine on-grid Gone tiles.
+    const mirroredPits: [number, number][] = [];
+    for (let r = 12; r <= 14; r++) {
+      for (let c = 5; c <= 11; c++) mirroredPits.push([c, r]);
+    }
+    const mirroredArena: ArenaConfig = {
+      cols: 16,
+      rows: 15,
+      tileSize: 60,
+      pits: mirroredPits,
+      wallGaps: [],
+      surfaces: [],
+      zones: [],
+      emitters: [],
+      buttons: [],
+      trapdoors: [],
+    };
+    const mGone = createMatch({ ...DEFAULT_MATCH, arena: mirroredArena, seed: 1, botCount: 4 });
+    const goneSelf = mGone.bots[0]!;
+    goneSelf.body.x = 8 * 60 + 30;
+    goneSelf.body.y = 11 * 60 + 30;
+    const goneView = perceive(mGone, goneSelf);
+
+    // Both readings push straight up (negative y) with no sideways component -- the
+    // hole tiles are symmetric left-right around the bot's column, so avoidX cancels.
+    expect(offGridView.avoidX).toBeCloseTo(0, 6);
+    expect(goneView.avoidX).toBeCloseTo(0, 6);
+    expect(offGridView.avoidY).toBeLessThan(0);
+    expect(goneView.avoidY).toBeLessThan(0);
+
+    // Strictly weaker, and by exactly the named scale -- not just "less".
+    expect(Math.abs(offGridView.avoidY)).toBeLessThan(Math.abs(goneView.avoidY));
+    const ratio = offGridView.avoidY / goneView.avoidY;
+    expect(ratio).toBeCloseTo(WALL_REPULSION_SCALE, 6);
+  });
+
+  it('is unaffected for a real hole: pins the exact repulsion beside a pit (regression guard)', () => {
+    // Standing at (col 7, row 6) -- diagonally offset (180, 180) from the real pit at
+    // (4, 3) -- has nothing else in its scan window: the other pit (11, 8), both wall
+    // gaps (row 0 and row 11) and every grid edge all fall outside rows 3-9 / cols
+    // 4-10. This is a pure single-hole reading, pinned to prove the fix left real-hole
+    // repulsion byte-for-byte unchanged.
+    const m = createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed: 1, botCount: 4 });
+    const self = m.bots[0]!;
+    self.body.x = 7 * 60 + 30;
+    self.body.y = 6 * 60 + 30;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBeCloseTo(0.039283710065919304, 12);
+    expect(view.avoidY).toBeCloseTo(0.039283710065919304, 12);
+  });
+
+  it('gives a bot beside a wall gap full-strength repulsion, matching a real pit at the same distance', () => {
+    // DEFAULT_ARENA's top wall gap (cols 7-9, row 0) removes the floor tile behind it,
+    // per buildArena, so (8, 0) is a genuine on-grid Gone tile -- not off-grid. Standing
+    // at (col 11, row 3) is diagonally offset (180, 180) from it, with nothing else in
+    // scan range (rows 0-6 / cols 8-14 excludes the other gap tile at col 7, the bottom
+    // gap, both pits, and every grid edge is still on-grid).
+    //
+    // That offset (180, 180) is identical to the pit case in the test above, so if the
+    // wall-gap floor tile were being treated as off-grid (the bug) or scaled at all,
+    // this reading would come out weaker than that pinned pit value. It must not.
+    const m = createMatch({ ...DEFAULT_MATCH, arena: DEFAULT_ARENA, seed: 1, botCount: 4 });
+    const self = m.bots[0]!;
+    self.body.x = 11 * 60 + 30;
+    self.body.y = 3 * 60 + 30;
+    const view = perceive(m, self);
+    expect(view.avoidX).toBeCloseTo(0.039283710065919304, 12);
+    expect(view.avoidY).toBeCloseTo(0.039283710065919304, 12);
   });
 });

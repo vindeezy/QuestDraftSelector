@@ -362,12 +362,19 @@ describe('runEvent: tallies exposed for re-scoring (kill-points A/B)', () => {
       // History, so a future failure can be told apart from these:
       //   9faaf21c -- original. Also used to prove that adding `tallies` to EventResult
       //               left the checksum untouched (verified by stashing that change).
-      //   369e7c31 -- current. KILL_POINTS deliberately changed 5 -> 3 after the A/B in
+      //   369e7c31 -- KILL_POINTS deliberately changed 5 -> 3 after the A/B in
       //               `--kill-ab`; the checksum folds in `standing.points`, so it moved
       //               by construction. Nothing else changed.
+      //   2bcb9b13 -- current. `holeRepulsion` in perception.ts was treating the solid
+      //               perimeter wall (index < 0, off-grid) exactly like a real hole,
+      //               so bots fled solid wall as hard as a lethal pit -- 2-8x the chase
+      //               vector within 60 units of a boundary. Added `WALL_REPULSION_SCALE`
+      //               (0.15) applied only to the off-grid case; real holes, including the
+      //               floor tile behind a wall gap, are untouched. This deliberately
+      //               changes AI behaviour near every boundary, so the checksum moves.
       const config = makeConfig(32);
       const result = runEvent(config);
-      expect(result.checksum).toBe('369e7c31');
+      expect(result.checksum).toBe('2bcb9b13');
     },
     30000,
   );

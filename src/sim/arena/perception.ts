@@ -16,6 +16,34 @@ export const ENGAGE_MEMORY = 90;
  */
 const AVOID_RADIUS_TILES = 3;
 
+/**
+ * Strength multiplier for an off-grid sample in `holeRepulsion`, relative to a real
+ * `TileState.Gone` tile at the same distance.
+ *
+ * `tileIndexAt` returns -1 for anywhere outside the arena, and the old code treated that
+ * the same as a genuine hole: full-strength repulsion. That conflated two different
+ * things under one mechanism. A real hole (a pit, or the floor tile `buildArena` removes
+ * behind every wall gap) is lethal -- stepping onto it eliminates the bot -- so it must
+ * override pursuit. The solid perimeter wall cannot hurt anything; a bot can safely stand
+ * right up against it. Scanning off-grid at the wall's own strength made the bot flee the
+ * wall as hard as it would flee a pit, measured at 2-8x the chase vector within 60 units
+ * of a boundary and nonzero repulsion across 67% of the arena's area in a bare arena with
+ * no pits, no gaps, no hazards -- bots avoided the outer third of every arena and
+ * disengaged from targets caught near a wall.
+ *
+ * This scales *only* the `index < 0` branch down; `TileState.Gone` tiles (real holes,
+ * including the tile behind a wall gap) are untouched and keep full strength, so the
+ * lethal cases stay exactly as dangerous as before.
+ *
+ * 0.15 was the starting point (from the diagnosis that produced this fix) and held up
+ * under replay: it drops the contribution at 20 units from ~1695 to ~250 -- comparable to
+ * a mid-range chase offset rather than several times it -- and makes it negligible past
+ * 60 units, while `npm run replay` across grinder/gauntlet/crossfire and five seeds
+ * (including 496446) showed no wall-hugging regression -- no bot developed sustained high
+ * `wall%` or a multi-second stall pinned against a boundary.
+ */
+export const WALL_REPULSION_SCALE = 0.15;
+
 export interface BotView {
   nearest: Bot | null;
   nearestDistSq: number;
@@ -62,8 +90,12 @@ function holeRepulsion(match: Match, bot: Bot): { x: number; y: number } {
       const cx = c * size + size / 2;
       const cy = r * size + size / 2;
       const index = tileIndexAt(grid, cx, cy);
-      // Off-grid counts as a hole: the arena edge is as lethal as a pit.
-      const isHole = index < 0 || grid.tiles[index] === TileState.Gone;
+      // Off-grid is the solid perimeter wall, not a hole -- it cannot kill anything, so
+      // it gets scaled down below rather than treated as a real hole. A tile that is
+      // on-grid and Gone is a genuine hole (a pit, or the floor behind a wall gap) and
+      // keeps full strength.
+      const offGrid = index < 0;
+      const isHole = offGrid || grid.tiles[index] === TileState.Gone;
       if (!isHole) continue;
 
       const dx = bot.body.x - cx;
@@ -73,7 +105,7 @@ function holeRepulsion(match: Match, bot: Bot): { x: number; y: number } {
       const dist = Math.sqrt(distSq);
       // Inverse-square falloff, scaled by tile size so the units stay comparable to
       // the chase offsets this gets blended with.
-      const strength = (size * size) / distSq;
+      const strength = ((size * size) / distSq) * (offGrid ? WALL_REPULSION_SCALE : 1);
       x += (dx / dist) * strength;
       y += (dy / dist) * strength;
     }
