@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runEvent, tallyKillCredit, type EventConfig, type EventMember } from './event';
+import { buildStandings } from './scoring';
 import { CATEGORIES, slotCountFor } from '../parts/tables';
 import { createMatch, DEFAULT_MATCH } from '../arena/match';
 import { DEFAULT_ARENA } from '../arena/arena';
@@ -299,5 +300,80 @@ describe('runEvent: Forge builds real bots', () => {
       });
     },
     30000,
+  );
+});
+
+describe('runEvent: tallies exposed for re-scoring (kill-points A/B)', () => {
+  it(
+    "exposes the same tallies buildStandings used internally -- re-scoring them at KILL_POINTS matches the event's own standings",
+    () => {
+      const config = makeConfig(30);
+      const result = runEvent(config);
+      expect(result.tallies.length).toBe(config.members.length);
+      expect(buildStandings(result.tallies)).toEqual(result.standings);
+    },
+    30000,
+  );
+
+  it(
+    're-scoring one event\'s tallies at 1, 3 and 5 kill points yields the same placement component and only differs by the kill component',
+    () => {
+      const config = makeConfig(31);
+      const result = runEvent(config);
+
+      const at1 = buildStandings(result.tallies, 1);
+      const at3 = buildStandings(result.tallies, 3);
+      const at5 = buildStandings(result.tallies, 5);
+
+      for (let i = 0; i < config.members.length; i++) {
+        const memberId = result.tallies[i]!.memberId;
+        const row1 = at1.find((r) => r.memberId === memberId)!;
+        const row3 = at3.find((r) => r.memberId === memberId)!;
+        const row5 = at5.find((r) => r.memberId === memberId)!;
+
+        // Placement component is unchanged by the kill-points rate, per battle.
+        for (let b = 0; b < row1.battles.length; b++) {
+          expect(row3.battles[b]!.placementPoints).toBe(row1.battles[b]!.placementPoints);
+          expect(row5.battles[b]!.placementPoints).toBe(row1.battles[b]!.placementPoints);
+        }
+
+        // Kill component scales exactly with the rate: eliminations * rate.
+        expect(row1.battles.map((b) => b.killPoints)).toEqual(
+          row1.battles.map((b) => b.eliminations * 1),
+        );
+        expect(row3.battles.map((b) => b.killPoints)).toEqual(
+          row3.battles.map((b) => b.eliminations * 3),
+        );
+        expect(row5.battles.map((b) => b.killPoints)).toEqual(
+          row5.battles.map((b) => b.eliminations * 5),
+        );
+      }
+    },
+    30000,
+  );
+
+  it(
+    'exposing tallies on EventResult does not change the checksum',
+    () => {
+      // Pinned against the checksum this exact seed/roster produced on the commit before
+      // `tallies` was added to `EventResult` (verified by stashing this change and
+      // re-running the probe) -- not just "two runs agree with each other", but "this
+      // change didn't move the number at all".
+      const config = makeConfig(32);
+      const result = runEvent(config);
+      expect(result.checksum).toBe('9faaf21c');
+    },
+    30000,
+  );
+
+  it(
+    'is deterministic: same seed, same standings, twice',
+    () => {
+      const config = makeConfig(33);
+      const a = runEvent(config);
+      const b = runEvent(config);
+      expect(a.standings).toEqual(b.standings);
+    },
+    60000,
   );
 });

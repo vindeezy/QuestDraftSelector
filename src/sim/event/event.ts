@@ -65,6 +65,14 @@ export interface EventResult {
   forge: ForgeBoardResult[];
   battles: BattleResult[];
   standings: Standing[];
+  /** The per-member tallies `standings` was built from — see `buildStandings` in
+   *  `scoring.ts`. Exposed so a caller can re-score the same battles at a different kill-
+   *  points rate without re-simulating anything: placements, eliminations and damage are
+   *  already decided by this point, and only the points arithmetic can differ. Not part of
+   *  the checksum (see below) — it is derived entirely from data the checksum already
+   *  covers (`battles` and `standings`), so including it would be redundant, not new
+   *  information. */
+  tallies: BattleTally[];
   /** Every member's build, indexed to match `members`. What the battles actually run on. */
   builds: BotBuild[];
   /** Every member's human-readable part names, indexed to match `members`. What the
@@ -299,6 +307,7 @@ export function runEvent(config: EventConfig): EventResult {
     forge,
     battles,
     standings,
+    tallies,
     builds,
     partLabels,
     checksum: hashNumbers(checksumValues),

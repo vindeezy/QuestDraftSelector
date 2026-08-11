@@ -74,19 +74,23 @@ export function pointsForPlace(place: number): number {
  * decoration: without it the order would depend on sort stability, and a draft order that
  * could differ between browsers would be worthless.
  *
- * `points` folds `KILL_POINTS` straight into the placement total, so eliminations already
+ * `points` folds `killPoints` straight into the placement total, so eliminations already
  * move the primary ranking, not just the first tiebreak. Each battle's `total` is computed
  * the same way, per battle, from `BattleTally.eliminationsPerBattle` — the grand `points` is
- * just the sum of those per-battle totals, so 5 points per kill summed per battle is
- * arithmetically identical to 5 points per kill summed across the event.
+ * just the sum of those per-battle totals, so a flat rate per kill summed per battle is
+ * arithmetically identical to that same rate summed across the event.
+ *
+ * `killPoints` defaults to `KILL_POINTS` so every existing caller is unaffected; it exists
+ * as a parameter so a tool can re-score one event's tallies at several rates without
+ * re-simulating anything — see `tools/draft-metrics.ts`'s `--kill-ab`.
  */
-export function buildStandings(tallies: readonly BattleTally[]): Standing[] {
+export function buildStandings(tallies: readonly BattleTally[], killPoints: number = KILL_POINTS): Standing[] {
   const rows = tallies.map((t) => {
     const battles: BattleStanding[] = t.places.map((place, i) => {
       const placementPoints = pointsForPlace(place);
       const eliminations = t.eliminationsPerBattle[i] ?? 0;
-      const killPoints = eliminations * KILL_POINTS;
-      return { placementPoints, killPoints, eliminations, total: placementPoints + killPoints };
+      const battleKillPoints = eliminations * killPoints;
+      return { placementPoints, killPoints: battleKillPoints, eliminations, total: placementPoints + battleKillPoints };
     });
 
     return {

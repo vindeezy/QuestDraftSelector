@@ -139,6 +139,19 @@ describe('buildStandings', () => {
     expect(s[0]!.points).toBe(sumOfBattleTotals);
   });
 
+  it('scores according to an explicit kill-points value when one is given', () => {
+    // Same shape as the "scores a credited elimination..." test above, but at a rate
+    // other than the default 5, to prove the parameter actually drives the arithmetic.
+    const s = buildStandings([tally('a', [1], [3])], 1);
+    expect(s[0]!.points).toBe(25 + 3 * 1);
+  });
+
+  it('matches today\'s behaviour exactly when no kill-points value is given', () => {
+    const withDefault = buildStandings([tally('a', [1, 4, 8], [2, 1, 0], 55)]);
+    const withExplicitFive = buildStandings([tally('a', [1, 4, 8], [2, 1, 0], 55)], KILL_POINTS);
+    expect(withDefault).toEqual(withExplicitFive);
+  });
+
   it('produces the same grand total as the old event-wide calculation', () => {
     // Before this refactor, `points` was `sum(placementPoints) + eliminations * KILL_POINTS`
     // where `eliminations` was a single event-wide sum. Construct the same tally both ways
