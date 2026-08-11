@@ -11,13 +11,29 @@ export const PLACEMENT_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1] as const;
  * Flat bonus per elimination a bot is credited with, on top of placement points.
  *
  * Placement alone rewards surviving and nothing else, which is exactly the problem this
- * constant exists to fix — see the event's doc comment. With 10 bots there are 9
- * eliminations up for grabs per battle, so kill points are worth at most 45 against 101
- * placement points (25+18+...+1) in a single battle — meaningful, but not dominant, and
- * four eliminations is worth about as much as winning a battle outright. This is a
- * first-draft number, chosen to be measured, exactly like every other number here.
+ * constant exists to fix — see the event's doc comment.
+ *
+ * SET BY MEASUREMENT AND BY INTENT. A paired A/B over 100 events (`npm run draft --
+ * <n> --kill-ab`, which simulates each event once and re-scores it at 1, 3 and 5) found
+ * the value barely matters for balance:
+ *
+ *   survival share of top pick    1: 31.0%   3: 30.0%   5: 30.0%   (fair 28.6%)
+ *   tiebreaks needed              1: 14.7%   3: 12.4%   5:  9.4%
+ *
+ * No part in the 39-part table moved more than 0.23 draft positions across the whole
+ * range. The work was done by *having* kill points at all — that took survival builds
+ * from 60% of top picks to 30%; everything between 1 and 5 is noise on top of it.
+ *
+ * So 3 was chosen for what it means rather than what it measures. Real robot combat is
+ * decided by who is left standing, and 3 keeps it that way: matching a battle win (25)
+ * would take 8.3 kills and only 9 exist per battle, so kills can sharpen a placement but
+ * never overturn it. It works out to roughly a quarter of a winning score — visible on
+ * the scoreboard, never decisive.
+ *
+ * At 5 the arithmetic changes character: 5 kills equals a win outright, which a dominant
+ * bot can actually reach. That is a different game, not a better-tuned one.
  */
-export const KILL_POINTS = 5;
+export const KILL_POINTS = 3;
 
 export type Tiebreak = 'eliminations' | 'damage' | 'memberId';
 

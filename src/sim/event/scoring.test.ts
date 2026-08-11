@@ -23,8 +23,8 @@ describe('PLACEMENT_POINTS', () => {
 });
 
 describe('KILL_POINTS', () => {
-  it('is a flat 5 points per credited elimination', () => {
-    expect(KILL_POINTS).toBe(5);
+  it('is a flat 3 points per credited elimination', () => {
+    expect(KILL_POINTS).toBe(3);
   });
 });
 
@@ -73,11 +73,16 @@ describe('buildStandings', () => {
   });
 
   it('breaks a tie on total eliminations', () => {
-    // Since eliminations now feed straight into points via KILL_POINTS, a genuine tie
-    // needs placement + kill points to land on the same total despite different kill
-    // counts: place 1 (25) + 1 elimination (5) = 30, matching place 3 (15) + 3
-    // eliminations (15) = 30.
-    const s = buildStandings([tally('a', [1], [1]), tally('b', [3], [3])]);
+    // Since eliminations feed straight into points via KILL_POINTS, a genuine tie needs
+    // placement + kill points to land on the same total despite different kill counts:
+    // place 1 (25) + 1 elimination (3) = 28, matching place 5 (10) + 6 eliminations
+    // (18) = 28.
+    //
+    // These numbers are KILL_POINTS-specific by nature — the fixture has to construct a
+    // tie, and what ties depends on the constant. They were recomputed when it moved
+    // from 5 to 3. If it moves again, recompute them again rather than relaxing the
+    // assertion: a fixture that no longer ties silently stops testing the tiebreak.
+    const s = buildStandings([tally('a', [1], [1]), tally('b', [5], [6])]);
     expect(s[0]!.points).toBe(s[1]!.points);
     expect(s[0]!.memberId).toBe('b');
   });
@@ -92,8 +97,8 @@ describe('buildStandings', () => {
 
   it('records why a tie was broken, so the site can explain it', () => {
     // Same constructed tie as 'breaks a tie on total eliminations' above: points match
-    // (30 each) so the tiebreak falls to eliminations, which differ (1 vs 3).
-    const s = buildStandings([tally('a', [1], [1]), tally('b', [3], [3])]);
+    // (28 each) so the tiebreak falls to eliminations, which differ (1 vs 6).
+    const s = buildStandings([tally('a', [1], [1]), tally('b', [5], [6])]);
     expect(s[0]!.tiebreak).toBe('eliminations');
     expect(s[1]!.tiebreak).toBe('eliminations');
   });

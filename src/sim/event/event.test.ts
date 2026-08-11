@@ -353,15 +353,21 @@ describe('runEvent: tallies exposed for re-scoring (kill-points A/B)', () => {
   );
 
   it(
-    'exposing tallies on EventResult does not change the checksum',
+    'produces the pinned checksum for a known seed',
     () => {
-      // Pinned against the checksum this exact seed/roster produced on the commit before
-      // `tallies` was added to `EventResult` (verified by stashing this change and
-      // re-running the probe) -- not just "two runs agree with each other", but "this
-      // change didn't move the number at all".
+      // A golden value, not a self-consistency check: it catches any unintended change to
+      // the simulation or the scoring that feeds the checksum. When it fails, work out
+      // whether the change was deliberate before touching the number.
+      //
+      // History, so a future failure can be told apart from these:
+      //   9faaf21c -- original. Also used to prove that adding `tallies` to EventResult
+      //               left the checksum untouched (verified by stashing that change).
+      //   369e7c31 -- current. KILL_POINTS deliberately changed 5 -> 3 after the A/B in
+      //               `--kill-ab`; the checksum folds in `standing.points`, so it moved
+      //               by construction. Nothing else changed.
       const config = makeConfig(32);
       const result = runEvent(config);
-      expect(result.checksum).toBe('9faaf21c');
+      expect(result.checksum).toBe('369e7c31');
     },
     30000,
   );
