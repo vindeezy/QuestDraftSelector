@@ -4,8 +4,10 @@ import { runEvent } from '../../sim/event/event';
 import { KILL_POINTS, pointsForPlace } from '../../sim/event/scoring';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { FIRST_BEAT, type BeatId } from '../beats';
+import { ordinal } from '../ordinal';
 import {
-  killSummary,
+  killCountLabel,
+  pointsLabel,
   scoreboardConfigFor,
   scoreboardCopy,
   scoreboardRows,
@@ -33,7 +35,10 @@ const rowsFor = (beat: BeatId): ScoreRow[] => scoreboardRows(event, scoreboardCo
 
 describe('scoreboardConfigFor', () => {
   it('claims exactly the four scoreboard beats', () => {
-    expect(scoreboardConfigFor('standings-1')).toEqual({ mode: 'cumulative', battleIndex: 0 });
+    // `standings-1` uses the battle shape: with one battle played the round result and the
+    // standing are the same numbers, so the wider cumulative layout would add columns
+    // without adding information.
+    expect(scoreboardConfigFor('standings-1')).toEqual({ mode: 'battle', battleIndex: 0 });
     expect(scoreboardConfigFor('battle-2-result')).toEqual({ mode: 'battle', battleIndex: 1 });
     expect(scoreboardConfigFor('standings-2')).toEqual({ mode: 'cumulative', battleIndex: 1 });
     expect(scoreboardConfigFor('battle-3-result')).toEqual({ mode: 'battle', battleIndex: 2 });
@@ -182,17 +187,22 @@ describe('ties', () => {
   });
 });
 
-describe('killSummary', () => {
-  it('names the eliminations, not just the points they bought', () => {
-    expect(killSummary(3, 9)).toBe('3 kills — 9 pts');
+describe('killCountLabel and pointsLabel', () => {
+  it('names the eliminations that bought the points, so a bare figure never has to be divided by 3', () => {
+    expect(killCountLabel(3)).toBe('3 kills');
   });
 
   it('reads singular for one', () => {
-    expect(killSummary(1, 3)).toBe('1 kill — 3 pts');
+    expect(killCountLabel(1)).toBe('1 kill');
   });
 
-  it('says "no kills" rather than "0 kills — 0 pts"', () => {
-    expect(killSummary(0, 0)).toBe('no kills');
+  it('says "no kills" rather than "0 kills"', () => {
+    expect(killCountLabel(0)).toBe('no kills');
+  });
+
+  it('carries the unit on every points figure', () => {
+    expect(pointsLabel(25)).toBe('25 pts');
+    expect(pointsLabel(0)).toBe('0 pts');
   });
 });
 
@@ -206,13 +216,15 @@ describe('scoreboardCopy', () => {
 
   it('explains why battle 1 gets only one screen', () => {
     const copy = scoreboardCopy('standings-1', scoreboardConfigFor('standings-1')!);
-    expect(copy.subtitle).toContain('one battle played');
+    expect(copy.title).toBe('Battle 1 result');
+    expect(copy.subtitle).toContain('the standing too');
     expect(copy.button).toBe('On to battle 2');
   });
 
-  it('counts battles, not indexes, on the cumulative board', () => {
+  it('drops the subtitle on the cumulative board — the columns already say what it said', () => {
     const copy = scoreboardCopy('standings-2', scoreboardConfigFor('standings-2')!);
     expect(copy.title).toBe('Standings after 2 battles');
+    expect(copy.subtitle).toBe('');
     expect(copy.button).toBe('On to battle 3');
   });
 });
@@ -252,22 +264,79 @@ describe('scoreboardScreen', () => {
     expect(ctx.container.querySelectorAll('.score-row.is-you').length).toBe(0);
   });
 
-  it('shows a column per battle played on the cumulative board', () => {
+  it('gives each arena its own two-column section on the cumulative board', () => {
     const ctx = makeContext(null);
     scoreboardScreen('standings-2').render(ctx);
-    const headers = [...ctx.container.querySelectorAll('thead th')].map((el) => el.textContent!.trim());
-    // #, Member, two battles, Total.
-    expect(headers.length).toBe(5);
-    expect(headers[2]).toContain('The Grinder');
-    expect(headers[3]).toContain('The Gauntlet');
+
+    const groups = [...ctx.container.querySelectorAll('thead th.score-group')];
+    expect(groups.map((el) => el.textContent!.trim())).toEqual(['The Grinder', 'The Gauntlet']);
+    expect(groups.every((el) => el.getAttribute('colspan') === '2')).toBe(true);
+
+    const subHeaders = [...ctx.container.querySelectorAll('thead tr:nth-child(2) th')].map((el) =>
+      el.textContent!.trim(),
+    );
+    expect(subHeaders).toEqual(['Placement', 'Kills', 'Placement', 'Kills']);
+
+    // Placement, Member, two points cells per arena, Total.
+    expect(ctx.container.querySelectorAll('.score-row')[0]!.children.length).toBe(7);
   });
 
-  it('shows finish and kills as their own columns on a battle-only board', () => {
+  it('shows placement, then the two point sources, then the total on a battle board', () => {
     const ctx = makeContext(null);
     scoreboardScreen('battle-3-result').render(ctx);
     const headers = [...ctx.container.querySelectorAll('thead th')].map((el) => el.textContent!.trim());
-    expect(headers).toEqual(['#', 'Member', 'Finish', 'Kills', 'Points']);
-    expect(ctx.container.querySelectorAll('.score-finish').length).toBe(ROSTER.length);
+    expect(headers).toEqual(['Placement', 'Member', 'Placement points', 'Kill points', 'Total']);
+
+    // The leftmost column is the finish in THAT battle, not the row's rank — so it is
+    // free to run out of order when kills reshuffle the scoring.
+    const expected = rowsFor('battle-3-result');
+    const places = [...ctx.container.querySelectorAll('.score-place')].map((el) => el.textContent!.trim());
+    expect(places).toEqual(expected.map((row) => ordinal(row.cells[0]!.place)));
+  });
+
+  it('prints every points figure with its unit, and names the kills under the kill points', () => {
+    const ctx = makeContext(null);
+    scoreboardScreen('battle-2-result').render(ctx);
+
+    const expected = rowsFor('battle-2-result');
+    const firstRow = ctx.container.querySelectorAll('.score-row')[0]!;
+    const values = [...firstRow.querySelectorAll('.score-points__value')].map((el) => el.textContent!.trim());
+    const cell = expected[0]!.cells[0]!;
+    expect(values).toEqual([
+      pointsLabel(cell.placementPoints),
+      pointsLabel(cell.killPoints),
+      pointsLabel(expected[0]!.total),
+    ]);
+    expect(firstRow.querySelector('.score-sub')!.textContent!.trim()).toBe(killCountLabel(cell.eliminations));
+  });
+
+  it('keeps the member cell a real table cell, so the highlight cannot leave a gap in the row', () => {
+    // The bug this pins: `display: flex` on the `<td>` stopped it stretching to the row's
+    // height, and the page showed through under the claimed member's name as a dark block
+    // sitting over the highlight. jsdom computes no layout, so the guard is structural —
+    // the flex must live on an inner span, and the cell must stay a plain cell.
+    const claimed = ROSTER[1]!; // Tommy, the near-black colour this was noticed on
+    const ctx = makeContext(claimed.id);
+    scoreboardScreen('standings-1').render(ctx);
+
+    const cell = ctx.container.querySelector('.score-row.is-you .score-member')!;
+    expect(cell.tagName).toBe('TD');
+    expect(cell.querySelector('.score-member__inner')).not.toBeNull();
+    expect(cell.querySelector('.score-swatch')!.closest('.score-member__inner')).not.toBeNull();
+  });
+
+  it('rings a near-black swatch so it reads as a colour rather than a hole', () => {
+    const tommy = ROSTER.find((m) => m.id === 'tommy')!;
+    const ctx = makeContext(null);
+    scoreboardScreen('standings-1').render(ctx);
+
+    const rows = rowsFor('standings-1');
+    const swatches = [...ctx.container.querySelectorAll('.score-swatch')];
+    const tommyIndex = rows.findIndex((row) => row.memberId === tommy.id);
+    expect(swatches[tommyIndex]!.classList.contains('score-swatch--dark')).toBe(true);
+
+    const vinIndex = rows.findIndex((row) => row.memberId === 'vin'); // white
+    expect(swatches[vinIndex]!.classList.contains('score-swatch--dark')).toBe(false);
   });
 
   it('advances to the next beat when the button is pressed', () => {

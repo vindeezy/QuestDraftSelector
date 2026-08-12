@@ -4,7 +4,7 @@ import { ARENA_VARIANT_NAMES } from '../../sim/event/arenas';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { nextBeat, type BeatId } from '../beats';
 import { ordinal } from '../ordinal';
-import { readableInkFor } from '../colour';
+import { readableInkFor, isDarkColour } from '../colour';
 import { getEventResult } from './forge';
 import type { Screen, ScreenContext } from './types';
 
@@ -12,32 +12,33 @@ import type { Screen, ScreenContext } from './types';
  * Beats 12, 14, 15 and 17 — the scoreboards between the battles. See
  * `docs/superpowers/specs/2026-08-11-website-design.md` §2 (rows 12, 14, 15, 17).
  *
- * Two shapes, and the difference between them is the whole point of the sequence:
+ * Two shapes:
  *
- * - **Cumulative** (`standings-1`, `standings-2`) — every battle so far broken out, ordered
- *   by grand total.
- * - **Battle only** (`battle-2-result`, `battle-3-result`) — that battle by itself, ordered
- *   by who scored most *in it*.
+ * - **Battle** (`standings-1`, `battle-2-result`, `battle-3-result`) — the battle that just
+ *   happened, ordered by who scored most in it. Placement, then the two point sources side
+ *   by side, then the total.
+ * - **Cumulative** (`standings-2`) — every battle so far, each arena getting its own
+ *   two-column section (placement points, kill points), ordered by the running total.
  *
  * The order flips between the two, and the spec is explicit that this is deliberate:
  * someone can win battle 3 outright and still land sixth overall, and "that gap is the
- * drama". Battle 1 gets only the cumulative screen, because with one battle played the
- * round result *is* the standing and a second screen would show identical numbers.
+ * drama".
  *
- * The final draft order (beat 18) is NOT here — it is its own screen, and unlike these it
- * reads the authoritative `result.standings`. See the note on `interimRows` for why the
- * interim boards deliberately do not.
+ * Battle 1 uses the *battle* shape even though its beat is named `standings-1`, because
+ * with one battle played the two are numerically identical — a cumulative board there
+ * would be the same numbers under more columns. The cumulative shape earns its keep from
+ * battle 2 onward, and again on the draft order (beat 18, its own screen).
  */
 
-/** Which board a beat draws, and from what. `throughBattle` is an inclusive 0-based index:
- *  `standings-2` is cumulative through battle index 1, i.e. the first two battles. */
+/** Which board a beat draws, and from what. On a cumulative board `battleIndex` is
+ *  inclusive: `standings-2` covers battles 0 and 1. */
 export interface ScoreboardConfig {
   mode: 'cumulative' | 'battle';
   battleIndex: number;
 }
 
 const SCOREBOARD_BEATS: Partial<Record<BeatId, ScoreboardConfig>> = {
-  'standings-1': { mode: 'cumulative', battleIndex: 0 },
+  'standings-1': { mode: 'battle', battleIndex: 0 },
   'battle-2-result': { mode: 'battle', battleIndex: 1 },
   'standings-2': { mode: 'cumulative', battleIndex: 1 },
   'battle-3-result': { mode: 'battle', battleIndex: 2 },
@@ -49,9 +50,8 @@ export function scoreboardConfigFor(id: BeatId): ScoreboardConfig | null {
   return SCOREBOARD_BEATS[id] ?? null;
 }
 
-/** One battle's contribution to a member, as this screen needs it. Mirrors `scoring.ts`'s
- *  `BattleStanding` but carries the finishing place too, which the scoreboard shows and
- *  that type does not hold. */
+/** One battle's contribution to a member. Mirrors `scoring.ts`'s `BattleStanding` but
+ *  carries the finishing place too, which the board shows and that type does not hold. */
 export interface ScoreCell {
   place: number;
   placementPoints: number;
@@ -65,8 +65,8 @@ export interface ScoreRow {
   name: string;
   initials: string;
   colour: string;
-  /** The battles this board is showing, in event order — every battle so far for a
-   *  cumulative board, exactly one for a battle-only board. */
+  /** The battles this board shows, in event order — every battle so far on a cumulative
+   *  board, exactly one on a battle board. */
   cells: ScoreCell[];
   /** Sum of `cells[*].total`: the number this board is ordered by. */
   total: number;
@@ -80,7 +80,7 @@ export interface ScoreRow {
   tieNote: string | null;
 }
 
-/** One member's cells for battles `0..battleIndex`, or just `battleIndex` alone. */
+/** One member's cells for battles `from..to` inclusive. */
 function cellsFor(tally: BattleTally, from: number, to: number): ScoreCell[] {
   const cells: ScoreCell[] = [];
   for (let i = from; i <= to; i++) {
@@ -157,38 +157,44 @@ export function scoreboardRows(result: EventResult, config: ScoreboardConfig): S
   return rows;
 }
 
-/** "3 kills — 9 pts", or "no kills" when there is nothing to add. Reads better than a bare
- *  number, which is the point the plan makes about showing eliminations and not just the
- *  points they bought. */
-export function killSummary(eliminations: number, killPoints: number): string {
-  if (eliminations === 0) return 'no kills';
-  return `${eliminations} ${eliminations === 1 ? 'kill' : 'kills'} — ${killPoints} pts`;
+/** "25 pts". The unit is repeated on every points cell rather than pushed up into the
+ *  column header, because these boards are read at a glance across a room. */
+export function pointsLabel(points: number): string {
+  return `${points} pts`;
 }
 
-/** The heading, subheading, and the wording on the button out of this beat. */
+/** "3 kills", "1 kill", "no kills" — the quiet line under a kill-points figure, naming
+ *  the eliminations that bought it rather than leaving a bare number to be divided by 3. */
+export function killCountLabel(eliminations: number): string {
+  if (eliminations === 0) return 'no kills';
+  return `${eliminations} ${eliminations === 1 ? 'kill' : 'kills'}`;
+}
+
+/** The heading, optional subheading, and the wording on the button out of this beat. An
+ *  empty `subtitle` renders nothing at all. */
 export function scoreboardCopy(
   beat: BeatId,
   config: ScoreboardConfig,
 ): { title: string; subtitle: string; button: string } {
   const arena = ARENA_VARIANT_NAMES[config.battleIndex]!;
-  if (config.mode === 'battle') {
+  if (config.mode === 'cumulative') {
     return {
-      title: `Battle ${config.battleIndex + 1} result`,
-      subtitle: `${arena} — this battle alone, best score in it first`,
-      button: 'See the standings',
+      title: `Standings after ${config.battleIndex + 1} battles`,
+      subtitle: '',
+      button: `On to battle ${config.battleIndex + 2}`,
     };
   }
   if (config.battleIndex === 0) {
     return {
-      title: 'Standings after battle 1',
-      subtitle: `${arena} — one battle played, so this round is the standing`,
+      title: 'Battle 1 result',
+      subtitle: `${arena} — one battle played, so this is the standing too`,
       button: 'On to battle 2',
     };
   }
   return {
-    title: `Standings after ${config.battleIndex + 1} battles`,
-    subtitle: 'Every battle so far, added up',
-    button: `On to battle ${config.battleIndex + 2}`,
+    title: `Battle ${config.battleIndex + 1} result`,
+    subtitle: `${arena} — this battle alone, best score in it first`,
+    button: 'See the standings',
   };
 }
 
@@ -196,29 +202,46 @@ function escapeHtml(value: string): string {
   return value.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
-/** The member cell: colour swatch with initials, then the full name. Same visual
- *  vocabulary the Forge panel and the arena use to say "this one is you". */
+/**
+ * The member cell: colour swatch with initials, then the full name.
+ *
+ * The flex lives on an inner span, NOT on the `<td>`. A table cell with `display: flex`
+ * stops being a table cell: it no longer stretches to the row's height, so its background
+ * painted only its own box and the page showed through underneath — which on the
+ * highlighted row read as a stray dark block sitting over the highlight.
+ */
 function memberCell(row: ScoreRow, isYou: boolean): string {
-  const chip = isYou ? '<span class="score-you">YOU</span>' : '';
+  const ring = isDarkColour(row.colour) ? 'score-swatch--dark' : '';
   return `
     <td class="score-member">
-      <span class="score-swatch" style="background:${escapeHtml(row.colour)};color:${readableInkFor(row.colour)}"
-        aria-hidden="true">${escapeHtml(row.initials)}</span>
-      <span class="score-name">${escapeHtml(row.name)}</span>
-      ${chip}
+      <span class="score-member__inner">
+        <span class="score-swatch ${ring}"
+          style="background:${escapeHtml(row.colour)};color:${readableInkFor(row.colour)}"
+          aria-hidden="true">${escapeHtml(row.initials)}</span>
+        <span class="score-name">${escapeHtml(row.name)}</span>
+        ${isYou ? '<span class="score-you">YOU</span>' : ''}
+      </span>
     </td>
   `;
 }
 
-function rankCell(row: ScoreRow): string {
-  // A shared rank is shown as "T2", because two rows both reading a plain "2" looks like
-  // a rendering bug rather than a genuine tie.
-  const shared = row.tieNote === 'level on points and kills';
-  return `<td class="score-rank">${shared ? 'T' : ''}${row.rank}</td>`;
+/** A points figure in the board's large numeral, with an optional quiet line beneath. */
+function pointsCell(points: number, sub: string, extraClass = ''): string {
+  return `
+    <td class="score-points ${extraClass}">
+      <span class="score-points__value">${pointsLabel(points)}</span>
+      ${sub === '' ? '' : `<span class="score-sub">${escapeHtml(sub)}</span>`}
+    </td>
+  `;
 }
 
-function tieNoteCell(row: ScoreRow): string {
-  return row.tieNote === null ? '' : `<div class="score-tie">${escapeHtml(row.tieNote)}</div>`;
+function totalCell(row: ScoreRow): string {
+  return `
+    <td class="score-points score-total">
+      <span class="score-points__value">${pointsLabel(row.total)}</span>
+      ${row.tieNote === null ? '' : `<span class="score-tie">${escapeHtml(row.tieNote)}</span>`}
+    </td>
+  `;
 }
 
 function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | null): string {
@@ -228,11 +251,11 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
       const isYou = row.memberId === claimedMemberId;
       return `
         <tr class="score-row${isYou ? ' is-you' : ''}">
-          ${rankCell(row)}
+          <td class="score-place">${ordinal(cell.place)}</td>
           ${memberCell(row, isYou)}
-          <td class="score-finish">${ordinal(cell.place)}<span class="score-sub">${cell.placementPoints} pts</span></td>
-          <td class="score-kills">${escapeHtml(killSummary(cell.eliminations, cell.killPoints))}</td>
-          <td class="score-total">${cell.total}${tieNoteCell(row)}</td>
+          ${pointsCell(cell.placementPoints, '')}
+          ${pointsCell(cell.killPoints, killCountLabel(cell.eliminations))}
+          ${totalCell(row)}
         </tr>
       `;
     })
@@ -242,11 +265,11 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
     <table class="score-table">
       <thead>
         <tr>
-          <th scope="col">#</th>
+          <th scope="col">Placement</th>
           <th scope="col">Member</th>
-          <th scope="col">Finish</th>
-          <th scope="col">Kills</th>
-          <th scope="col">Points</th>
+          <th scope="col">Placement points</th>
+          <th scope="col">Kill points</th>
+          <th scope="col">Total</th>
         </tr>
       </thead>
       <tbody>${body}</tbody>
@@ -256,9 +279,17 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
 
 function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: string | null): string {
   const battleCount = rows[0]?.cells.length ?? 0;
-  const headers = Array.from(
+
+  // Two header rows: each arena names a section spanning its own two columns, so it is
+  // obvious which pair of numbers belongs to which battle. Placement, Member and Total sit
+  // outside the sections and span both rows.
+  const groupHeaders = Array.from(
     { length: battleCount },
-    (_, i) => `<th scope="col">${escapeHtml(ARENA_VARIANT_NAMES[i]!)}<span class="score-sub">Battle ${i + 1}</span></th>`,
+    (_, i) => `<th scope="colgroup" colspan="2" class="score-group">${escapeHtml(ARENA_VARIANT_NAMES[i]!)}</th>`,
+  ).join('');
+  const subHeaders = Array.from(
+    { length: battleCount },
+    () => '<th scope="col" class="score-group-start">Placement</th><th scope="col">Kills</th>',
   ).join('');
 
   const body = rows
@@ -266,36 +297,32 @@ function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: strin
       const isYou = row.memberId === claimedMemberId;
       const cells = row.cells
         .map(
-          (cell) => `
-            <td class="score-cell">
-              <span class="score-cell__total">${cell.total}</span>
-              <span class="score-sub">${ordinal(cell.place)} · ${escapeHtml(
-                killSummary(cell.eliminations, cell.killPoints),
-              )}</span>
-            </td>
-          `,
+          (cell) =>
+            pointsCell(cell.placementPoints, ordinal(cell.place), 'score-group-start') +
+            pointsCell(cell.killPoints, killCountLabel(cell.eliminations)),
         )
         .join('');
       return `
         <tr class="score-row${isYou ? ' is-you' : ''}">
-          ${rankCell(row)}
+          <td class="score-rank">${row.tieNote === 'level on points and kills' ? 'T' : ''}${row.rank}</td>
           ${memberCell(row, isYou)}
           ${cells}
-          <td class="score-total">${row.total}${tieNoteCell(row)}</td>
+          ${totalCell(row)}
         </tr>
       `;
     })
     .join('');
 
   return `
-    <table class="score-table">
+    <table class="score-table score-table--cumulative">
       <thead>
         <tr>
-          <th scope="col">#</th>
-          <th scope="col">Member</th>
-          ${headers}
-          <th scope="col">Total</th>
+          <th scope="col" rowspan="2">Placement</th>
+          <th scope="col" rowspan="2">Member</th>
+          ${groupHeaders}
+          <th scope="col" rowspan="2">Total</th>
         </tr>
+        <tr>${subHeaders}</tr>
       </thead>
       <tbody>${body}</tbody>
     </table>
@@ -317,7 +344,7 @@ export function scoreboardScreen(beat: BeatId): Screen {
       root.innerHTML = `
         <header class="score-header">
           <h1>${escapeHtml(copy.title)}</h1>
-          <p class="score-subtitle">${escapeHtml(copy.subtitle)}</p>
+          ${copy.subtitle === '' ? '' : `<p class="score-subtitle">${escapeHtml(copy.subtitle)}</p>`}
         </header>
         <div class="score-table-wrap">
           ${config.mode === 'battle'
