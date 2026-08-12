@@ -13,7 +13,8 @@
     "arena": "vite-node tools/arena-metrics.ts",
     "replay": "vite-node tools/replay.ts",
     "draft": "vite-node tools/draft-metrics.ts",
-    "record": "vite-node tools/record-event.ts"
+    "record": "vite-node tools/record-event.ts",
+    "seeds": "vite-node tools/seed-lab.ts"
   },
   "dependencies": {
     "pixi.js": "^8.19.0"
