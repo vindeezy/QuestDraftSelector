@@ -74,13 +74,30 @@ const DARK_BALL_LUMINANCE = 0.18;
  * so it stays correct no matter what release tuning (`releaseStagger`, `ballRadius`,
  * `ballCount`) produced them; call it before any `advance()` for the pre-drop figure.
  */
+/**
+ * Ceiling on the headroom above the board, in board units.
+ *
+ * The release column is staggered, so the topmost ball can sit ~344 units above y=0 — and
+ * honouring that in full made the canvas 45% taller (760 -> 1104). Since the board is
+ * letterboxed to fit its container, that tall-and-narrow aspect meant the board drew at
+ * only 42% of the available width, with the rest of the screen empty. Paying that much of
+ * the vertical budget to show ten balls queued up is a bad trade against the board being
+ * big enough to actually watch.
+ *
+ * Capped, the balls above the cap start off-screen and fall into view — which is what a
+ * Plinko drop looks like anyway. The cap costs nothing at the moment that matters.
+ */
+const MAX_TOP_MARGIN = 96;
+
 export function releaseMargin(run: PlinkoRun): number {
   let highest = 0;
   for (const ball of run.balls) {
     const top = ball.body.radius - ball.body.y; // distance above y=0 this ball's top edge sits, if any.
     if (top > highest) highest = top;
   }
-  return highest > 0 ? Math.ceil(highest) + 12 : 0; // +12: a little breathing room above the topmost ball.
+  if (highest <= 0) return 0;
+  const wanted = Math.ceil(highest) + 12; // +12: a little breathing room above the topmost ball.
+  return wanted > MAX_TOP_MARGIN ? MAX_TOP_MARGIN : wanted;
 }
 
 export interface PlinkoRenderer {
