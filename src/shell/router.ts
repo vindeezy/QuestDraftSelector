@@ -42,8 +42,30 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
   let currentBeat: BeatId = FIRST_BEAT;
   let teardown: (() => void) | null = null;
 
+  /**
+   * Runs the current screen's teardown, and never lets it stop the walkthrough.
+   *
+   * This is not defensive programming for its own sake — it is the fix for a real bug. A
+   * PixiJS renderer threw `_cancelResize is not a function` while being destroyed, the
+   * exception propagated out of `teardown()` before `container.innerHTML = ''` could run,
+   * and the viewer was stranded on the previous screen permanently. Progress kept
+   * recording the beat they had reached, so the stored state and the screen disagreed and
+   * the site looked simply broken.
+   *
+   * Cleanup failing is a leak. Cleanup failing and blocking navigation is a dead site on
+   * draft night, which is the one thing this cannot do. So a thrown teardown is logged and
+   * swallowed, and the next screen renders regardless.
+   */
+  function runTeardown(): void {
+    try {
+      teardown?.();
+    } catch (error) {
+      console.error('router: a screen teardown threw. Continuing to the next beat.', error);
+    }
+  }
+
   function renderBeat(beat: BeatId): void {
-    teardown?.();
+    runTeardown();
     teardown = null;
 
     container.innerHTML = '';
@@ -84,7 +106,7 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     },
     navigate: go,
     destroy: () => {
-      teardown?.();
+      runTeardown();
       teardown = null;
     },
   };

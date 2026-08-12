@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { BEAT_IDS, type BeatId } from './beats';
 import { mountRouter } from './router';
 import type { ProgressStorage } from './progress';
@@ -151,5 +151,60 @@ describe('mountRouter', () => {
 
     expect(router.currentBeat).toBe('landing');
     expect(container.dataset.beat).toBe('landing');
+  });
+});
+
+describe('a screen whose teardown throws', () => {
+  it('does not strand the viewer on the previous beat', async () => {
+    // The regression this guards. A PixiJS renderer threw `_cancelResize is not a function`
+    // while being destroyed; the exception escaped `teardown()` before the router could
+    // clear the container, so the next screen never rendered. Progress kept recording the
+    // beat that had been reached, so the stored state and the screen disagreed and the
+    // walkthrough simply stopped advancing -- on draft night, a dead site.
+    //
+    // Mocked at the screen registry rather than by adding a test hook to the router: the
+    // property under test is "the router survives a badly-behaved screen", and a screen
+    // that throws on teardown is exactly what a broken renderer looks like from here.
+    vi.resetModules();
+    vi.doMock('./screens', () => ({
+      SCREENS: new Proxy(
+        {},
+        {
+          get: (_t, beat: string) => ({
+            render: (ctx: { container: HTMLElement }) => {
+              const el = document.createElement('p');
+              el.textContent = `screen:${beat}`;
+              ctx.container.appendChild(el);
+              return () => {
+                throw new Error('renderer blew up during destroy');
+              };
+            },
+          }),
+        },
+      ),
+    }));
+
+    const { mountRouter: mountWithThrowingScreens } = await import('./router');
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    const router = mountWithThrowingScreens({ container, seed: SEED, storage });
+
+    const errors: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => errors.push(args);
+    try {
+      router.navigate('name-select');
+    } finally {
+      console.error = originalError;
+      vi.doUnmock('./screens');
+      vi.resetModules();
+    }
+
+    // Navigation completed despite the teardown throwing...
+    expect(router.currentBeat).toBe('name-select');
+    expect(container.dataset.beat).toBe('name-select');
+    expect(container.textContent).toContain('screen:name-select');
+    // ...and the failure was reported rather than silently swallowed.
+    expect(errors.length).toBeGreaterThan(0);
   });
 });

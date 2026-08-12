@@ -1,5 +1,6 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
 import { TileState } from '../sim/arena/tiles';
+import { destroyOnce } from './destroy-once';
 import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
 import { ZoneShape } from '../sim/arena/zone';
 import { isActive } from '../sim/arena/activation';
@@ -351,5 +352,5 @@ export async function createArenaRenderer(
 
   draw(match);
 
-  return { draw, destroy: () => app.destroy(true, { children: true }) };
+  return { draw, destroy: destroyOnce(app) };
 }

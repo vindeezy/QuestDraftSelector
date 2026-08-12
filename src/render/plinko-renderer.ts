@@ -1,5 +1,6 @@
 import { Application, BitmapText, Container, Graphics } from 'pixi.js';
 import type { PlinkoRun } from '../sim/plinko/plinko';
+import { destroyOnce } from './destroy-once';
 
 /** Placeholder member colours, used only when a caller does not supply real ones via
  *  `ballVisuals` (the "What to expect" demo loop, which never shows real members). */
@@ -137,6 +138,6 @@ export async function createPlinkoRenderer(
 
   return {
     draw,
-    destroy: () => app.destroy(true, { children: true }),
+    destroy: destroyOnce(app),
   };
 }
