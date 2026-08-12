@@ -160,17 +160,26 @@ export async function createPlinkoRenderer(
       const label = slotLabels[slot.index];
       if (label === undefined) continue;
       const slotWidth = slot.maxX - slot.minX;
+      // 16px, up from 10. These are meant to be read from across a room before the drop,
+      // and at 10 they were legible only if you leaned in.
+      //
+      // Wrapping carries the long ones rather than shrinking the type: multi-word names
+      // like "Depleted Uranium" and "Third Party Predator" break cleanly across lines.
+      // `breakWords` stays off deliberately — hyphenating mid-word to force a fit is worse
+      // to read than a second line. The binding case is the longest single word,
+      // "Flamethrower", in the six-slot weapon board: ~105px against ~112px of slot.
       const text = new BitmapText({
         text: label,
         style: {
           fontFamily: 'Arial',
-          fontSize: 10,
+          fontSize: 16,
           fontWeight: '700',
           fill: 0xc7d2e0,
           align: 'center',
           wordWrap: true,
-          wordWrapWidth: Math.max(40, slotWidth - 8),
-          lineHeight: 12,
+          breakWords: false,
+          wordWrapWidth: Math.max(40, slotWidth - 6),
+          lineHeight: 18,
         },
       });
       text.anchor.set(0.5, 0);

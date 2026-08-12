@@ -219,7 +219,9 @@ export function forgeScreen(beat: BeatId): Screen {
           <p class="forge-blurb">Every slot is labelled — study the board, then drop when you're ready. Nobody picks; wherever yours lands is what you get.</p>
         </div>
         <div class="forge-layout">
-          <div class="forge-board" data-role="board"></div>
+          <div class="forge-board" data-role="board">
+            <button type="button" class="btn btn-primary btn-large forge-drop-btn" data-role="drop">DROP 'EM</button>
+          </div>
           <aside class="forge-panel">
             <h2 class="forge-panel__title">Results</h2>
             <p class="forge-panel__hint">Revealed as each ball settles.</p>
@@ -227,7 +229,6 @@ export function forgeScreen(beat: BeatId): Screen {
           </aside>
         </div>
         <div class="forge-footer">
-          <button type="button" class="btn btn-primary btn-large forge-drop-btn" data-role="drop">DROP 'EM</button>
           <button type="button" class="btn btn-primary btn-large" data-role="continue" hidden>Continue</button>
         </div>
       `;

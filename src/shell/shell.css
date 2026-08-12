@@ -672,6 +672,14 @@ button {
    is pinned to exactly `100vh` (not just a floor) and the board is the one flexible
    piece that gives up space to everything around it. See `.forge-layout` below for how
    the board itself then scales into whatever room that leaves it. */
+/* Fills the viewport exactly, so the whole board is visible without scrolling — but only
+   down to the point where that is actually possible.
+
+   `height: 100vh` alone was a trap: below roughly 700px of viewport the header, blurb and
+   footer consumed everything and the board collapsed to a couple of pixels rather than
+   degrading. A scrollbar on a small window is a far better outcome than a two-pixel board,
+   so `min-height` on the board sets a floor and the screen grows past the viewport if it
+   has to. At any normal desktop size nothing scrolls, which is the case that matters. */
 .screen-forge {
   max-width: 1200px;
   height: 100vh;
@@ -680,6 +688,18 @@ button {
   padding: 20px 24px 18px;
   overflow: hidden;
   gap: 0;
+}
+
+@media (height < 700px) {
+  .screen-forge {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .forge-board {
+    min-height: 380px;
+  }
 }
 
 .forge-header {
@@ -750,6 +770,8 @@ button {
 }
 
 .forge-board {
+  /* Positioning context for the DROP 'EM overlay above. */
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -897,8 +919,18 @@ button {
 }
 
 /* The anticipation beat: bigger and lit, so the board reads as "waiting on you" rather
-   than a loading screen with a button on it. */
+   than a loading screen with a button on it.
+
+   Overlaid on the centre of the board rather than sitting in the footer. In the footer it
+   occupied real layout space, so the board visibly resized the moment it was pressed —
+   the drop began with a jolt instead of with the balls. Absolutely positioned, its
+   disappearance costs nothing and the board never moves. */
 .forge-drop-btn {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
   padding: 18px 52px;
   font-size: 19px;
   letter-spacing: 0.04em;
