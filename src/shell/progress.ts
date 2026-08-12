@@ -229,6 +229,23 @@ export function resetWatch(seed: number, storage: ProgressStorage | null = resol
   return { hasCompletedOnce, claimedMemberId: null, furthestBeat: FIRST_BEAT };
 }
 
+/**
+ * A total wipe for this seed — the current watch AND the completion unlock.
+ *
+ * Deliberately harsher than `resetWatch`. That one implements the designed re-watch flow
+ * and keeps the unlock, because a member who has earned skip navigation should not lose it
+ * for changing whose side they watch from. This exists for the other case: getting back to
+ * a genuinely first-time viewing, which is what reviewing the opening screens needs, and
+ * what an escape hatch on draft night should do for someone whose stored state is wedged.
+ *
+ * Reached via `?reset` — see `boot.ts`.
+ */
+export function clearProgress(seed: number, storage: ProgressStorage | null = resolveDefaultStorage()): ProgressState {
+  safeRemove(storage, watchKey(seed));
+  safeRemove(storage, completionKey(seed));
+  return { hasCompletedOnce: false, claimedMemberId: null, furthestBeat: FIRST_BEAT };
+}
+
 // Re-exported so consumers of this module don't also need to import from `./beats` just to
 // name the full beat list or the sentinel first/last beats.
 export { BEAT_IDS, FIRST_BEAT, LAST_BEAT };

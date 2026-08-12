@@ -1,5 +1,6 @@
 import { checkOfficialRecord, checkRecord, type ChecksumCheck } from './checksum-gate';
 import { mountRouter } from './router';
+import { clearProgress } from './progress';
 import type { EventRecord } from '../sim/event/record';
 
 /**
@@ -63,6 +64,31 @@ function nextPaint(): Promise<void> {
  * error. Returns the check result so a caller — or a test — can see what happened
  * without re-deriving it.
  */
+/**
+ * `?reset` — wipe this device's progress for the current event and start from the landing
+ * screen as a genuinely first-time viewer.
+ *
+ * Two jobs. It makes reviewing the opening screens possible at all: the site resumes where
+ * the last watch stopped, which is correct behaviour and exactly wrong when you want to
+ * look at the screens you already walked past. And on draft night it is the escape hatch
+ * for a member whose stored state is wedged.
+ *
+ * The parameter is stripped from the URL immediately afterwards. Leaving it there would
+ * make the reset sticky — every refresh would wipe progress again, so the viewer could
+ * never get past the landing screen by reloading, which is the first thing anyone tries.
+ */
+function applyResetParam(seed: number): void {
+  if (typeof window === 'undefined') return;
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('reset')) return;
+
+  clearProgress(seed);
+
+  url.searchParams.delete('reset');
+  window.history.replaceState(null, '', url.toString());
+}
+
 export async function boot(container: HTMLElement, record?: EventRecord): Promise<ChecksumCheck> {
   renderLoading(container);
   await nextPaint();
@@ -73,6 +99,10 @@ export async function boot(container: HTMLElement, record?: EventRecord): Promis
     renderError(container, check);
     return check;
   }
+
+  // After the gate, so a mismatched event still blocks rather than being quietly reset,
+  // and before the router mounts, so the router reads the cleared state.
+  applyResetParam(check.record.masterSeed);
 
   container.innerHTML = '';
   mountRouter({ container, seed: check.record.masterSeed });

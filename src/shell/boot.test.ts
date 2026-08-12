@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import { boot } from './boot';
 import { runEvent, type EventMember } from '../sim/event/event';
+import { loadProgress, recordBeatReached, claimMember } from './progress';
 import type { EventRecord } from '../sim/event/record';
 
 const MEMBERS: EventMember[] = [
@@ -65,5 +66,72 @@ describe('boot', () => {
     // Synchronous read, before the returned promise has had a chance to resolve.
     expect(container.querySelector('.gate--loading')).not.toBeNull();
     expect(container.textContent).toContain('Assembling the event');
+  });
+});
+
+describe('the ?reset escape hatch', () => {
+  // Built from jsdom's own origin rather than hardcoded: `replaceState` refuses to cross
+  // origins, and the test environment's URL is not the dev server's.
+  const RESET_URL = new URL('/?reset', window.location.href).toString();
+  const PLAIN_URL = new URL('/', window.location.href).toString();
+
+  // `claimMember` validates against the real roster, so this uses a real member id rather
+  // than the two-member fixture the checksum tests above run on.
+  const CLAIMED = 'paden';
+
+  function seedSomeProgress(masterSeed: number): void {
+    recordBeatReached(masterSeed, 'name-select');
+    claimMember(masterSeed, CLAIMED);
+    window.localStorage.setItem(`questDraftSelector:v1:${masterSeed}:hasCompletedOnce`, 'true');
+  }
+
+  it('wipes the watch AND the completion unlock, so review starts genuinely fresh', async () => {
+    const record = makeValidRecord();
+    seedSomeProgress(record.masterSeed);
+    window.history.replaceState(null, '', RESET_URL);
+
+    await boot(makeContainer(), record);
+
+    const after = loadProgress(record.masterSeed);
+    expect(after.claimedMemberId).toBeNull();
+    expect(after.furthestBeat).toBe('landing');
+    expect(after.hasCompletedOnce).toBe(false);
+  });
+
+  it('strips the parameter from the URL, so a refresh does not wipe progress again', async () => {
+    // The trap this guards: leaving `?reset` in the address bar makes the reset sticky.
+    // Every reload would wipe progress, so a viewer could never get past the landing screen
+    // by refreshing — the first thing anyone tries when a page looks stuck.
+    const record = makeValidRecord();
+    window.history.replaceState(null, '', RESET_URL);
+
+    await boot(makeContainer(), record);
+
+    expect(new URL(window.location.href).searchParams.has('reset')).toBe(false);
+  });
+
+  it('leaves progress alone when the parameter is absent', async () => {
+    const record = makeValidRecord();
+    window.history.replaceState(null, '', PLAIN_URL);
+    seedSomeProgress(record.masterSeed);
+
+    await boot(makeContainer(), record);
+
+    const after = loadProgress(record.masterSeed);
+    expect(after.claimedMemberId).toBe(CLAIMED);
+    expect(after.hasCompletedOnce).toBe(true);
+  });
+
+  it('does not reset when the checksum gate blocks — a bad event stays blocked', async () => {
+    // Order matters: resetting before the gate would let `?reset` quietly paper over a
+    // mismatched event instead of surfacing it.
+    const record = makeValidRecord();
+    seedSomeProgress(record.masterSeed);
+    window.history.replaceState(null, '', RESET_URL);
+
+    const check = await boot(makeContainer(), { ...record, checksum: 'wrong' });
+
+    expect(check.ok).toBe(false);
+    expect(loadProgress(record.masterSeed).claimedMemberId).toBe(CLAIMED);
   });
 });
