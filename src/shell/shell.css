@@ -749,11 +749,6 @@ button {
   margin-bottom: 6px;
 }
 
-.forge-blurb {
-  color: var(--ink-dim);
-  font-size: 0.92rem;
-}
-
 /* The one row that absorbs whatever vertical space the header and footer don't use —
    `minmax(0, 1fr)` on both axes is what lets it shrink below its content size instead
    of forcing the screen to grow past 100vh and scroll. */
@@ -911,13 +906,6 @@ button {
   text-align: right;
 }
 
-.forge-footer {
-  flex: none;
-  display: flex;
-  justify-content: center;
-  margin-top: 20px;
-}
-
 /* The anticipation beat: bigger and lit, so the board reads as "waiting on you" rather
    than a loading screen with a button on it.
 
@@ -925,15 +913,28 @@ button {
    occupied real layout space, so the board visibly resized the moment it was pressed —
    the drop began with a jolt instead of with the balls. Absolutely positioned, its
    disappearance costs nothing and the board never moves. */
-.forge-drop-btn {
+/* Both the DROP 'EM and Continue controls sit here, in the same place, so neither one
+   appearing or vanishing moves the board or the results panel by a pixel.
+
+   Centred with `inset: 0; margin: auto` rather than `transform: translate(-50%, -50%)`.
+   That is not a style preference — `.btn:active` sets its own `transform` for the press
+   effect, which REPLACES a centring transform outright. The button jumped from the middle
+   to the top-left corner on mousedown, and if the pointer then sat outside where it had
+   moved to, mouseup landed elsewhere and no click fired at all. Centring without transform
+   leaves `:active` free to do its job. */
+.forge-overlay-btn {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
   z-index: 2;
   padding: 18px 52px;
   font-size: 19px;
   letter-spacing: 0.04em;
+}
+
+.forge-drop-btn {
   animation: forge-drop-glow 2.2s ease-in-out infinite;
 }
 
