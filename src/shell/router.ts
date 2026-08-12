@@ -1,5 +1,11 @@
-import { FIRST_BEAT, previousBeat, type BeatId } from './beats';
-import { canNavigateToBeat, loadProgress, recordBeatReached, type ProgressStorage } from './progress';
+import { FIRST_BEAT, isBeforeBeat, nextBeat, previousBeat, type BeatId } from './beats';
+import {
+  canNavigateToBeat,
+  hasSeenBeat,
+  loadProgress,
+  recordBeatReached,
+  type ProgressStorage,
+} from './progress';
 import { SCREENS } from './screens';
 import type { ScreenContext } from './screens/types';
 
@@ -81,40 +87,79 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     };
 
     teardown = SCREENS[beat].render(ctx) ?? null;
-    renderBackButton(beat);
+    renderBeatNav(beat, state);
   }
 
-  /**
-   * The one back affordance for the whole walkthrough, owned by the router rather than
-   * repeated across nineteen screens — the same reason `navigate` lives here.
-   *
-   * Appended AFTER the screen has rendered, because `renderBeat` clears `container`
-   * first; anything added before would be wiped. It is positioned `fixed` (see
-   * `.beat-back` in `shell.css`) so it never joins the screen's own flex or grid layout —
-   * a screen that centres its content cannot be nudged off-centre by this button
-   * existing.
-   *
-   * No button on `landing`: there is nothing before it. Everywhere else, the target is
-   * always a beat already seen, so `canNavigateToBeat` permits it unconditionally and
-   * `recordBeatReached` leaves `furthestBeat` alone — going back never costs progress.
-   * That was designed into `progress.ts` from the start; this only exposes it.
-   */
-  function renderBackButton(beat: BeatId): void {
-    const target = previousBeat(beat);
-    if (target === null) return;
-
+  /** One quiet nav button. `nav` becomes `data-nav`, which is what tests and any screen
+   *  reasoning about these should match on — never the visible text, which is a wording
+   *  decision rather than a contract. */
+  function navButton(nav: string, label: string, ariaLabel: string, target: BeatId): HTMLButtonElement {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'btn beat-back';
-    // Targetable by tests and by any screen that needs to reason about it, without
-    // matching on visible text (which is a wording decision, not a contract).
-    button.dataset.nav = 'back';
-    button.textContent = '← Back';
-    button.setAttribute('aria-label', `Go back to the previous step (${target})`);
+    button.className = 'btn beat-nav-btn';
+    button.dataset.nav = nav;
+    button.textContent = label;
+    button.setAttribute('aria-label', ariaLabel);
     button.addEventListener('click', () => {
       go(target);
     });
-    container.appendChild(button);
+    return button;
+  }
+
+  /**
+   * The walkthrough's own navigation — back, forward, and resume — owned by the router
+   * rather than repeated across nineteen screens, the same reason `navigate` lives here.
+   *
+   * Appended AFTER the screen has rendered, because `renderBeat` clears `container`
+   * first; anything added before would be wiped. Both clusters are positioned `fixed`
+   * (see `.beat-nav` in `shell.css`) so they never join the screen's own flex or grid
+   * layout — a screen that centres its content cannot be nudged off-centre by these
+   * existing.
+   *
+   * Back is unconditional except on `landing`, since a previous beat has always been
+   * seen. Forward and resume are gated on `hasSeenBeat`, NOT on `canNavigateToBeat` —
+   * see that function's doc comment for why the difference matters: the latter permits
+   * one step past the frontier, which is precisely the skip forward navigation must
+   * never allow.
+   */
+  function renderBeatNav(beat: BeatId, state: ReturnType<typeof loadProgress>): void {
+    const back = previousBeat(beat);
+    if (back !== null) {
+      const left = document.createElement('div');
+      left.className = 'beat-nav beat-nav-left';
+      left.appendChild(navButton('back', '← Back', `Go back to the previous step (${back})`, back));
+      container.appendChild(left);
+    }
+
+    const forward = nextBeat(beat);
+    const canGoForward = forward !== null && hasSeenBeat(state, forward);
+    // Resume is only worth offering when it lands somewhere Forward wouldn't already
+    // reach — i.e. the frontier is more than a single step ahead. It is also skipped
+    // whenever the frontier is at or behind the current beat, which is the normal case
+    // while watching new ground, and the state `resetWatch` leaves behind.
+    const showResume =
+      isBeforeBeat(beat, state.furthestBeat) && state.furthestBeat !== forward && hasSeenBeat(state, state.furthestBeat);
+
+    if (!canGoForward && !showResume) return;
+
+    const right = document.createElement('div');
+    right.className = 'beat-nav beat-nav-right';
+    if (canGoForward) {
+      right.appendChild(
+        navButton('forward', 'Forward →', `Go forward one step (${forward}), which you have already seen`, forward),
+      );
+    }
+    if (showResume) {
+      right.appendChild(
+        navButton(
+          'resume',
+          'Resume',
+          `Skip ahead to where you had got to (${state.furthestBeat})`,
+          state.furthestBeat,
+        ),
+      );
+    }
+    container.appendChild(right);
   }
 
   function go(beat: BeatId): void {

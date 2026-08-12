@@ -170,6 +170,29 @@ export function canNavigateToBeat(state: ProgressState, beat: BeatId): boolean {
 }
 
 /**
+ * Has this member already experienced `beat`?
+ *
+ * Deliberately NOT `canNavigateToBeat`, and the difference is the whole point. That
+ * function permits `furthestBeat + 1` — the single step that extends the frontier, which
+ * is exactly how a screen moves the walkthrough forward. Gating a *forward button* on it
+ * would let someone click straight into a battle they had never watched, which is the one
+ * thing forward navigation must never do.
+ *
+ * So this is the strict version: at or before `furthestBeat`, with no `+ 1`. Safe by
+ * construction, because `furthestBeat` only ever advances when a screen navigates on
+ * completion — it can never run ahead of what was actually sat through.
+ *
+ * `hasCompletedOnce` still unlocks everything, and that is not a hole: it means the whole
+ * event has been watched end to end. It is checked separately from `furthestBeat` because
+ * `resetWatch` ("watch again as someone else") deliberately sends `furthestBeat` back to
+ * `landing` while leaving the unlock alone.
+ */
+export function hasSeenBeat(state: ProgressState, beat: BeatId): boolean {
+  if (state.hasCompletedOnce) return true;
+  return beatIndex(beat) <= beatIndex(state.furthestBeat);
+}
+
+/**
  * Called when `beat` is actually shown to the member. Extends `furthestBeat` forward when
  * `beat` is new ground, leaves it untouched when `beat` is somewhere already seen (going
  * back must never shrink progress), and sets the sticky `hasCompletedOnce` the moment

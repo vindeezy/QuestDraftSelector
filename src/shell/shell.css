@@ -191,16 +191,30 @@ button {
   font-size: 17px;
 }
 
-/* The router's back button (see `renderBackButton` in `router.ts`). Deliberately `fixed`
-   rather than part of any screen's layout: it is appended as the last child of #app on
-   every beat, and a screen that centres its content must not shift because this button
-   exists. Quiet by default — it is an escape hatch, not a call to action, and it must
-   never compete with the primary button that moves the walkthrough forward. */
-.beat-back {
+/* The router's walkthrough navigation (see `renderBeatNav` in `router.ts`). Deliberately
+   `fixed` rather than part of any screen's layout: these are appended as the last children
+   of #app on every beat, and a screen that centres its content must not shift because they
+   exist. Two separate clusters rather than one full-width bar, so nothing invisible spans
+   the top of the screen swallowing clicks meant for the content beneath. */
+.beat-nav {
   position: fixed;
   top: 18px;
-  left: 18px;
   z-index: 50;
+  display: flex;
+  gap: 8px;
+}
+
+.beat-nav-left {
+  left: 18px;
+}
+
+.beat-nav-right {
+  right: 18px;
+}
+
+/* Quiet by default — these are escape hatches, not calls to action, and must never
+   compete with the primary button that moves the walkthrough forward. */
+.beat-nav-btn {
   padding: 8px 16px;
   font-size: 13px;
   font-weight: 600;
@@ -209,16 +223,27 @@ button {
   backdrop-filter: blur(6px);
 }
 
-.beat-back:hover {
+.beat-nav-btn:hover {
   opacity: 1;
 }
 
-/* Reduced further on small screens, where horizontal room is scarcest and the button is
+/* Reduced further on small screens, where horizontal room is scarcest and the buttons are
    most likely to crowd a heading. */
 @media (max-width: 600px) {
-  .beat-back {
+  .beat-nav {
     top: 10px;
+    gap: 6px;
+  }
+
+  .beat-nav-left {
     left: 10px;
+  }
+
+  .beat-nav-right {
+    right: 10px;
+  }
+
+  .beat-nav-btn {
     padding: 7px 13px;
     font-size: 12px;
   }

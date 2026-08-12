@@ -139,6 +139,21 @@ unwatched beat and cannot jump forward.
 the whole event from their side — and because `hasCompletedOnce` survives, you are never
 re-locked. Nobody is stuck with their first choice.
 
+**Walkthrough navigation** (added 12 August, after WEB 9). The router draws up to three
+quiet buttons, so no screen implements navigation itself:
+
+| Button | Shown when | Goes to |
+|---|---|---|
+| ← Back | Anywhere but `landing` | One beat earlier |
+| Forward → | The next beat has already been seen | One beat later |
+| Resume | The frontier is more than one step ahead | `furthestBeat` |
+
+Back never shrinks `furthestBeat`, so revisiting costs nothing. Forward and Resume are
+gated on `hasSeenBeat`, **not** `canNavigateToBeat` — the latter deliberately permits
+`furthestBeat + 1` so a screen can extend the frontier on completion, and that one step is
+exactly the skip forward navigation must never allow. On the frontier itself there is
+nothing forward to click: new ground is only ever reached by watching it.
+
 Both are keyed by the event seed, so a re-recording resets everyone rather than resuming
 them into an event that no longer exists.
 

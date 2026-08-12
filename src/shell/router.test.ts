@@ -306,6 +306,87 @@ describe('the back button', () => {
     expect(backButton(container)).not.toBeNull();
   });
 
+  it('never lets a forward button skip past the frontier — the whole safety rule', () => {
+    // The guarantee, stated directly: on the beat a member has actually reached, there
+    // is nothing forward to click. Forward can only ever retrace ground already covered.
+    for (const beat of BEAT_IDS) {
+      const storage = new MemoryStorage();
+      const container = makeContainer();
+      seedFurthestBeat(storage, beat);
+      mountRouter({ container, seed: SEED, storage });
+
+      expect(
+        container.querySelector('button[data-nav="forward"]'),
+        `"${beat}" is the frontier, so nothing may lead forward out of it`,
+      ).toBeNull();
+      expect(container.querySelector('button[data-nav="resume"]')).toBeNull();
+    }
+  });
+
+  it('offers forward only after going back, and it steps exactly one beat', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    expect(container.querySelector('button[data-nav="forward"]')).toBeNull();
+
+    backButton(container)!.click();
+    expect(router.currentBeat).toBe('standings-2');
+
+    const forward = container.querySelector<HTMLButtonElement>('button[data-nav="forward"]');
+    expect(forward).not.toBeNull();
+    forward!.click();
+    expect(router.currentBeat).toBe('battle-3');
+  });
+
+  it('offers resume only when the frontier is more than one step ahead', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    // One step back: forward alone reaches the frontier, so resume would be redundant.
+    backButton(container)!.click();
+    expect(container.querySelector('button[data-nav="resume"]')).toBeNull();
+
+    // Two steps back: now they differ, so both are offered.
+    backButton(container)!.click();
+    expect(router.currentBeat).toBe('battle-2-result');
+    expect(container.querySelector('button[data-nav="forward"]')).not.toBeNull();
+    expect(container.querySelector('button[data-nav="resume"]')).not.toBeNull();
+  });
+
+  it('resume jumps straight back to the frontier from a deep detour', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3', 'tommy');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    router.navigate('build-reveal');
+    container.querySelector<HTMLButtonElement>('button[data-nav="resume"]')!.click();
+
+    expect(router.currentBeat).toBe('battle-3');
+    const watch = JSON.parse(storage.getItem(WATCH_KEY)!) as { furthestBeat: BeatId; claimedMemberId: string | null };
+    expect(watch.furthestBeat).toBe('battle-3');
+    expect(watch.claimedMemberId).toBe('tommy');
+  });
+
+  it('unlocks forward everywhere once the event has been completed once', () => {
+    // `resetWatch` sends `furthestBeat` back to landing but deliberately keeps the
+    // completion unlock, so a second viewing is free to move around: everything has
+    // genuinely been watched already.
+    const storage = new MemoryStorage();
+    storage.setItem(`questDraftSelector:v1:${SEED}:hasCompletedOnce`, 'true');
+    const container = makeContainer();
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    expect(router.currentBeat).toBe('landing');
+    expect(container.querySelector('button[data-nav="forward"]')).not.toBeNull();
+    // Nothing to resume to — the frontier is behind, not ahead.
+    expect(container.querySelector('button[data-nav="resume"]')).toBeNull();
+  });
+
   it('renders exactly one back button, never a stack of them across navigations', () => {
     const storage = new MemoryStorage();
     const container = makeContainer();

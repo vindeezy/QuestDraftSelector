@@ -7,6 +7,7 @@ import {
   claimMember,
   resetWatch,
   canNavigateToBeat,
+  hasSeenBeat,
   type ProgressState,
   type ProgressStorage,
 } from './progress';
@@ -152,6 +153,36 @@ describe('recordBeatReached: the anti-spoiler rule', () => {
     // A brand-new "session" just calls loadProgress with the same seed and storage.
     const resumed = loadProgress(SEED, storage);
     expect(resumed.furthestBeat).toBe('forge-1');
+  });
+});
+
+describe('hasSeenBeat', () => {
+  it('stops one beat short of canNavigateToBeat — the difference forward navigation depends on', () => {
+    // If these two ever agree at the frontier + 1, a forward button gated on `hasSeenBeat`
+    // would let someone click into a battle they never watched. That is the failure this
+    // test exists to catch, so it is asserted as a contrast rather than in isolation.
+    const state: ProgressState = { hasCompletedOnce: false, claimedMemberId: null, furthestBeat: 'forge-2' };
+
+    expect(hasSeenBeat(state, 'forge-1')).toBe(true); // behind the frontier
+    expect(hasSeenBeat(state, 'forge-2')).toBe(true); // the frontier itself
+    expect(hasSeenBeat(state, 'forge-3')).toBe(false); // one past: unseen, refused...
+    expect(canNavigateToBeat(state, 'forge-3')).toBe(true); // ...even though navigation allows it
+  });
+
+  it('refuses everything ahead of a brand-new viewer', () => {
+    const state: ProgressState = { hasCompletedOnce: false, claimedMemberId: null, furthestBeat: FIRST_BEAT };
+    for (const beat of BEAT_IDS.slice(1)) {
+      expect(hasSeenBeat(state, beat), `"${beat}" has not been seen yet`).toBe(false);
+    }
+  });
+
+  it('allows everything once hasCompletedOnce is true, even with furthestBeat reset to landing', () => {
+    // The state `resetWatch` leaves behind. Not a hole: the whole event really has been
+    // watched, so there is nothing left to spoil.
+    const state: ProgressState = { hasCompletedOnce: true, claimedMemberId: null, furthestBeat: FIRST_BEAT };
+    for (const beat of BEAT_IDS) {
+      expect(hasSeenBeat(state, beat)).toBe(true);
+    }
   });
 });
 
