@@ -1615,3 +1615,182 @@ button {
     display: none;
   }
 }
+
+/* --- Scoreboards ------------------------------------------------------------------- */
+
+.screen-scoreboard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  min-height: 100vh;
+  padding: 64px 28px 40px;
+}
+
+.score-header {
+  text-align: center;
+}
+
+.score-header h1 {
+  font-size: clamp(28px, 4vw, 46px);
+}
+
+.score-subtitle {
+  margin-top: 8px;
+  color: var(--ink-dim);
+  font-size: 15px;
+}
+
+/* The table is the one thing on these screens that can genuinely outgrow a narrow
+   viewport — five or six columns of numbers. It scrolls inside its own box rather than
+   pushing the page sideways. */
+.score-table-wrap {
+  width: 100%;
+  max-width: 1000px;
+  overflow-x: auto;
+}
+
+.score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-table th {
+  padding: 0 14px 10px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.score-table td {
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+/* Stacked under a heading or a number: the quiet second line that carries the detail
+   ("2nd · 1 kill — 3 pts"). */
+.score-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-dim);
+}
+
+.score-rank {
+  width: 1%;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.score-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.score-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.score-name {
+  font-weight: 700;
+}
+
+.score-you {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--neon-cyan);
+  color: #04121a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.score-cell__total,
+.score-total {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.score-total {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.score-finish,
+.score-kills {
+  color: var(--ink-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.score-finish {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Why a level total sits where it does. Small and quiet — it explains an ordering, it is
+   not itself a result. */
+.score-tie {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* The claimed member's row, using the same cyan the arena and Forge use for "this is
+   you". A left edge rather than a full-row tint, so it marks the row without making its
+   numbers harder to read than everyone else's. */
+.score-row.is-you td {
+  background: rgb(76 224 255 / 0.07);
+}
+
+.score-row.is-you td:first-child {
+  box-shadow: inset 3px 0 0 var(--neon-cyan);
+}
+
+.score-row.is-you .score-rank {
+  color: var(--ink);
+}
+
+@media (max-width: 720px) {
+  .screen-scoreboard {
+    padding: 58px 12px 28px;
+    gap: 18px;
+  }
+
+  .score-table th,
+  .score-table td {
+    padding: 9px 8px;
+  }
+
+  .score-swatch {
+    width: 26px;
+    height: 26px;
+    font-size: 10px;
+  }
+}

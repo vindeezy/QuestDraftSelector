@@ -112,8 +112,19 @@ describe('mountRouter', () => {
     }
   });
 
-  it('shows a placeholder stub for every beat after the Forge, except build-reveal and the three battles which are real now', () => {
-    const realBeatsPastForge: ReadonlySet<string> = new Set(['build-reveal', 'battle-1', 'battle-2', 'battle-3']);
+  it('shows a placeholder stub only for the beats that are still unbuilt', () => {
+    // Shrinks as the walkthrough is built out. What remains after WEB 10 is the draft
+    // order reveal and the completion screen.
+    const realBeatsPastForge: ReadonlySet<string> = new Set([
+      'build-reveal',
+      'battle-1',
+      'battle-2',
+      'battle-3',
+      'standings-1',
+      'battle-2-result',
+      'standings-2',
+      'battle-3-result',
+    ]);
     const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1).filter((beat) => !realBeatsPastForge.has(beat));
     expect(stubBeats.length).toBeGreaterThan(0);
 

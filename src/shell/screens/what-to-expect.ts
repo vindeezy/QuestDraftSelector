@@ -8,6 +8,7 @@ import { createArenaRenderer } from '../../render/arena-renderer';
 import { PLACEMENT_POINTS, KILL_POINTS } from '../../sim/event/scoring';
 import { DEMO_SEED } from '../demo-seed';
 import { nextBeat } from '../beats';
+import { ordinal } from '../ordinal';
 import { canvasSupportsWebGL } from '../canvas-support';
 import type { Screen, ScreenContext } from './types';
 
@@ -189,23 +190,6 @@ async function mountArenaLoop(host: HTMLElement): Promise<() => void> {
     cancelAnimationFrame(frame);
     renderer.destroy();
   };
-}
-
-/** `1` -> "1st", `2` -> "2nd", and so on. Only ever called with 1..10, but written
- *  generally rather than as a ten-entry lookup table. */
-function ordinal(place: number): string {
-  const mod100 = place % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${place}th`;
-  switch (place % 10) {
-    case 1:
-      return `${place}st`;
-    case 2:
-      return `${place}nd`;
-    case 3:
-      return `${place}rd`;
-    default:
-      return `${place}th`;
-  }
 }
 
 /** The scoring section's "picture" — the points table, plainly laid out, exactly as the
