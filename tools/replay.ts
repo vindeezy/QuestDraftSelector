@@ -6,11 +6,33 @@
  *
  * Usage:
  *   npm run replay -- <seed> [--arena=grinder|gauntlet|crossfire]   Defaults to grinder.
+ *   npm run replay -- <masterSeed> --event [--battle=1|2|3]         Defaults to battle 1.
  *
- * Read-only: this file never touches src/sim's behaviour. It derives builds with
- * `buildsForSeed`, exactly as `tools/arena-metrics.ts` does, then drives the match with
- * only `createMatch` / `advanceMatch` and reads back public `Match` fields — the same
- * match the owner watched in the browser, replayed identically.
+ * The two modes derive their bots from DIFFERENT places, and the difference matters.
+ *
+ * Without `--event`, the seed is a standalone match seed and builds come from
+ * `buildsForSeed` — the same path `arena-metrics.ts` uses for bulk tuning runs. Good for
+ * "how does this arena behave", useless for "what will the league actually watch".
+ *
+ * With `--event`, the seed is a MASTER EVENT SEED: `runEvent` derives the six Forge boards
+ * and three battle seeds from it, and this replays one of those three battles with the real
+ * builds the Forge dealt and the real battle seed. That is the mode that screens what the
+ * league will actually be shown.
+ *
+ * Why `--event` is needed at all, given the two derivations overlap: `deriveSeeds` (match
+ * mode) and `deriveSubSeeds` (event mode) draw from the same stream in the same order, so
+ * match mode's single `matchSeed` IS battle 1's seed, and its default arena IS battle 1's
+ * arena. Battle 1 was therefore screenable by accident. Battles 2 and 3 never were — their
+ * seeds are the eighth and ninth draws, which match mode never reaches. Passing
+ * `--arena=gauntlet` with a master seed does not screen battle 2; it screens battle 1's
+ * seed in battle 2's arena, a fight that never happens, and reports it as though it had.
+ *
+ * `replay.test.ts` pins both halves: event mode's placements equal the ones `runEvent`
+ * recorded, battle for battle, and match mode coincides with battle 1 but not with 2 or 3.
+ *
+ * Read-only: this file never touches src/sim's behaviour. It drives the match with only
+ * `createMatch` / `advanceMatch` and reads back public `Match` fields — the same match the
+ * owner watched in the browser, replayed identically.
  *
  * One diagnostic field was added to `src/sim/arena/ai.ts` to make this tool possible:
  * `AiState.lastAction`, a mirror of `chooseAction`'s return value written every tick and
@@ -20,6 +42,10 @@
 import { GRINDER_ARENA, GAUNTLET_ARENA, CROSSFIRE_ARENA, type ArenaConfig } from '../src/sim/arena/arena';
 import { DEFAULT_MATCH, createMatch, advanceMatch, type Match } from '../src/sim/arena/match';
 import { buildsForSeed } from '../src/sim/parts/forge';
+import { runEvent } from '../src/sim/event/event';
+import { ARENA_VARIANTS } from '../src/sim/event/arenas';
+import { assemble, type AssembledBot } from '../src/sim/parts/assemble';
+import { toEventMembers } from '../src/config/roster';
 
 const BOT_COUNT = 10;
 const TICKS_PER_SECOND = 60;
@@ -43,14 +69,21 @@ function pct(n: number, d: number): string {
 
 // --- CLI ---------------------------------------------------------------------------------
 
+const USAGE = [
+  'Usage:',
+  '  npm run replay -- <seed> [--arena=grinder|gauntlet|crossfire]',
+  '  npm run replay -- <masterSeed> --event [--battle=1|2|3]',
+].join('\n');
+
 const args = process.argv.slice(2);
 const positional = args.filter((a) => !a.startsWith('--'));
 const seedArg = positional[0];
 if (seedArg === undefined || !/^-?\d+$/.test(seedArg)) {
-  console.error('Usage: npm run replay -- <seed> [--arena=grinder|gauntlet|crossfire]');
+  console.error(USAGE);
   process.exit(1);
 }
 const seed = Number(seedArg);
+const eventMode = args.includes('--event');
 
 const arenaArg = args.find((a) => a.startsWith('--arena='));
 const arenaName = arenaArg ? arenaArg.slice('--arena='.length) : 'grinder';
@@ -59,23 +92,82 @@ const ARENAS: Record<string, { config: ArenaConfig; label: string }> = {
   gauntlet: { config: GAUNTLET_ARENA, label: 'gauntlet (The Gauntlet)' },
   crossfire: { config: CROSSFIRE_ARENA, label: 'crossfire (The Crossfire)' },
 };
+
+const battleArg = args.find((a) => a.startsWith('--battle='));
+const battleNumber = battleArg ? Number(battleArg.slice('--battle='.length)) : 1;
+if (eventMode && ![1, 2, 3].includes(battleNumber)) {
+  console.error(`Unknown --battle=${battleArg?.slice('--battle='.length)}. Valid: 1, 2, 3.`);
+  process.exit(1);
+}
+if (!eventMode && arenaArg === undefined && battleArg !== undefined) {
+  console.error('--battle only means anything with --event. Did you mean to pass --event?');
+  process.exit(1);
+}
+
 const selected = ARENAS[arenaName];
-if (!selected) {
+if (!selected && !eventMode) {
   console.error(`Unknown --arena=${arenaName}. Valid: grinder, gauntlet, crossfire.`);
   process.exit(1);
 }
-const { config: arenaConfig, label: arenaLabel } = selected;
 
-// --- Derive builds, exactly as arena-metrics.ts does --------------------------------------
+// --- Build the match ----------------------------------------------------------------------
 
-const { builds, matchSeed } = buildsForSeed(seed, BOT_COUNT);
-const match: Match = createMatch({
-  ...DEFAULT_MATCH,
-  arena: arenaConfig,
-  seed: matchSeed,
-  botCount: BOT_COUNT,
-  builds,
-});
+/** What either mode hands back: the match to drive, the assembled builds behind it (the
+ *  per-bot summary prints their part labels), and the line naming what is being replayed. */
+interface Replay {
+  match: Match;
+  builds: AssembledBot[];
+  headerLabel: string;
+}
+
+const { match, builds, headerLabel } = eventMode ? eventBattle(seed, battleNumber) : standaloneMatch(seed);
+
+/** Match mode: builds from `buildsForSeed`, exactly as `arena-metrics.ts` derives them. */
+function standaloneMatch(matchSeedInput: number): Replay {
+  const { config: arenaConfig, label: arenaLabel } = selected!;
+  const { builds: assembled, matchSeed } = buildsForSeed(matchSeedInput, BOT_COUNT);
+  return {
+    match: createMatch({
+      ...DEFAULT_MATCH,
+      arena: arenaConfig,
+      seed: matchSeed,
+      botCount: BOT_COUNT,
+      builds: assembled,
+    }),
+    builds: assembled,
+    headerLabel: `seed ${matchSeedInput}  (match seed ${matchSeed})  --  arena: ${arenaLabel}`,
+  };
+}
+
+/**
+ * Event mode: one of the three battles a master seed actually produces, reconstructed the
+ * way `runEvent`'s own private `runBattle` builds it — the battle's arena variant, the
+ * battle seed the event recorded, and the builds the Forge dealt.
+ *
+ * The same three inputs `src/shell/screens/battle.ts`'s `replayBattle` uses to play these
+ * back in the browser, which is the point: this tool and the site must be screening the
+ * identical fight. `replay.test.ts` checks the placements come out equal to the recorded
+ * ones rather than trusting that.
+ */
+function eventBattle(masterSeed: number, battle: number): Replay {
+  const result = runEvent({ masterSeed, members: toEventMembers() });
+  const index = battle - 1;
+  const recorded = result.battles[index]!;
+  const assembled = result.builds.map((build) => assemble(build));
+  return {
+    match: createMatch({
+      ...DEFAULT_MATCH,
+      arena: ARENA_VARIANTS[index]!,
+      seed: recorded.seed,
+      botCount: result.members.length,
+      builds: assembled,
+    }),
+    builds: assembled,
+    headerLabel:
+      `EVENT seed ${masterSeed}  --  battle ${battle} of 3` +
+      `  (battle seed ${recorded.seed})  --  arena: ${recorded.arenaName}`,
+  };
+}
 
 // --- Per-tick recording ---------------------------------------------------------------
 //
@@ -140,7 +232,7 @@ function targetLabel(id: string | null): string {
 // 1. HEADER
 // ============================================================================================
 
-console.log(`\n  REPLAY  --  seed ${seed}  (match seed ${matchSeed})  --  arena: ${arenaLabel}`);
+console.log(`\n  REPLAY  --  ${headerLabel}`);
 console.log(`  ${finalTick} ticks (${secs(finalTick)}s)${finalTick >= DEFAULT_MATCH.maxTicks ? '  <- hit the tick cap' : ''}`);
 
 const survivors = match.bots.filter((b) => b.alive);
