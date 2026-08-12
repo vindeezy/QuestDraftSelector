@@ -1845,3 +1845,83 @@ button {
     padding: 6px 8px;
   }
 }
+
+/* --- The draft order reveal -------------------------------------------------------- */
+
+.screen-draft-order,
+.screen-complete {
+  background:
+    radial-gradient(58% 44% at 50% 34%, rgb(76 224 255 / 0.07), transparent 72%),
+    var(--bg-0);
+}
+
+.draft-title {
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  text-shadow:
+    0 0 24px rgb(76 224 255 / 0.32),
+    0 0 60px rgb(76 224 255 / 0.14);
+}
+
+/* The running "Nth pick — Name" line. Fixed height so the board never shifts when the
+   text changes length mid-reveal. */
+.draft-caption {
+  margin-top: 8px;
+  min-height: 22px;
+  color: var(--neon-cyan);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+/* Hidden rows keep their space — the full table is laid out from the first frame, so
+   nothing jumps as picks land and the empty rows read as picks still to come. */
+.score-row.is-hidden {
+  opacity: 0;
+}
+
+.score-row {
+  transition: opacity 420ms ease;
+}
+
+/* A one-shot flash as a pick lands, drawing the eye to the row that just appeared without
+   leaving any permanent decoration behind. */
+.score-row.is-landing {
+  animation: pick-lands 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes pick-lands {
+  0% {
+    opacity: 0.001;
+    background: rgb(76 224 255 / 0.22);
+  }
+  100% {
+    opacity: 1;
+    background: transparent;
+  }
+}
+
+/* First pick keeps a permanent mark — it is the one row anybody will still be looking at
+   a minute later. */
+.score-row.is-first-pick .score-rank,
+.score-row.is-first-pick .score-total .score-points__value {
+  color: var(--neon-amber);
+}
+
+.score-row.is-first-pick .score-name {
+  color: #fff;
+}
+
+.score-footer .is-hidden {
+  display: none;
+}
+
+/* The reveal is long enough that a reduced-motion viewer should still get the result,
+   just without the flash. The row still appears; only the animation is dropped. */
+@media (prefers-reduced-motion: reduce) {
+  .score-row,
+  .score-row.is-landing {
+    animation: none;
+    transition: none;
+  }
+}

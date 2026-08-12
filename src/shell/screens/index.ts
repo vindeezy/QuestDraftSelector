@@ -7,6 +7,7 @@ import { forgeScreen } from './forge';
 import { buildRevealScreen } from './build-reveal';
 import { battleScreen } from './battle';
 import { scoreboardScreen } from './scoreboard';
+import { draftOrderScreen, completeScreen } from './draft-order';
 import { stubScreen } from './stub';
 
 /**
@@ -32,6 +33,8 @@ const REAL_SCREENS: Partial<Record<BeatId, Screen>> = {
   'battle-2-result': scoreboardScreen('battle-2-result'),
   'standings-2': scoreboardScreen('standings-2'),
   'battle-3-result': scoreboardScreen('battle-3-result'),
+  'draft-order': draftOrderScreen,
+  complete: completeScreen,
 };
 
 export const SCREENS: Readonly<Record<BeatId, Screen>> = Object.fromEntries(

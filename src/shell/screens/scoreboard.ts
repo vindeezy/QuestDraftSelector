@@ -1,4 +1,4 @@
-import { KILL_POINTS, pointsForPlace, type BattleTally } from '../../sim/event/scoring';
+import { KILL_POINTS, pointsForPlace, type BattleTally, type Tiebreak } from '../../sim/event/scoring';
 import type { EventResult } from '../../sim/event/event';
 import { ARENA_VARIANT_NAMES } from '../../sim/event/arenas';
 import { ROSTER, toEventMembers } from '../../config/roster';
@@ -162,6 +162,46 @@ export function scoreboardRows(result: EventResult, config: ScoreboardConfig): S
   return rows;
 }
 
+/** How the official scoring settled a tie, in the site's own words. `memberId` is the
+ *  last-resort alphabetical fallback — vanishingly rare, but it must not be described as
+ *  something it isn't. */
+const TIEBREAK_WORDING: Record<Tiebreak, string> = {
+  eliminations: 'level on points — settled by kills',
+  damage: 'level on points and kills — settled by damage',
+  memberId: 'level on every count — settled alphabetically',
+};
+
+/**
+ * The final draft order, read from `result.standings` — the authoritative ranking, unlike
+ * every interim board on this screen.
+ *
+ * This is the one place the damage tiebreak applies and should: by now all three battles
+ * have been watched, so nothing is being decided by information the viewer has not seen.
+ * `scoreboardRows`'s doc comment explains why the interim boards deliberately stop short
+ * of it.
+ *
+ * Cells come from `result.tallies`, because `Standing.battles` carries each battle's
+ * points but not the finishing place that earned them, and the board shows both.
+ */
+export function draftOrderRows(result: EventResult): ScoreRow[] {
+  return result.standings.map((standing) => {
+    const index = result.members.findIndex((member) => member.id === standing.memberId);
+    const member = ROSTER[index]!;
+    const tally = result.tallies[index]!;
+    return {
+      memberId: standing.memberId,
+      name: member.name,
+      initials: member.initials,
+      colour: member.colour,
+      cells: cellsFor(tally, 0, standing.battles.length - 1),
+      total: standing.points,
+      eliminations: standing.eliminations,
+      rank: standing.draftPosition,
+      tieNote: standing.tiebreak === null ? null : TIEBREAK_WORDING[standing.tiebreak],
+    };
+  });
+}
+
 /** "25 pts", "1 pt". The unit is repeated on every points cell rather than pushed up into
  *  the column header, because these boards are read at a glance across a room. The
  *  singular is not hypothetical: last place is worth exactly 1 point, so every board with
@@ -297,7 +337,19 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
   `;
 }
 
-function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: string | null): string {
+/**
+ * The sectioned board: one two-column group per arena, ordered by running total.
+ *
+ * Exported because the draft order reveal (`draft-order.ts`) is the same table with all
+ * three arenas and its rows revealed one at a time — `hideRows` starts every row hidden
+ * (but still occupying its space, so nothing shifts as they appear) and tags each with the
+ * index that screen reveals it by.
+ */
+export function renderCumulativeTable(
+  rows: readonly ScoreRow[],
+  claimedMemberId: string | null,
+  hideRows = false,
+): string {
   const battleCount = rows[0]?.cells.length ?? 0;
 
   // Two header rows: each arena names a section spanning its own two columns, so it is
@@ -313,7 +365,7 @@ function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: strin
   ).join('');
 
   const body = rows
-    .map((row) => {
+    .map((row, index) => {
       const isYou = row.memberId === claimedMemberId;
       const cells = row.cells
         .map(
@@ -323,7 +375,7 @@ function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: strin
         )
         .join('');
       return `
-        <tr class="score-row${isYou ? ' is-you' : ''}">
+        <tr class="score-row${isYou ? ' is-you' : ''}${hideRows ? ' is-hidden' : ''}" data-row="${index}">
           ${rankCell(row)}
           ${memberCell(row, isYou)}
           ${cells}

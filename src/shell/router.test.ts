@@ -112,30 +112,19 @@ describe('mountRouter', () => {
     }
   });
 
-  it('shows a placeholder stub only for the beats that are still unbuilt', () => {
-    // Shrinks as the walkthrough is built out. What remains after WEB 10 is the draft
-    // order reveal and the completion screen.
-    const realBeatsPastForge: ReadonlySet<string> = new Set([
-      'build-reveal',
-      'battle-1',
-      'battle-2',
-      'battle-3',
-      'standings-1',
-      'battle-2-result',
-      'standings-2',
-      'battle-3-result',
-    ]);
-    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1).filter((beat) => !realBeatsPastForge.has(beat));
-    expect(stubBeats.length).toBeGreaterThan(0);
-
-    for (const beat of stubBeats) {
+  it('has a real screen for every one of the nineteen beats — no placeholders left', () => {
+    // This test used to enumerate which beats were still stubs, shrinking as the
+    // walkthrough was built. With WEB 11 the list reached empty, so it now asserts the
+    // stronger thing: nothing anywhere in the sequence is a placeholder.
+    for (const beat of BEAT_IDS) {
       const storage = new MemoryStorage();
-      seedFurthestBeat(storage, beat);
+      seedFurthestBeat(storage, beat, 'paden');
       const container = makeContainer();
 
       mountRouter({ container, seed: SEED, storage });
 
-      expect(container.querySelector('.screen-stub')).not.toBeNull();
+      expect(container.querySelector('.screen-stub'), `"${beat}" is still a stub`).toBeNull();
+      expect(container.querySelector('.screen'), `"${beat}" rendered nothing`).not.toBeNull();
     }
   });
 
