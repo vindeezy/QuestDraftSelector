@@ -959,7 +959,10 @@ button {
    than the parts grid collapsing to nothing. See the long comment on `.screen-forge` for
    why `min-height` alone isn't enough. */
 .screen-build-reveal {
-  max-width: 1180px;
+  /* 1500, not 1180. At 1180 the side columns squeezed to ~170px on a narrower window and
+     the blurbs had nowhere to go, while a 1440 display left 260px unused. The three tracks
+     need room for two ~400px cards plus a portrait that can reach 640. */
+  max-width: 1500px;
   height: 100vh;
   min-height: 0;
   margin: 0 auto;
@@ -1041,7 +1044,7 @@ button {
      canvas is rendered at its native pixel size and never CSS-rescaled — that is what lets
      the leader-line anchors resolve to exact viewport coordinates — so a narrower track
      does not shrink it, it just lets it overflow. Keep the two in step. */
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 500px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 660px) minmax(0, 1fr);
   align-items: center;
   gap: 18px;
 }
@@ -1077,7 +1080,7 @@ button {
 .reveal-stage {
   --member-colour: var(--neon-cyan);
   position: relative;
-  width: min(100%, 480px);
+  width: min(100%, 640px);
   aspect-ratio: 1;
   display: flex;
   align-items: center;

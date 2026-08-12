@@ -5,7 +5,7 @@ import { CATEGORIES, partAt } from '../../sim/parts/tables';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { FIRST_BEAT } from '../beats';
 import { claimMember, loadProgress, type ProgressStorage } from '../progress';
-import { buildRevealScreen } from './build-reveal';
+import { buildRevealScreen, portraitSizeFor } from './build-reveal';
 import type { ScreenContext } from './types';
 
 const SEED = 918273;
@@ -175,5 +175,35 @@ describe('buildRevealScreen', () => {
     });
 
     expect(loadProgress(SEED, storage).claimedMemberId).toBe(claimed.id);
+  });
+});
+
+describe('portraitSizeFor', () => {
+  it('fills the space it is given, between the floor and the ceiling', () => {
+    expect(portraitSizeFor(500, 500)).toBe(500);
+    expect(portraitSizeFor(420, 600)).toBe(420);
+  });
+
+  it('never shrinks below the legibility floor, however cramped the host', () => {
+    // A tiny host means the portrait overflows rather than becoming unreadable. That is
+    // the deliberate trade: the small-viewport layout lets the screen scroll, and a
+    // 100px bot nobody can make out would be worse than a scrollbar.
+    expect(portraitSizeFor(120, 120)).toBe(380);
+    expect(portraitSizeFor(0, 0)).toBe(380);
+  });
+
+  it('stops growing before it dwarfs the cards on a very large display', () => {
+    expect(portraitSizeFor(2000, 2000)).toBe(640);
+  });
+
+  it('squares off on the smaller axis, so the bot is never letterboxed', () => {
+    expect(portraitSizeFor(900, 450)).toBe(450);
+    expect(portraitSizeFor(450, 900)).toBe(450);
+  });
+
+  it('returns a whole number of pixels', () => {
+    // Fractional canvas sizes desync the canvas's CSS box from its logical draw size,
+    // which is exactly what `anchorPositions()` relies on being equal.
+    expect(Number.isInteger(portraitSizeFor(517.4, 623.9))).toBe(true);
   });
 });

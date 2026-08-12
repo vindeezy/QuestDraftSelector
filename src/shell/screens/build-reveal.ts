@@ -85,11 +85,31 @@ function isAnchoredCategory(category: CategoryName): category is keyof BotPortra
   return (ANCHORED_CATEGORIES as readonly string[]).includes(category);
 }
 
-/** Native pixel size of the portrait canvas — see `bot-portrait.ts`'s doc comment on
- *  `mountBotPortraitStage` for why this is never CSS-rescaled after mount: keeping the
- *  canvas's own CSS size equal to its logical draw size is what lets `anchorPositions()`
- *  hand back exact viewport coordinates without a second scale factor to track. */
-const PORTRAIT_SIZE = 480;
+/**
+ * Bounds on the portrait canvas's native pixel size.
+ *
+ * The canvas is rendered at its native size and never CSS-rescaled — that is what lets
+ * `anchorPositions()` hand back exact viewport coordinates with no second scale factor to
+ * track (see `mountBotPortraitStage`). But "never rescaled" and "a hardcoded constant" are
+ * different things, and conflating them was a bug: one fixed number is simultaneously too
+ * small on a large display and too wide to fit on a laptop, and because it cannot shrink,
+ * being too big means overflowing rather than adapting.
+ *
+ * So the size is *chosen at mount* from the space actually available, then held. Anchors
+ * stay exact because the canvas still renders at whatever size was picked.
+ */
+const PORTRAIT_MIN_SIZE = 380;
+const PORTRAIT_MAX_SIZE = 640;
+
+/** Picks the portrait's native size from the room its host actually has, squared off so
+ *  the bot is never letterboxed, and clamped so it stays legible on a small window and
+ *  stops growing before it dwarfs the cards on a very large one. */
+export function portraitSizeFor(hostWidth: number, hostHeight: number): number {
+  const available = Math.floor(Math.min(hostWidth, hostHeight));
+  if (available < PORTRAIT_MIN_SIZE) return PORTRAIT_MIN_SIZE;
+  if (available > PORTRAIT_MAX_SIZE) return PORTRAIT_MAX_SIZE;
+  return available;
+}
 
 /** The no-WebGL fallback — same visual vocabulary as `forge.ts`'s own board fallback:
  *  a static shape in the member's colour, since there is no live portrait to draw. No
@@ -122,7 +142,11 @@ function mountPortrait(
   let frame = 0;
 
   if (canvasSupportsWebGL()) {
-    void mountBotPortraitStage(host, build, hexToNumber(memberColourHex), PORTRAIT_SIZE).then((created) => {
+    // Measured from the host at mount, not a constant — see `portraitSizeFor`. `host` is
+    // the stage element, already laid out by the time a screen renders into the document.
+    const rect = host.getBoundingClientRect();
+    const size = portraitSizeFor(rect.width || PORTRAIT_MAX_SIZE, rect.height || PORTRAIT_MAX_SIZE);
+    void mountBotPortraitStage(host, build, hexToNumber(memberColourHex), size).then((created) => {
       if (stopped) {
         created.destroy();
         return;
