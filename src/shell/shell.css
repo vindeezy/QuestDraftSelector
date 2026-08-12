@@ -1106,6 +1106,24 @@ button {
      `box-shadow` animates on the paint path with no layer at all. `.forge-drop-btn` has
      pulsed this way the whole time and has never ghosted, which is the evidence this
      approach is sound rather than just different. */
+  /* The glow is a radial gradient painted *behind* the bot (the portrait canvas above it
+     is transparent), not a `box-shadow`.
+
+     box-shadow was wrong for this: with `border-radius: 50%` and no background, it draws a
+     halo around the *edge* of a circle, so the result read as a hard black disc with a ring
+     of colour round it rather than light coming off the machine.
+
+     It is also not a `::before` running an infinite `opacity`/`transform` pulse, which is
+     what this used to be. Those are the two compositable properties, so animating either
+     forever promotes the element to a permanent GPU layer. `background-size` animates on
+     the paint path instead, giving the same breathing without the layer. */
+  background: radial-gradient(
+      closest-side,
+      color-mix(in srgb, var(--member-colour) 42%, transparent) 0%,
+      color-mix(in srgb, var(--member-colour) 16%, transparent) 46%,
+      transparent 72%
+    )
+    no-repeat center;
   animation:
     reveal-stage-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both,
     reveal-stage-pulse 3400ms ease-in-out infinite;
@@ -1144,14 +1162,10 @@ button {
 @keyframes reveal-stage-pulse {
   0%,
   100% {
-    box-shadow:
-      0 0 60px -12px color-mix(in srgb, var(--member-colour) 45%, transparent),
-      0 0 120px -30px color-mix(in srgb, var(--member-colour) 30%, transparent);
+    background-size: 88% 88%;
   }
   50% {
-    box-shadow:
-      0 0 90px -8px color-mix(in srgb, var(--member-colour) 70%, transparent),
-      0 0 180px -24px color-mix(in srgb, var(--member-colour) 45%, transparent);
+    background-size: 106% 106%;
   }
 }
 
