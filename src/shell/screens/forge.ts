@@ -50,8 +50,9 @@ const RESULTS_READ_DELAY_MS = 700;
 
 /** Display names for each category, matching the section titles in `tables.ts`
  *  (`Category 1: Chassis Shape`, ... `Category 3: Front Weapon`, etc.) — the friendly
- *  label a viewer sees, as opposed to the plain `CategoryName` slug the simulation uses. */
-const CATEGORY_LABEL: Record<CategoryName, string> = {
+ *  label a viewer sees, as opposed to the plain `CategoryName` slug the simulation uses.
+ *  Exported so `build-reveal.ts` uses this exact same mapping rather than a second copy. */
+export const CATEGORY_LABEL: Record<CategoryName, string> = {
   chassis: 'Chassis Shape',
   drive: 'Drive System',
   weapon: 'Front Weapon',
@@ -94,7 +95,9 @@ function eventCacheKey(seed: number, members: readonly EventMember[]): string {
   return `${seed}:${members.map((member) => member.id).join(',')}`;
 }
 
-function getEventResult(seed: number, members: readonly EventMember[]): EventResult {
+/** Exported so `build-reveal.ts` shares this same cache — both beats need the whole
+ *  event for the same (seed, roster) pair, and there is no reason to pay for it twice. */
+export function getEventResult(seed: number, members: readonly EventMember[]): EventResult {
   const key = eventCacheKey(seed, members);
   const cached = eventResultCache.get(key);
   if (cached) return cached;

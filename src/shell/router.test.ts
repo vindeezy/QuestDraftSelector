@@ -112,8 +112,8 @@ describe('mountRouter', () => {
     }
   });
 
-  it('shows a placeholder stub for every beat after the Forge', () => {
-    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1);
+  it('shows a placeholder stub for every beat after the Forge, except build-reveal which is real now', () => {
+    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1).filter((beat) => beat !== 'build-reveal');
     expect(stubBeats.length).toBeGreaterThan(0);
 
     for (const beat of stubBeats) {
@@ -125,6 +125,18 @@ describe('mountRouter', () => {
 
       expect(container.querySelector('.screen-stub')).not.toBeNull();
     }
+  });
+
+  it('shows the real build-reveal screen (not a stub) at build-reveal', () => {
+    const storage = new MemoryStorage();
+    seedFurthestBeat(storage, 'build-reveal', 'paden');
+    const container = makeContainer();
+
+    mountRouter({ container, seed: SEED, storage });
+
+    expect(container.querySelector('.screen-build-reveal')).not.toBeNull();
+    expect(container.querySelector('.screen-stub')).toBeNull();
+    expect(container.querySelectorAll('.reveal-selector__badge')).toHaveLength(10);
   });
 
   it('navigate() advances the beat and persists it, so a later mount resumes there', () => {
