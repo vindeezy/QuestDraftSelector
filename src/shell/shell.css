@@ -975,8 +975,12 @@ button {
     overflow: visible;
   }
 
-  .reveal-parts {
-    min-height: 320px;
+  .reveal-stage-wrap {
+    min-height: 260px;
+  }
+
+  .reveal-stage {
+    width: min(100%, 300px);
   }
 }
 
@@ -1026,16 +1030,136 @@ button {
   font-size: clamp(1.7rem, 3.2vw, 2.5rem);
 }
 
-/* Big, on purpose — this is a reveal, not a summary table. Six cards fill the space the
-   header and footer leave behind, same "give up space to whatever needs it" contract as
-   `.forge-layout`'s board. */
-.reveal-parts {
+/* The character-select arena: cards left, the bot itself centred, cards right — the bot
+   large and central, "presented rather than illustrated," per the project owner's ask.
+   Same "give up space to whatever needs it" contract `.forge-layout`'s board has. */
+.reveal-arena {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 460px) minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.reveal-cards {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 14px;
+}
+
+/* The positioning context the leader-line SVG overlay measures against: it covers this
+   element exactly (`inset: 0`), and every card's `getBoundingClientRect()` is compared
+   against `.reveal-leader-lines`' own rect, not this one's — but visually the stage lives
+   here, so this is where that math is anchored in the reader's eye too. */
+.reveal-stage-wrap {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The glow and the entrance both live in CSS, independent of whether the live canvas or
+   the no-WebGL fallback ends up inside — "a glow in the member's colour" and "an
+   entrance" per the project owner's ask, satisfied even on a machine that never gets a
+   WebGL context. The *idle drift* is the one piece that has to be script-driven (it moves
+   the leader-line anchors, which nothing in CSS can compute) — see `bot-portrait.ts`'s
+   `mountBotPortraitStage`. */
+.reveal-stage {
+  --member-colour: var(--neon-cyan);
+  position: relative;
+  width: min(100%, 420px);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  animation: reveal-stage-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.reveal-stage::before {
+  content: '';
+  position: absolute;
+  inset: 6%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--member-colour), transparent 72%);
+  filter: blur(6px);
+  opacity: 0.3;
+  animation: reveal-stage-pulse 3400ms ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* `canvas` is an inline-level replaced element and `::before` above is `position:
+   absolute` — under normal CSS painting order a positioned box paints *after* (i.e. on
+   top of) a plain in-flow one, which would put the glow in front of the bot it's meant
+   to sit behind. An explicit `z-index` — needing `position` to apply at all — is what
+   actually puts the canvas above it. */
+.reveal-stage canvas {
+  position: relative;
+  z-index: 1;
+}
+
+.reveal-stage__fallback {
+  --member-colour: var(--neon-cyan);
+  position: relative;
+  z-index: 1;
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 28% / 34%;
+  background: var(--member-colour);
+  opacity: 0.85;
+  box-shadow: 0 0 60px -10px var(--member-colour);
+}
+
+@keyframes reveal-stage-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes reveal-stage-pulse {
+  0%,
+  100% {
+    opacity: 0.22;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.42;
+    transform: scale(1.06);
+  }
+}
+
+/* The leader-line overlay. Absolutely positioned over the exact same box as the stage
+   itself, endpoints computed in JS from live DOM/canvas rects (`redrawLeaderLines` in
+   `build-reveal.ts`) — an SVG is the natural surface for "a handful of lines between two
+   points that both move," rather than reaching for more `Graphics` layers. */
+.reveal-leader-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.reveal-leader-line {
+  stroke-width: 1.5;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.reveal-leader-dot {
+  opacity: 0.85;
 }
 
 .reveal-part-card {
@@ -1044,7 +1168,7 @@ button {
   border: 1px solid var(--line);
   border-top: 2px solid var(--member-colour);
   border-radius: var(--radius);
-  padding: 18px 22px;
+  padding: 14px 18px;
   min-height: 0;
   overflow: hidden;
   display: flex;
@@ -1052,6 +1176,13 @@ button {
   justify-content: center;
   gap: 6px;
   box-shadow: var(--shadow-lift);
+}
+
+/* The three cards a leader line actually reaches (chassis/weapon/armour — the categories
+   `bot-portrait.ts` exports an anchor for) get a slightly brighter border so their tie to
+   the bot reads as intentional even before the line itself draws the eye there. */
+.reveal-part-card--anchored {
+  border-top-width: 3px;
 }
 
 .reveal-part-card__category {
@@ -1271,8 +1402,24 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .reveal-parts {
+  .reveal-arena {
     grid-template-columns: 1fr;
-    grid-template-rows: none;
+  }
+
+  .reveal-cards {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .reveal-cards > .reveal-part-card {
+    flex: 1 1 260px;
+  }
+
+  /* Leader lines assume the bot sits between two flanking columns — on a single-column
+     layout the cards stack above/below it instead, so the lines would draw across
+     unrelated content. Simplest correct behaviour is to stop drawing them here, same as
+     the no-WebGL fallback already does. */
+  .reveal-leader-lines {
+    display: none;
   }
 }

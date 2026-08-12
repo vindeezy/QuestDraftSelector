@@ -3,15 +3,23 @@ import type { BotBuild } from '../../sim/parts/assemble';
 import { ROSTER, toEventMembers, type RosterMember } from '../../config/roster';
 import { nextBeat } from '../beats';
 import { readableInkFor } from '../colour';
+import { canvasSupportsWebGL } from '../canvas-support';
+import { mountBotPortraitStage, type BotPortraitAnchors, type BotPortraitStage } from '../../render/bot-portrait';
 import { CATEGORY_LABEL, getEventResult } from './forge';
 import type { Screen, ScreenContext } from './types';
 
 /**
  * Beat 10 — the build reveal. The six Forge boards have all finished; every member has a
- * finished bot. This screen shows the claimed member's build full-screen, one card per
- * part (category, part name, the part's `blurb`), and lets the viewer browse the other
- * nine members' builds the same way. See
- * `docs/superpowers/specs/2026-08-11-website-design.md` §5.3.
+ * finished bot. This is the emotional peak the project owner asked for by name: "the
+ * first time you get to see your bot that will be fighting" should have "a real Wow
+ * moment with pride in your final bot" — a video-game character-select screen, not six
+ * text cards. See `docs/superpowers/specs/2026-08-11-website-design.md` §5.3 and §8.
+ *
+ * The bot itself is drawn by `render/bot-portrait.ts` — silhouette (chassis), fill colour
+ * (member identity), rim (armour) and front attachment (weapon), the "four visual
+ * channels" §8 lays out. Drive, ability and personality have no visual channel of their
+ * own — that's expected, not a gap — so their cards get no leader line; only chassis,
+ * weapon and armour do, from `BotPortraitAnchors`.
  *
  * Two identities are tracked here and must never be confused:
  *
@@ -48,6 +56,145 @@ function partsForMember(builds: readonly BotBuild[], memberIndex: number): PartD
   });
 }
 
+/** `#RRGGBB` -> `0xRRGGBB`. The roster stores colour as a CSS-ready string; the portrait
+ *  renderer wants the numeric form every other renderer in `src/render/` already uses
+ *  (same conversion `forge.ts` does for the Plinko balls). */
+function hexToNumber(hex: string): number {
+  return parseInt(hex.slice(1), 16);
+}
+
+/**
+ * Which side of the stage a category's card sits on, and in what top-to-bottom order.
+ *
+ * Not `CATEGORIES` order top-to-bottom: the portrait is presented facing "up" (see
+ * `mountBotPortraitStage`'s doc comment), which puts the weapon anchor near the *top* of
+ * the stage and the chassis anchor near the *bottom* — the reverse of `CATEGORIES`'
+ * chassis-then-weapon order. Placing the cards in that same reversed order (weapon
+ * highest, chassis lowest) is what keeps their leader lines running roughly straight
+ * across to the stage instead of crossing each other in a big X above it.
+ */
+const LEFT_COLUMN: readonly CategoryName[] = ['weapon', 'drive', 'chassis'];
+const RIGHT_COLUMN: readonly CategoryName[] = ['armour', 'ability', 'personality'];
+
+/** The three categories `bot-portrait.ts` exports an anchor for. Everything else
+ *  (drive, ability, personality) has no visual channel on the bot — §8 calls this out
+ *  explicitly — so those cards simply never appear here. */
+const ANCHORED_CATEGORIES: readonly (keyof BotPortraitAnchors)[] = ['chassis', 'weapon', 'armour'];
+
+function isAnchoredCategory(category: CategoryName): category is keyof BotPortraitAnchors {
+  return (ANCHORED_CATEGORIES as readonly string[]).includes(category);
+}
+
+/** Native pixel size of the portrait canvas — see `bot-portrait.ts`'s doc comment on
+ *  `mountBotPortraitStage` for why this is never CSS-rescaled after mount: keeping the
+ *  canvas's own CSS size equal to its logical draw size is what lets `anchorPositions()`
+ *  hand back exact viewport coordinates without a second scale factor to track. */
+const PORTRAIT_SIZE = 420;
+
+/** The no-WebGL fallback — same visual vocabulary as `forge.ts`'s own board fallback:
+ *  a static shape in the member's colour, since there is no live portrait to draw. No
+ *  anchors exist in this path, so the caller never asks for leader lines here. */
+function mountPortraitFallback(host: HTMLElement, memberColourHex: string): void {
+  const el = document.createElement('div');
+  el.className = 'reveal-stage__fallback';
+  el.style.setProperty('--member-colour', memberColourHex);
+  host.appendChild(el);
+}
+
+/**
+ * Mounts (or, on the no-WebGL path, statically shows) one member's portrait into `host`,
+ * driving its own idle-drift animation frame loop and reporting fresh anchor positions
+ * every frame via `onFrame` (or `null` once, in the fallback path, so the caller knows
+ * not to wait for anchors that will never come).
+ *
+ * Owns exactly one `requestAnimationFrame` loop end to end and cancels it on `destroy` —
+ * the same contract `forge.ts`'s own drop loop has, checked by
+ * `build-reveal-portrait.test.ts` the same way `forge.test.ts` checks `forgeScreen`'s.
+ */
+function mountPortrait(
+  host: HTMLElement,
+  build: BotBuild,
+  memberColourHex: string,
+  onFrame: (anchors: BotPortraitAnchors | null) => void,
+): () => void {
+  let stopped = false;
+  let stage: BotPortraitStage | null = null;
+  let frame = 0;
+
+  if (canvasSupportsWebGL()) {
+    void mountBotPortraitStage(host, build, hexToNumber(memberColourHex), PORTRAIT_SIZE).then((created) => {
+      if (stopped) {
+        created.destroy();
+        return;
+      }
+      stage = created;
+      const loop = (): void => {
+        if (stopped) return;
+        stage!.tick();
+        onFrame(stage!.anchorPositions());
+        frame = requestAnimationFrame(loop);
+      };
+      loop();
+    });
+  } else {
+    mountPortraitFallback(host, memberColourHex);
+    onFrame(null);
+  }
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    stage?.destroy();
+  };
+}
+
+/** Redraws the leader-line overlay from scratch every frame — three lines at most (one
+ *  per anchored category actually present as a card), cheap enough not to bother diffing.
+ *  `anchors` is `null` on the no-WebGL fallback path, in which case the overlay is simply
+ *  left empty: there is nothing live to point a line at. */
+function redrawLeaderLines(
+  svg: SVGSVGElement,
+  anchors: BotPortraitAnchors | null,
+  cardEls: Partial<Record<CategoryName, HTMLElement>>,
+  memberColourHex: string,
+): void {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!anchors) return;
+
+  const svgRect = svg.getBoundingClientRect();
+  const svgMidX = svgRect.left + svgRect.width / 2;
+
+  for (const key of ANCHORED_CATEGORIES) {
+    const card = cardEls[key];
+    if (!card) continue;
+    const anchor = anchors[key];
+    const cardRect = card.getBoundingClientRect();
+    const cardMidX = cardRect.left + cardRect.width / 2;
+    // The line leaves from whichever vertical edge of the card faces the stage, not the
+    // card's centre — starting inside the card's own box would draw straight through its
+    // text.
+    const startX = cardMidX < svgMidX ? cardRect.right : cardRect.left;
+    const startY = cardRect.top + cardRect.height / 2;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('class', 'reveal-leader-line');
+    line.setAttribute('x1', String(startX - svgRect.left));
+    line.setAttribute('y1', String(startY - svgRect.top));
+    line.setAttribute('x2', String(anchor.x - svgRect.left));
+    line.setAttribute('y2', String(anchor.y - svgRect.top));
+    line.setAttribute('stroke', memberColourHex);
+    svg.appendChild(line);
+
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('class', 'reveal-leader-dot');
+    dot.setAttribute('cx', String(anchor.x - svgRect.left));
+    dot.setAttribute('cy', String(anchor.y - svgRect.top));
+    dot.setAttribute('r', '4');
+    dot.setAttribute('fill', memberColourHex);
+    svg.appendChild(dot);
+  }
+}
+
 export const buildRevealScreen: Screen = {
   render(ctx: ScreenContext) {
     const members: readonly RosterMember[] = ROSTER;
@@ -75,7 +222,15 @@ export const buildRevealScreen: Screen = {
     const selectorHost = root.querySelector<HTMLElement>('[data-role="selector"]')!;
     const continueButton = root.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
 
+    // Owns exactly one live portrait mount at a time — scouting tears the previous one
+    // down before mounting the next, so there is never more than one animation frame
+    // loop running (see `mountPortrait`'s own doc comment on that contract).
+    let portraitTeardown: (() => void) | null = null;
+
     function renderFrame(): void {
+      portraitTeardown?.();
+      portraitTeardown = null;
+
       const member = members[viewedIndex]!;
       const isClaimed = viewedIndex === claimedIndex;
 
@@ -90,21 +245,63 @@ export const buildRevealScreen: Screen = {
             <h1 class="reveal-frame__name">${member.name}</h1>
           </div>
         </div>
-        <div class="reveal-parts" data-role="parts"></div>
+        <div class="reveal-arena" data-role="arena">
+          <div class="reveal-cards reveal-cards--left" data-role="cards-left"></div>
+          <div class="reveal-stage-wrap" data-role="stage-wrap">
+            <div class="reveal-stage" data-role="stage" style="--member-colour:${member.colour}"></div>
+            <svg class="reveal-leader-lines" data-role="leader-lines" aria-hidden="true"></svg>
+          </div>
+          <div class="reveal-cards reveal-cards--right" data-role="cards-right"></div>
+        </div>
       `;
 
-      const partsHost = frameHost.querySelector<HTMLElement>('[data-role="parts"]')!;
-      for (const part of partsForMember(event.builds, viewedIndex)) {
-        const card = document.createElement('div');
-        card.className = 'reveal-part-card';
-        card.dataset.category = part.category;
-        card.innerHTML = `
-          <p class="reveal-part-card__category">${part.categoryLabel}</p>
-          <p class="reveal-part-card__name">${part.partLabel}</p>
-          <p class="reveal-part-card__blurb">${part.blurb}</p>
-        `;
-        partsHost.appendChild(card);
+      const cardsLeftHost = frameHost.querySelector<HTMLElement>('[data-role="cards-left"]')!;
+      const cardsRightHost = frameHost.querySelector<HTMLElement>('[data-role="cards-right"]')!;
+      const stageHost = frameHost.querySelector<HTMLElement>('[data-role="stage"]')!;
+      const leaderLinesSvg = frameHost.querySelector<SVGSVGElement>('[data-role="leader-lines"]')!;
+
+      const cardEls: Partial<Record<CategoryName, HTMLElement>> = {};
+      const partsByCategory = new Map(partsForMember(event.builds, viewedIndex).map((part) => [part.category, part]));
+
+      for (const [host, order] of [
+        [cardsLeftHost, LEFT_COLUMN],
+        [cardsRightHost, RIGHT_COLUMN],
+      ] as const) {
+        for (const category of order) {
+          const part = partsByCategory.get(category)!;
+          const card = document.createElement('div');
+          card.className = 'reveal-part-card';
+          card.dataset.category = part.category;
+          if (isAnchoredCategory(part.category)) card.classList.add('reveal-part-card--anchored');
+          card.innerHTML = `
+            <p class="reveal-part-card__category">${part.categoryLabel}</p>
+            <p class="reveal-part-card__name">${part.partLabel}</p>
+            <p class="reveal-part-card__blurb">${part.blurb}</p>
+          `;
+          host.appendChild(card);
+          cardEls[part.category] = card;
+        }
       }
+
+      let latestAnchors: BotPortraitAnchors | null = null;
+      const scheduleLeaderLines = (): void => redrawLeaderLines(leaderLinesSvg, latestAnchors, cardEls, member.colour);
+
+      portraitTeardown = mountPortrait(stageHost, event.builds[viewedIndex]!, member.colour, (anchors) => {
+        latestAnchors = anchors;
+        scheduleLeaderLines();
+      });
+
+      // The idle-drift loop inside `mountPortrait` redraws anchors every frame, which is
+      // what keeps the lines attached as the portrait drifts — but the *cards'* own DOM
+      // rects only change on layout events, not every frame, so a resize needs its own
+      // redraw rather than waiting on the next animation frame from the portrait.
+      const onResize = (): void => scheduleLeaderLines();
+      window.addEventListener('resize', onResize);
+      const previousTeardown = portraitTeardown;
+      portraitTeardown = () => {
+        window.removeEventListener('resize', onResize);
+        previousTeardown();
+      };
     }
 
     function renderSelector(): void {
@@ -152,5 +349,10 @@ export const buildRevealScreen: Screen = {
     });
 
     ctx.container.appendChild(root);
+
+    return () => {
+      portraitTeardown?.();
+      portraitTeardown = null;
+    };
   },
 };
