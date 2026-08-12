@@ -990,6 +990,101 @@ button {
   }
 
   .reveal-stage {
+    width: min(100%, 300px);
+  }
+}
+
+.reveal-frame {
+  --member-colour: var(--neon-cyan);
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+}
+
+.reveal-frame__identity {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.reveal-frame__badge {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.3rem;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 0 0 3px var(--member-colour),
+    0 0 32px -6px var(--member-colour);
+}
+
+.reveal-frame__eyebrow {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.reveal-frame__name {
+  font-size: clamp(1.7rem, 3.2vw, 2.5rem);
+}
+
+/* The character-select arena: cards left, the bot itself centred, cards right — the bot
+   large and central, "presented rather than illustrated," per the project owner's ask.
+   Same "give up space to whatever needs it" contract `.forge-layout`'s board has. */
+.reveal-arena {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  /* The centre track's max must be >= PORTRAIT_SIZE in `build-reveal.ts`. The portrait
+     canvas is rendered at its native pixel size and never CSS-rescaled — that is what lets
+     the leader-line anchors resolve to exact viewport coordinates — so a narrower track
+     does not shrink it, it just lets it overflow. Keep the two in step. */
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 620px) minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.reveal-cards {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+}
+
+/* The positioning context the leader-line SVG overlay measures against: it covers this
+   element exactly (`inset: 0`), and every card's `getBoundingClientRect()` is compared
+   against `.reveal-leader-lines`' own rect, not this one's — but visually the stage lives
+   here, so this is where that math is anchored in the reader's eye too. */
+.reveal-stage-wrap {
+  position: relative;
+  height: 100%;
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The glow and the entrance both live in CSS, independent of whether the live canvas or
+   the no-WebGL fallback ends up inside — "a glow in the member's colour" and "an
+   entrance" per the project owner's ask, satisfied even on a machine that never gets a
+   WebGL context. The *idle drift* is the one piece that has to be script-driven (it moves
+   the leader-line anchors, which nothing in CSS can compute) — see `bot-portrait.ts`'s
+   `mountBotPortraitStage`. */
+.reveal-stage {
   --member-colour: var(--neon-cyan);
   position: relative;
   width: min(100%, 600px);
@@ -1004,18 +1099,19 @@ button {
 /*
  * The glow, on a pseudo-element that spills well past the stage.
  *
- * It has to overflow: a background cannot paint outside its own element's box, and the bot
- * already fills 86% of the stage, so a background-based glow had barely 40px of margin to
- * live in and simply vanished behind the larger chassis. `inset: -26%` gives it room to
- * read as light coming off the machine rather than a rim around it.
+ * It has to overflow. A background cannot paint outside its own element's box, and the bot
+ * fills 86% of the stage, so a background-based glow had barely 40px of margin to live in
+ * and disappeared entirely behind the larger chassis. `inset: -26%` gives it room to read
+ * as light coming off the machine rather than a rim around it.
  *
- * Animated via `background-size`, deliberately. `opacity` and `transform` are the two
+ * A `box-shadow` was tried and was the wrong shape for the job: on a circular element with
+ * no background it haloes the *edge*, which read as a hard black disc ringed with colour.
+ *
+ * Animated via `background-size`, not `opacity` or `transform`. Those two are the
  * compositable properties, so animating either forever promotes this to a permanent GPU
- * layer; `background-size` stays on the paint path. (The permanent layer was suspected in
- * a ghosting bug that turned out to be the preview pane rather than the page — but paint
+ * layer; `background-size` stays on the paint path. (A permanent layer was suspected in a
+ * ghosting bug that turned out to be the preview pane rather than the page — but paint
  * over composite is still the right default for a decorative pulse.)
- *
- * No `filter: blur()` either: the gradient's own soft stops do that job without a layer.
  */
 .reveal-stage::before {
   content: '';
@@ -1034,8 +1130,10 @@ button {
   pointer-events: none;
 }
 
-/* Keeps the portrait above the glow behind it. `::before` is absolutely positioned, so
-   without an explicit z-index on the canvas the glow would paint over the bot. */
+/* Keeps the canvas above the stage's own background and box-shadow glow. The glow used
+   to be an absolutely-positioned `::before`, which painted over the bot without this; it
+   is now a `box-shadow` on the stage itself, but the stacking guarantee is still worth
+   stating explicitly rather than relying on default paint order. */
 .reveal-stage canvas {
   position: relative;
   z-index: 1;
@@ -1062,13 +1160,15 @@ button {
   }
 }
 
+/* Stays under 100% at its widest: the gradient is clipped to the pseudo-element's box, so
+   breathing past full size would flatten the outer falloff against a hard edge. */
 @keyframes reveal-stage-pulse {
   0%,
   100% {
-    background-size: 86% 86%;
+    background-size: 84% 84%;
   }
   50% {
-    background-size: 100% 100%;
+    background-size: 98% 98%;
   }
 }
 
