@@ -56,6 +56,65 @@ export function needsBrightOutline(colour: number): boolean {
   return luminance(colour) < DARK_BOT_LUMINANCE;
 }
 
+/**
+ * Minimum brightness for a health bar's fill.
+ *
+ * Set well above `DARK_BOT_LUMINANCE` because the bar has none of the defences the bot
+ * body has. A dark bot still reads: it is a large disc, it carries its initials, and
+ * `needsBrightOutline` gives it a bright rim. The bar is 4px tall, unlabelled, un-outlined,
+ * and sits on a black track over a dark floor — so a near-black fill leaves nothing to see
+ * at all until the bot drops under 30% health and the bar turns red.
+ *
+ * Identity is not what this colour is for; the bar sits directly above its own bot, so
+ * ownership is never in doubt. Brightness is the only job.
+ */
+const HEALTH_BAR_MIN_LUMINANCE = 0.45;
+
+/** `colour` scaled by `factor`, each channel clamped to 0..255. */
+function scaleChannels(colour: number, factor: number): number {
+  const scale = (channel: number): number => {
+    const raised = Math.round(channel * factor);
+    return raised > 255 ? 255 : raised;
+  };
+  const r = scale((colour >> 16) & 0xff);
+  const g = scale((colour >> 8) & 0xff);
+  const b = scale(colour & 0xff);
+  return (r << 16) | (g << 8) | b;
+}
+
+/** `colour` mixed `t` of the way toward white (`t` in 0..1). */
+function blendToWhite(colour: number, t: number): number {
+  const mix = (channel: number): number => Math.round(channel + (255 - channel) * t);
+  const r = mix((colour >> 16) & 0xff);
+  const g = mix((colour >> 8) & 0xff);
+  const b = mix(colour & 0xff);
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * A member colour, brightened just enough to read as a health bar. Bright colours are
+ * returned untouched, so nine of the ten members' bars are exactly their own colour.
+ *
+ * Scaling comes first because multiplying all three channels preserves hue — a dark colour
+ * brightens into a lighter version of itself rather than a generic grey. Scaling alone is
+ * not enough in general, though: channels clamp at 255, and pure black cannot scale at all.
+ * Whatever brightness the scale could not deliver is made up by blending toward white,
+ * which always reaches the target because luminance is linear in such a blend.
+ *
+ * Exported so a test can assert the guarantee — every roster colour clears the floor —
+ * without a WebGL context.
+ */
+export function healthBarColour(colour: number): number {
+  const start = luminance(colour);
+  if (start >= HEALTH_BAR_MIN_LUMINANCE) return colour;
+
+  const scaled = start > 0 ? scaleChannels(colour, HEALTH_BAR_MIN_LUMINANCE / start) : colour;
+  const reached = luminance(scaled);
+  if (reached >= HEALTH_BAR_MIN_LUMINANCE) return scaled;
+
+  return blendToWhite(scaled, (HEALTH_BAR_MIN_LUMINANCE - reached) / (1 - reached));
+}
+
 /** Bot `index`'s colour and label: `botVisuals[index]` when supplied, else the placeholder
  *  palette and a 1-based index — the same fallback `plinko-renderer.ts`'s ball drawing
  *  uses. Pure and side-effect-free so `arena-renderer.test.ts` can check the resolution
@@ -455,7 +514,7 @@ export async function createArenaRenderer(
       // Health bar above the bot.
       const frac = bot.health / bot.maxHealth;
       dynamic.rect(x - r, y - r - 10, r * 2, 4).fill({ color: 0x000000, alpha: 0.5 });
-      dynamic.rect(x - r, y - r - 10, r * 2 * frac, 4).fill(frac < 0.3 ? 0xff4a4a : color);
+      dynamic.rect(x - r, y - r - 10, r * 2 * frac, 4).fill(frac < 0.3 ? 0xff4a4a : healthBarColour(color));
 
       label.x = x;
       label.y = y;

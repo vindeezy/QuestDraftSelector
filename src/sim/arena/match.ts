@@ -396,15 +396,27 @@ export function advanceMatch(match: Match): void {
       pushEffect(match.effects, 'collision', contact.x, contact.y, collisionIntensity(contact.speed), null);
     }
 
+    // Each exchange can kill BOTH bots: the swing kills the target, and the target's
+    // Spiked Composite reflects enough back to kill the swinger. Both checks run, and
+    // neither is an `else` — a mutual kill credits both.
+    //
+    // The reflect check is why the swinger's own death is tested here rather than left
+    // to the health sweep below. That sweep credits nobody, so a bot that impaled itself
+    // on someone's spikes used to read as an unattributed "destroyed", as if a hazard had
+    // done it. Spiked armour is a part its owner drafted and chose to carry; a kill it
+    // earns belongs to them. Inside this block, a zero-health attacker can ONLY have been
+    // reflected — nothing else in `resolveHit` touches the attacker's health.
     if (resolveHit(a, b, contact.speed, match.world.tick, match.effects) > 0) {
       maybeDisengage(match, a);
       launch(b, b.body.x - a.body.x, b.body.y - a.body.y, a.weaponKnockback, match.world.tick);
       if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
+      if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);
     }
     if (b.alive && resolveHit(b, a, contact.speed, match.world.tick, match.effects) > 0) {
       maybeDisengage(match, b);
       launch(a, a.body.x - b.body.x, a.body.y - b.body.y, b.weaponKnockback, match.world.tick);
       if (a.health === 0) eliminate(match, a, 'destroyed', b.body.id);
+      if (b.health === 0) eliminate(match, b, 'destroyed', a.body.id);
     }
   }
 

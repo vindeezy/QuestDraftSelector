@@ -450,6 +450,46 @@ describe('effect bus', () => {
     expect(gentle.effects.some((e) => e.kind === 'collision')).toBe(false);
   });
 
+  it('credits a reflect kill to the owner of the spiked armour, not to nobody', () => {
+    // The exact shape of the bug this covers: a bot swings, its target's Spiked Composite
+    // bounces the damage back, and the SWINGER dies of it. Before the fix, only the
+    // target's health was checked at the hit site, so the swinger fell through to the
+    // health sweep — which credits `byId: null` — and the kill feed read "destroyed", as
+    // if a hazard had done it.
+    const m = createMatch({ ...DEFAULT_MATCH, arena: EMPTY_ARENA, seed: 11, botCount: 2 });
+    const [swinger, spiked] = m.bots as [(typeof m.bots)[number], (typeof m.bots)[number]];
+
+    // Nose to nose, closing, with the swinger pointed straight at the spiked bot so its
+    // weapon arc covers it (heading 0 is +x, and the spiked bot is to its right).
+    swinger.body.x = 240;
+    swinger.body.y = 240;
+    swinger.body.vx = 4;
+    swinger.body.vy = 0;
+    swinger.heading = 0;
+    swinger.health = 1; // one bounce is fatal
+    swinger.nextAttackTick = 0;
+
+    spiked.body.x = 275;
+    spiked.body.y = 240;
+    spiked.body.vx = -4;
+    spiked.body.vy = 0;
+    spiked.damageReflect = 0.9;
+    // The spiked bot deals no damage of its own, so the ONLY thing that can kill the
+    // swinger here is the reflect — which is also the real-match case, where the other
+    // bot's weapon happened to be mid-cooldown.
+    spiked.weaponDamage = 0;
+
+    for (let i = 0; i < 10 && m.eliminations.length === 0; i++) advanceMatch(m);
+
+    const elimination = m.eliminations[0];
+    expect(elimination).toBeDefined();
+    expect(elimination!.botId).toBe(swinger.body.id);
+    expect(elimination!.cause).toBe('destroyed');
+    expect(elimination!.byId).toBe(spiked.body.id);
+    // And the credit reaches the stat the event's scoring reads, not just the log line.
+    expect(spiked.kills).toBe(1);
+  });
+
   it('does not change the pinned event checksum — see src/sim/event/event.test.ts for the authoritative check', () => {
     // A same-seed-twice sanity check local to this file, so a regression here is caught
     // without needing to run the full event suite. The authoritative guard is the pinned

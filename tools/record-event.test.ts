@@ -58,14 +58,18 @@ describe('previewSeed', () => {
     return lines.join('\n');
   }
 
+  /** A seed whose event still needs tiebreaks to resolve — see the tiebreak test below
+   *  for why it cannot share seed 12345 with the rest of this block. */
+  const TIEBREAK_SEED = 7;
+
   it('produces a stable draft order for a known seed (pinned -- a change here means the simulation changed, not just this tool)', () => {
     const output = captureOutput(12345);
     expect(output).toContain(
-      'draft order:     Nick Lenker (57 pts) > Nick Cinotti (53 pts) > Vin Cinotti (50 pts) > ' +
-        'Erik Gundersen (49 pts) > Spencer Lalk (41 pts) > Tommy McCormick (39 pts) > ' +
-        'Colby Thompson (39 pts) > Pat Driscoll (24 pts) > Rob Arena (14 pts) > Paden Simmons (3 pts)',
+      'draft order:     Spencer Lalk (57 pts) > Nick Lenker (54 pts) > Nick Cinotti (53 pts) > ' +
+        'Vin Cinotti (50 pts) > Erik Gundersen (49 pts) > Tommy McCormick (39 pts) > ' +
+        'Colby Thompson (32 pts) > Pat Driscoll (24 pts) > Rob Arena (14 pts) > Paden Simmons (3 pts)',
     );
-    expect(output).toContain('checksum:        4dff0427');
+    expect(output).toContain('checksum:        29af339d');
   });
 
   it('reproduces the exact same draft order across two separate runs of the same seed', () => {
@@ -86,14 +90,23 @@ describe('previewSeed', () => {
   });
 
   it('reports which rule settled each tiebreak, alongside the count', () => {
-    const output = captureOutput(12345);
-    expect(output).toContain('tiebreaks:       2 place(s) needed a tiebreak');
-    expect(output).toContain('draft position 6 (Tommy McCormick): settled by damage');
-    expect(output).toContain('draft position 7 (Colby Thompson): settled by damage');
+    // Deliberately NOT seed 12345, which no longer produces a tiebreak at all. Pinning
+    // "0 place(s)" there would have left this test passing while covering nothing — the
+    // failure mode to watch for whenever a scoring change moves these fixtures.
+    //
+    // Seed 7 is chosen because it exercises BOTH tiebreak rules in one run: two places
+    // settled by damage and two by eliminations. A seed with only one rule would quietly
+    // drop coverage of the other.
+    const output = captureOutput(TIEBREAK_SEED);
+    expect(output).toContain('tiebreaks:       4 place(s) needed a tiebreak');
+    expect(output).toContain('draft position 3 (Paden Simmons): settled by damage');
+    expect(output).toContain('draft position 4 (Pat Driscoll): settled by damage');
+    expect(output).toContain('draft position 5 (Vin Cinotti): settled by eliminations');
+    expect(output).toContain('draft position 6 (Rob Arena): settled by eliminations');
   });
 
   it('prints battle lengths alongside the arena name for each battle', () => {
     const output = captureOutput(12345);
-    expect(output).toContain('battle lengths:  The Grinder 136s, The Gauntlet 169s, The Crossfire 148s');
+    expect(output).toContain('battle lengths:  The Grinder 133s, The Gauntlet 169s, The Crossfire 148s');
   });
 });

@@ -46,6 +46,19 @@ vectors in `rng.test.ts` / `trig.test.ts` pin actual output, not self-consistenc
 fails, the simulation changed — decide deliberately whether that was intended, and
 re-record if so. Never paste in new numbers to make them pass.
 
+**Any change under `src/sim/` invalidates `data/official-event.json`, and no test will tell
+you.** `checksum-gate.test.ts` deliberately does not assert that the shipped record still
+verifies — whether it does is a fact about an admin artifact, not about the gate's logic —
+so the suite goes green while the site itself would refuse to load. After any simulation
+change, re-run `npm run record -- --save <seed>` and confirm it prints `verifies: yes`.
+
+**When a fixture's pinned values move, check the fixture still covers what it claims.**
+The reflect fix changed seed 12345's outcome, which quietly took its tiebreak count from 2
+to 0 — updating the expectation to "0 place(s)" would have left a green test covering
+nothing. The tiebreak fixture now uses seed 7, chosen because it exercises *both* tiebreak
+rules (damage and eliminations) in one run. This is the second time a scoring change has
+hollowed out a tiebreak fixture this way.
+
 **Damage tracking and scoring are frozen once an event is recorded.**
 
 ## The most useful thing we know
@@ -163,13 +176,20 @@ Both deliberately deferred, because arena geometry changes the answer to each.
 vs 5 and read the effect on draft position and on survival-personality share. The harness
 for this is `npm run draft`, which already reports both.
 
-**2. What counts as a kill?** Currently, *only a direct bot-on-bot final blow*. See the
-four `eliminate()` call sites in `match.ts`: contact damage credits the other bot; a
-`destroyed` death from any zone, projectile or hazard credits nobody, and a `fell` death
-credits nobody.
+**2. What counts as a kill?** *A direct bot-on-bot final blow, and — as of 12 August — a
+kill earned by Spiked Composite's damage reflect.* See the `eliminate()` call sites in
+`match.ts`: contact damage credits the other bot; a `destroyed` death from any zone,
+projectile or hazard credits nobody, and a `fell` death credits nobody.
 
-So none of these currently earn a kill, and several are the most watchable moments in the
-game:
+The reflect case was **a bug, not a policy**, and is now fixed. Only the target's health was
+checked at the hit site, so a bot that impaled itself on someone's spikes fell through to
+the health sweep, which credits `byId: null` — the kill feed read a bare "destroyed", as if
+a hazard had done it. Spotted by watching a single match, where it landed on the *final*
+elimination of a battle and read as obviously wrong. Both directions of an exchange are now
+checked, so a mutual kill credits both bots. Covered by `match.test.ts`'s
+"credits a reflect kill to the owner of the spiked armour".
+
+The remaining uncredited moments, several of which are the most watchable in the game:
 
 | Moment | Credited today |
 |---|---|
@@ -177,7 +197,7 @@ game:
 | Trigger a cannon whose ball lands the killing blow | **No** |
 | Shove a bot into a saw | **No** |
 | Kill with a Shockwave launch | **No** |
-| Kill via Spiked Composite damage reflect | **No** (reflect does not credit damage either) |
+| Kill via Spiked Composite damage reflect | **Yes** (the kill only — reflect still does not credit `damageDealt`) |
 
 This interacts directly with arena design: in The Grinder falls are only 1.8% of deaths so
 it barely matters, but an arena built around a trapdoor or ejection gaps would have a large
