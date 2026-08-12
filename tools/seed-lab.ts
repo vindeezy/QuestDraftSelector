@@ -260,15 +260,67 @@ function printSummary(reports: readonly SeedReport[]): void {
 
 const args = process.argv.slice(2);
 const reveal = args.includes('--reveal');
+const asJson = args.includes('--json');
 const seeds = args.filter((a) => !a.startsWith('--')).map(Number);
 
 if (seeds.length === 0 || seeds.some((s) => !Number.isInteger(s) || s < 1)) {
-  console.error('Usage: npm run seeds -- <seed> [<seed> ...] [--reveal]');
+  console.error('Usage: npm run seeds -- <seed> [<seed> ...] [--reveal] [--json]');
   console.error('  --reveal  print the letter -> member mapping (spoils the draft order)');
+  console.error('  --json    emit the same analysis as JSON on stdout, and nothing else');
   process.exit(1);
 }
 
 const reports = seeds.map(analyse);
+
+/**
+ * The same analysis as a machine-readable structure, so a report generator works from the
+ * real numbers rather than by scraping the text tables above — which would silently rot
+ * the first time a column moves. Still anonymised: no member names appear unless
+ * `--reveal` is also passed.
+ */
+if (asJson) {
+  console.log(
+    JSON.stringify(
+      reports.map((r) => ({
+        seed: r.seed,
+        arenas: ARENA_VARIANT_NAMES,
+        battleSeconds: r.battleTicks.map((t) => Math.round(t / TICKS_PER_SECOND)),
+        eliminations: { combat: r.combatKills, hazard: r.hazardKills, fall: r.fallKills },
+        leaders: r.leaders,
+        leadChanges: r.leadChanges,
+        topTwoGap: r.topTwoGap,
+        battle3Winner: r.battle3Winner,
+        spread: r.spread,
+        worstConcentration: r.worstConcentration,
+        kills: r.result.tallies.map((tally, i) => ({
+          who: r.labels[i]!,
+          perBattle: tally.eliminationsPerBattle,
+          total: tally.eliminationsPerBattle.reduce((a, b) => a + b, 0),
+        })),
+        board: r.result.standings.map((standing) => {
+          const memberIndex = r.result.members.findIndex((m) => m.id === standing.memberId);
+          return {
+            rank: standing.draftPosition,
+            who: r.labels[memberIndex]!,
+            total: standing.points,
+            tiebreak: standing.tiebreak,
+            battles: standing.battles.map((battle, b) => ({
+              place: r.result.tallies[memberIndex]!.places[b]!,
+              placementPoints: battle.placementPoints,
+              killPoints: battle.killPoints,
+              eliminations: battle.eliminations,
+            })),
+          };
+        }),
+        ...(reveal ? { mapping: r.labels.map((label, i) => ({ label, name: ROSTER[i]!.name })) } : {}),
+      })),
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
 for (const report of reports) printReport(report);
 if (reports.length > 1) printSummary(reports);
 
