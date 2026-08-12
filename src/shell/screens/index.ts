@@ -5,6 +5,7 @@ import { nameSelectScreen } from './name-select';
 import { whatToExpectScreen } from './what-to-expect';
 import { forgeScreen } from './forge';
 import { buildRevealScreen } from './build-reveal';
+import { battleScreen } from './battle';
 import { stubScreen } from './stub';
 
 /**
@@ -23,6 +24,9 @@ const REAL_SCREENS: Partial<Record<BeatId, Screen>> = {
   'name-select': nameSelectScreen,
   'what-to-expect': whatToExpectScreen,
   'build-reveal': buildRevealScreen,
+  'battle-1': battleScreen('battle-1'),
+  'battle-2': battleScreen('battle-2'),
+  'battle-3': battleScreen('battle-3'),
 };
 
 export const SCREENS: Readonly<Record<BeatId, Screen>> = Object.fromEntries(

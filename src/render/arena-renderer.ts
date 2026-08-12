@@ -1,19 +1,92 @@
-import { Application, Container, Graphics, Text } from 'pixi.js';
+import { Application, BitmapText, Container, Graphics, Text } from 'pixi.js';
 import { TileState } from '../sim/arena/tiles';
 import { destroyOnce } from './destroy-once';
 import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
 import { ZoneShape } from '../sim/arena/zone';
 import { isActive } from '../sim/arena/activation';
 import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
-import type { Match } from '../sim/arena/match';
+import type { Elimination, Match } from '../sim/arena/match';
 
 const BOT_COLORS = [
   0xff6a3d, 0x3ddc84, 0x4aa8ff, 0xc77dff, 0xffd23d,
   0xff4d8d, 0x5ce1e6, 0xffa03d, 0x9d7bff, 0x6ee7a0,
 ];
 
-/** Width of the right-hand margin the kill feed lives in, beyond the arena itself. */
-const KILL_FEED_WIDTH = 190;
+/** A bot's real-world identity: the member's colour and the two-letter initials to
+ *  print on its body — the same shape `PlinkoBallVisual` (`plinko-renderer.ts`) already
+ *  uses for a member's ball, since it is the same "colour + initials" identity mechanism
+ *  applied to a different renderer (§5.1/§5.2 of the design spec). Optional — a caller
+ *  with no real members (the "What to expect" demo loop, `what-to-expect.ts`) falls back
+ *  to `BOT_COLORS` and a 1-based index label, exactly as before this existed. */
+export interface ArenaBotVisual {
+  /** 0xRRGGBB. */
+  colour: number;
+  label: string;
+}
+
+/** Perceived brightness, 0 (black) to 1 (white). Same formula `plinko-renderer.ts` and
+ *  `bot-portrait.ts` both already use, duplicated rather than imported for the same
+ *  layering reason they give: `src/render/` must not reach into `src/shell/`, and these
+ *  three files sit alongside each other rather than one importing from another. */
+function luminance(colour: number): number {
+  const r = (colour >> 16) & 0xff;
+  const g = (colour >> 8) & 0xff;
+  const b = colour & 0xff;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Dark ink on a bright bot, light ink on a dark one, so initials stay readable against
+ *  any member colour — the same rule `plinko-renderer.ts`'s `inkFor` applies to a ball. */
+function inkFor(colour: number): number {
+  return luminance(colour) > 0.55 ? 0x0b0f16 : 0xffffff;
+}
+
+/** Below this brightness a bot is at real risk of disappearing into the arena's own dark
+ *  floor and wall colours (`0x0b0f16`/`0x35424f`) — see the roster.ts comment on the one
+ *  member (Tommy, `#1C1F26`) this matters for, and `plinko-renderer.ts`'s identical
+ *  `DARK_BALL_LUMINANCE` guard on the same member's ball. Exported so a test can check the
+ *  threshold directly against Tommy's real roster colour without duplicating the number. */
+export const DARK_BOT_LUMINANCE = 0.18;
+
+/** True when `colour` needs a brighter, thicker outline to stay legible against the
+ *  arena floor — pulled out as its own pure function so this specific requirement (the
+ *  "Tommy needs a light outline" rule from the design spec and `roster.ts`) is directly
+ *  testable without a WebGL context. */
+export function needsBrightOutline(colour: number): boolean {
+  return luminance(colour) < DARK_BOT_LUMINANCE;
+}
+
+/** Bot `index`'s colour and label: `botVisuals[index]` when supplied, else the placeholder
+ *  palette and a 1-based index — the same fallback `plinko-renderer.ts`'s ball drawing
+ *  uses. Pure and side-effect-free so `arena-renderer.test.ts` can check the resolution
+ *  rule directly, without mounting a renderer. */
+export function resolveBotVisual(index: number, botVisuals?: readonly ArenaBotVisual[]): ArenaBotVisual {
+  const visual = botVisuals?.[index];
+  if (visual) return visual;
+  return { colour: BOT_COLORS[index % BOT_COLORS.length]!, label: String(index + 1) };
+}
+
+/** One kill feed line's text: who, by whom, and how. `cause: 'fell'` and `byId === null`
+ *  (an environmental/hazard kill — see the `Elimination` doc comment in `match.ts`) both
+ *  read as "no attacker" but are worded differently, since a bot falling through the floor
+ *  and a bot cooked by a flame jet are not the same story. `labelFor` is injected rather
+ *  than a bare id lookup so this stays pure and independently testable
+ *  (`arena-renderer.test.ts`) without constructing a real `Match`. */
+export function killFeedLine(
+  elimination: Pick<Elimination, 'botId' | 'cause' | 'byId'>,
+  labelFor: (botId: string) => string,
+): string {
+  const victim = labelFor(elimination.botId);
+  if (elimination.cause === 'fell') return `${victim} fell`;
+  if (elimination.byId) return `${victim} eliminated by ${labelFor(elimination.byId)}`;
+  return `${victim} destroyed`;
+}
+
+/** Width of the right-hand margin the kill feed lives in, beyond the arena itself.
+ *  210, not the original 190 — wide enough for the longest real line
+ *  (`"XX eliminated by YY"`, two two-letter initials) plus its colour dot without
+ *  wrapping or clipping. */
+const KILL_FEED_WIDTH = 210;
 const KILL_FEED_HEADER_HEIGHT = 30;
 const KILL_FEED_ROW_HEIGHT = 20;
 
@@ -87,6 +160,7 @@ export async function createArenaRenderer(
   match: Match,
   highlightIndex: number | null,
   personalityTags: Map<string, string> = new Map(),
+  botVisuals?: readonly ArenaBotVisual[],
 ): Promise<ArenaRenderer> {
   const { width, height } = match.arena.grid;
   const canvasWidth = width + KILL_FEED_WIDTH;
@@ -109,12 +183,18 @@ export async function createArenaRenderer(
   const dynamic = new Graphics();
   app.stage.addChild(dynamic);
 
+  // BitmapText, not Text: every bot's label moves every frame (see the `pixijs-scene-text`
+  // skill and `plinko-renderer.ts`'s identical choice for the same reason) — an
+  // atlas-backed label is the cheaper one to reposition ten times a frame. Content and ink
+  // colour are fixed for the match's lifetime (see `resolveBotVisual`), so both are set
+  // once here rather than in `draw`.
   const labels = new Container();
   app.stage.addChild(labels);
   const labelTexts = match.bots.map((_, index) => {
-    const text = new Text({
-      text: String(index + 1),
-      style: { fontSize: 12, fill: 0x0b0f16, fontWeight: '700' },
+    const visual = resolveBotVisual(index, botVisuals);
+    const text = new BitmapText({
+      text: visual.label,
+      style: { fontFamily: 'Arial', fontSize: 12, fill: inkFor(visual.colour), fontWeight: '700' },
     });
     text.anchor.set(0.5);
     labels.addChild(text);
@@ -124,19 +204,30 @@ export async function createArenaRenderer(
   const tags = new Container();
   app.stage.addChild(tags);
   const tagTexts = match.bots.map(() => {
-    const text = new Text({
+    const text = new BitmapText({
       text: '',
-      style: { fontSize: 10, fill: 0x9fb0c6, fontWeight: '600' },
+      style: { fontFamily: 'Arial', fontSize: 10, fill: 0x9fb0c6, fontWeight: '600' },
     });
     text.anchor.set(0.5, 0);
     tags.addChild(text);
     return text;
   });
 
-  // Bot number (1-based, matching the on-body label) by id, resolved once — the roster
-  // does not change over a match's lifetime.
+  // Bot number (1-based, matching the legacy on-body label) by id, resolved once — the
+  // roster does not change over a match's lifetime. Still used as the kill feed's
+  // fallback identity when no real member visuals are supplied (the demo loop).
   const botNumberById = new Map<string, number>();
   match.bots.forEach((bot, index) => botNumberById.set(bot.body.id, index + 1));
+
+  // Real member initials by bot id, for the kill feed's "who/by whom" text — falls back
+  // to `#<number>` (via `killFeedLabelFor` below) when no real member visuals exist.
+  const killFeedVisualById = new Map<string, ArenaBotVisual>();
+  match.bots.forEach((bot, index) => {
+    const visual = botVisuals?.[index];
+    if (visual) killFeedVisualById.set(bot.body.id, visual);
+  });
+  const killFeedLabelFor = (botId: string): string =>
+    killFeedVisualById.get(botId)?.label ?? `#${botNumberById.get(botId) ?? '?'}`;
 
   // Kill feed lives in the margin to the right of the arena.
   const killFeed = new Container();
@@ -159,15 +250,27 @@ export async function createArenaRenderer(
     0,
     Math.floor((height - KILL_FEED_HEADER_HEIGHT) / KILL_FEED_ROW_HEIGHT),
   );
+  // Each row is a small colour dot (the victim's member colour, "colour by member" per
+  // the design spec) plus the `killFeedLine` text, in a fixed legible ink colour — the
+  // dot carries identity, so the text itself never has to fight for contrast against the
+  // panel's own dark background the way member-coloured text would for Tommy's near-black.
   const killFeedRows = Array.from({ length: killFeedMaxRows }, (_, row) => {
+    const container = new Container();
+    container.x = 16;
+    container.y = KILL_FEED_HEADER_HEIGHT + row * KILL_FEED_ROW_HEIGHT;
+    killFeed.addChild(container);
+
+    const dot = new Graphics();
+    container.addChild(dot);
+
     const text = new Text({
       text: '',
       style: { fontSize: 12, fill: 0xdbe4ef },
     });
-    text.x = 16;
-    text.y = KILL_FEED_HEADER_HEIGHT + row * KILL_FEED_ROW_HEIGHT;
-    killFeed.addChild(text);
-    return text;
+    text.x = 12;
+    container.addChild(text);
+
+    return { container, dot, text };
   });
 
   const drawFloor = (current: Match): void => {
@@ -286,11 +389,19 @@ export async function createArenaRenderer(
       const row = killFeedRows[i]!;
       const elim = recent[i];
       if (!elim) {
-        row.text = '';
+        row.dot.clear();
+        row.text.text = '';
         continue;
       }
-      const number = botNumberById.get(elim.botId) ?? '?';
-      row.text = `#${number} ${elim.cause}`;
+
+      const colour = killFeedVisualById.get(elim.botId)?.colour ?? 0x8fa3b8;
+      row.dot.clear();
+      row.dot.circle(4, 6, 4).fill(colour);
+      if (needsBrightOutline(colour)) {
+        row.dot.circle(4, 6, 4).stroke({ width: 1.5, color: 0xffffff, alpha: 0.7 });
+      }
+
+      row.text.text = killFeedLine(elim, killFeedLabelFor);
     }
   };
 
@@ -309,15 +420,28 @@ export async function createArenaRenderer(
       }
       label.visible = true;
 
-      const color = BOT_COLORS[index % BOT_COLORS.length]!;
+      const color = resolveBotVisual(index, botVisuals).colour;
+      const isHighlighted = index === highlightIndex;
       const { x, y } = bot.body;
       const r = bot.body.radius;
 
-      if (index === highlightIndex) {
+      // The persistent highlight: a soft halo behind the claimed member's bot, the whole
+      // event through — the same visual vocabulary `plinko-renderer.ts` uses for "this is
+      // your ball", carried from the Forge into the battles.
+      if (isHighlighted) {
         dynamic.circle(x, y, r + 6).fill({ color: 0xffffff, alpha: 0.16 });
       }
 
       dynamic.circle(x, y, r).fill(color);
+      // A thin outline on every bot, brighter and thicker for the highlighted bot and for
+      // any bot dark enough to lose its edge against the arena floor (Tommy, `#1C1F26` —
+      // see `needsBrightOutline`'s doc comment) — the same three-way rule
+      // `plinko-renderer.ts` applies to a ball.
+      dynamic.circle(x, y, r).stroke({
+        width: isHighlighted ? 3 : needsBrightOutline(color) ? 2.5 : 1.5,
+        color: 0xffffff,
+        alpha: isHighlighted ? 0.9 : needsBrightOutline(color) ? 0.65 : 0.25,
+      });
 
       // Heading spike, so facing is readable at a glance. This is why combat feels
       // directional rather than random.

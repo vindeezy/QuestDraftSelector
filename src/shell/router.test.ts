@@ -112,8 +112,9 @@ describe('mountRouter', () => {
     }
   });
 
-  it('shows a placeholder stub for every beat after the Forge, except build-reveal which is real now', () => {
-    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1).filter((beat) => beat !== 'build-reveal');
+  it('shows a placeholder stub for every beat after the Forge, except build-reveal and the three battles which are real now', () => {
+    const realBeatsPastForge: ReadonlySet<string> = new Set(['build-reveal', 'battle-1', 'battle-2', 'battle-3']);
+    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1).filter((beat) => !realBeatsPastForge.has(beat));
     expect(stubBeats.length).toBeGreaterThan(0);
 
     for (const beat of stubBeats) {
@@ -124,6 +125,22 @@ describe('mountRouter', () => {
       mountRouter({ container, seed: SEED, storage });
 
       expect(container.querySelector('.screen-stub')).not.toBeNull();
+    }
+  });
+
+  it('shows the real battle screen (not a stub) for each of the three battle beats', () => {
+    for (const beat of ['battle-1', 'battle-2', 'battle-3'] as const) {
+      const storage = new MemoryStorage();
+      seedFurthestBeat(storage, beat, 'paden');
+      const container = makeContainer();
+
+      const router = mountRouter({ container, seed: SEED, storage });
+
+      expect(router.currentBeat).toBe(beat);
+      expect(container.querySelector('.screen-battle')).not.toBeNull();
+      expect(container.querySelector('.screen-stub')).toBeNull();
+
+      router.destroy();
     }
   });
 

@@ -1320,6 +1320,107 @@ button {
   height: fit-content;
 }
 
+/* --- Battle -------------------------------------------------------------------- */
+
+/* Same fit-the-viewport contract as `.screen-forge` — see the long comment there for why
+   `min-height` alone isn't enough and a scrollbar below ~700px of viewport height is the
+   correct fallback rather than a squashed arena. */
+.screen-battle {
+  max-width: 1200px;
+  height: 100vh;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 20px 24px 18px;
+  overflow: hidden;
+  gap: 0;
+}
+
+@media (height < 700px) {
+  .screen-battle {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .battle-arena {
+    min-height: 380px;
+  }
+}
+
+.battle-header {
+  flex: none;
+  text-align: center;
+  max-width: 64ch;
+  margin: 0 auto 14px;
+}
+
+.battle-progress {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.battle-arena-name {
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+  margin-bottom: 6px;
+}
+
+/* One panel, not the Forge's board-plus-side-panel grid — the kill feed lives inside the
+   arena canvas itself (`arena-renderer.ts`'s own right-hand margin), so there is no second
+   DOM panel to make room for here. */
+.battle-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  width: 100%;
+}
+
+.battle-arena {
+  /* Positioning context for the BEGIN/Continue overlay below. */
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Same `object-fit: contain` letterboxing trick as `.forge-board canvas` — the arena
+   canvas always renders at its own fixed native resolution (the grid's pixel size plus
+   the kill-feed margin), never a size measured from this host, so there is nothing here
+   that can go stale on resize and therefore no resize listener needed (see the doc
+   comment on `battleScreen` in `battle.ts`). */
+.battle-arena canvas {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.battle-arena__fallback {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none;
+  box-shadow: none;
+}
+
+/* Reuses `.forge-overlay-btn`'s centring and `@keyframes forge-drop-glow`'s pulse — the
+   same "waiting on you" anticipation beat as the Forge's DROP 'EM, just a different
+   label. */
+.battle-start-btn {
+  animation: forge-drop-glow 2.2s ease-in-out infinite;
+}
+
 /* --- Stub screens ------------------------------------------------------------- */
 
 .screen-stub {
