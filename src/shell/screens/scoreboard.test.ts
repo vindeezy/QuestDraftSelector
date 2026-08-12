@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest';
 import { runEvent } from '../../sim/event/event';
-import { KILL_POINTS, pointsForPlace } from '../../sim/event/scoring';
+import { KILL_POINTS, PLACEMENT_POINTS, pointsForPlace } from '../../sim/event/scoring';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { FIRST_BEAT, type BeatId } from '../beats';
 import { ordinal } from '../ordinal';
@@ -162,7 +162,7 @@ describe('ties', () => {
     expect(tied[0]!.rank).not.toBe(tied[1]!.rank);
   });
 
-  it('says so plainly when two members are level on points AND kills, and shares their rank', () => {
+  it('says so plainly when two members are level on points AND kills, without merging their ranks', () => {
     // Two members handed identical results: nothing in the interim chain can separate
     // them, and the board should not pretend otherwise.
     const places = ROSTER.map((_, i) => [i === 1 ? 1 : i + 1]);
@@ -173,9 +173,11 @@ describe('ties', () => {
     expect(tied.length).toBe(2);
     expect(tied[0]!.tieNote).toBe('level on points and kills');
     expect(tied[1]!.tieNote).toBe('level on points and kills');
-    expect(tied[0]!.rank).toBe(tied[1]!.rank);
-    // Competition ranking: the shared rank is 1, so the next row is 3rd, not 2nd.
-    expect(rows[2]!.rank).toBe(3);
+    // Ranks stay distinct and sequential even here — the note carries the tie, the rank
+    // column stays a clean 1..10 so it can be scanned at a glance.
+    expect(tied[0]!.rank).toBe(1);
+    expect(tied[1]!.rank).toBe(2);
+    expect(rows.map((row) => row.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   });
 
   it('leaves a row alone when its total is its own', () => {
@@ -203,6 +205,11 @@ describe('killCountLabel and pointsLabel', () => {
   it('carries the unit on every points figure', () => {
     expect(pointsLabel(25)).toBe('25 pts');
     expect(pointsLabel(0)).toBe('0 pts');
+  });
+
+  it('reads "1 pt" for last place, which every board with a tenth place shows', () => {
+    expect(pointsForPlace(PLACEMENT_POINTS.length)).toBe(1);
+    expect(pointsLabel(1)).toBe('1 pt');
   });
 });
 
@@ -272,6 +279,11 @@ describe('scoreboardScreen', () => {
     expect(groups.map((el) => el.textContent!.trim())).toEqual(['The Grinder', 'The Gauntlet']);
     expect(groups.every((el) => el.getAttribute('colspan') === '2')).toBe(true);
 
+    const outerHeaders = [...ctx.container.querySelectorAll('thead th[rowspan="2"]')].map((el) =>
+      el.textContent!.trim(),
+    );
+    expect(outerHeaders).toEqual(['Rank', 'Member', 'Total']);
+
     const subHeaders = [...ctx.container.querySelectorAll('thead tr:nth-child(2) th')].map((el) =>
       el.textContent!.trim(),
     );
@@ -281,17 +293,40 @@ describe('scoreboardScreen', () => {
     expect(ctx.container.querySelectorAll('.score-row')[0]!.children.length).toBe(7);
   });
 
-  it('shows placement, then the two point sources, then the total on a battle board', () => {
+  it('shows rank, then the two point sources, then the total on a battle board', () => {
     const ctx = makeContext(null);
     scoreboardScreen('battle-3-result').render(ctx);
     const headers = [...ctx.container.querySelectorAll('thead th')].map((el) => el.textContent!.trim());
-    expect(headers).toEqual(['Placement', 'Member', 'Placement points', 'Kill points', 'Total']);
+    expect(headers).toEqual(['Rank', 'Member', 'Placement points', 'Kill points', 'Total']);
+  });
 
-    // The leftmost column is the finish in THAT battle, not the row's rank — so it is
-    // free to run out of order when kills reshuffle the scoring.
+  it('counts the rank column 1st through 10th in order on BOTH board shapes', () => {
+    // The rank reads off the total, never off a finishing place — so it stays in order
+    // even on a battle board where kills have reshuffled the scoring away from the
+    // finishes. That is the whole reason it is a separate column from the placement.
+    for (const beat of ['standings-1', 'standings-2', 'battle-2-result', 'battle-3-result'] as BeatId[]) {
+      const ctx = makeContext(null);
+      scoreboardScreen(beat).render(ctx);
+      const ranks = [...ctx.container.querySelectorAll('.score-rank')].map((el) => el.textContent!.trim());
+      expect(ranks, beat).toEqual(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']);
+    }
+  });
+
+  it("names the finishing place under that battle's placement points", () => {
+    // The finish is still shown — it moves from its own column to the quiet line beneath
+    // the points it bought, matching how the cumulative board already reads.
+    const ctx = makeContext(null);
+    scoreboardScreen('battle-3-result').render(ctx);
+
     const expected = rowsFor('battle-3-result');
-    const places = [...ctx.container.querySelectorAll('.score-place')].map((el) => el.textContent!.trim());
-    expect(places).toEqual(expected.map((row) => ordinal(row.cells[0]!.place)));
+    const subs = [...ctx.container.querySelectorAll('.score-row')].map(
+      (tr) => tr.querySelectorAll('.score-sub')[0]!.textContent!.trim(),
+    );
+    expect(subs).toEqual(expected.map((row) => ordinal(row.cells[0]!.place)));
+
+    // And on this seed the finishes genuinely do run out of order, so the test above is
+    // not passing by coincidence on an event where rank and placement happen to agree.
+    expect(subs).not.toEqual(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']);
   });
 
   it('prints every points figure with its unit, and names the kills under the kill points', () => {
@@ -307,7 +342,10 @@ describe('scoreboardScreen', () => {
       pointsLabel(cell.killPoints),
       pointsLabel(expected[0]!.total),
     ]);
-    expect(firstRow.querySelector('.score-sub')!.textContent!.trim()).toBe(killCountLabel(cell.eliminations));
+    // Two quiet lines per row now: the finishing place under the placement points, then
+    // the kill count under the kill points.
+    const subs = [...firstRow.querySelectorAll('.score-sub')].map((el) => el.textContent!.trim());
+    expect(subs).toEqual([ordinal(cell.place), killCountLabel(cell.eliminations)]);
   });
 
   it('keeps the member cell a real table cell, so the highlight cannot leave a gap in the row', () => {

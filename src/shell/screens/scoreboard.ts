@@ -72,8 +72,16 @@ export interface ScoreRow {
   total: number;
   /** Eliminations across `cells`. The first tiebreak, and shown in its own right. */
   eliminations: number;
-  /** Competition rank: rows level on both `total` and `eliminations` share a number, so
-   *  the next rank skips (1, 2, 2, 4). */
+  /**
+   * This row's position on the board, always 1..10 with no gaps and no shared numbers.
+   *
+   * Deliberately a position rather than a competition rank (1, 2, 2, 4). Two members level
+   * on points and kills are still listed one above the other, so giving them the same
+   * number leaves the column reading 1st, 2nd, 2nd, 4th — which looks like a rendering
+   * fault at a glance, and makes the board harder to scan for the one thing everybody is
+   * scanning it for. The tie is not hidden: `tieNote` says they are level, on the total
+   * that is actually level.
+   */
   rank: number;
   /** Why this row sits where it does when it is level on points with a neighbour, or
    *  `null` when its total is its own. */
@@ -137,10 +145,7 @@ export function scoreboardRows(result: EventResult, config: ScoreboardConfig): S
     const row = rows[i]!;
     const previous = rows[i - 1];
 
-    row.rank =
-      previous && previous.total === row.total && previous.eliminations === row.eliminations
-        ? previous.rank
-        : i + 1;
+    row.rank = i + 1;
 
     // "Why did this tie break?" — answered only where a tie actually exists, by looking at
     // both neighbours: a row can be level with the one above, the one below, or both.
@@ -157,10 +162,12 @@ export function scoreboardRows(result: EventResult, config: ScoreboardConfig): S
   return rows;
 }
 
-/** "25 pts". The unit is repeated on every points cell rather than pushed up into the
- *  column header, because these boards are read at a glance across a room. */
+/** "25 pts", "1 pt". The unit is repeated on every points cell rather than pushed up into
+ *  the column header, because these boards are read at a glance across a room. The
+ *  singular is not hypothetical: last place is worth exactly 1 point, so every board with
+ *  a tenth place in it shows one. */
 export function pointsLabel(points: number): string {
-  return `${points} pts`;
+  return `${points} ${points === 1 ? 'pt' : 'pts'}`;
 }
 
 /** "3 kills", "1 kill", "no kills" — the quiet line under a kill-points figure, naming
@@ -235,6 +242,19 @@ function pointsCell(points: number, sub: string, extraClass = ''): string {
   `;
 }
 
+/**
+ * The leftmost column, identical on both board shapes: where this member sits on THIS
+ * board, 1st through 10th, always in order and never repeated.
+ *
+ * It reads off `total`, never off a finishing place — so on a battle board it stays in
+ * order even when kills reshuffle the scoring and the actual finishes run out of order.
+ * Those finishes are still shown, as the quiet line under the placement points, which is
+ * how the cumulative board has always read them.
+ */
+function rankCell(row: ScoreRow): string {
+  return `<td class="score-rank">${ordinal(row.rank)}</td>`;
+}
+
 function totalCell(row: ScoreRow): string {
   return `
     <td class="score-points score-total">
@@ -251,9 +271,9 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
       const isYou = row.memberId === claimedMemberId;
       return `
         <tr class="score-row${isYou ? ' is-you' : ''}">
-          <td class="score-place">${ordinal(cell.place)}</td>
+          ${rankCell(row)}
           ${memberCell(row, isYou)}
-          ${pointsCell(cell.placementPoints, '')}
+          ${pointsCell(cell.placementPoints, ordinal(cell.place))}
           ${pointsCell(cell.killPoints, killCountLabel(cell.eliminations))}
           ${totalCell(row)}
         </tr>
@@ -265,7 +285,7 @@ function renderBattleTable(rows: readonly ScoreRow[], claimedMemberId: string | 
     <table class="score-table">
       <thead>
         <tr>
-          <th scope="col">Placement</th>
+          <th scope="col">Rank</th>
           <th scope="col">Member</th>
           <th scope="col">Placement points</th>
           <th scope="col">Kill points</th>
@@ -304,7 +324,7 @@ function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: strin
         .join('');
       return `
         <tr class="score-row${isYou ? ' is-you' : ''}">
-          <td class="score-rank">${row.tieNote === 'level on points and kills' ? 'T' : ''}${row.rank}</td>
+          ${rankCell(row)}
           ${memberCell(row, isYou)}
           ${cells}
           ${totalCell(row)}
@@ -317,7 +337,7 @@ function renderCumulativeTable(rows: readonly ScoreRow[], claimedMemberId: strin
     <table class="score-table score-table--cumulative">
       <thead>
         <tr>
-          <th scope="col" rowspan="2">Placement</th>
+          <th scope="col" rowspan="2">Rank</th>
           <th scope="col" rowspan="2">Member</th>
           ${groupHeaders}
           <th scope="col" rowspan="2">Total</th>

@@ -1703,7 +1703,6 @@ button {
   color: var(--ink-dim);
 }
 
-.score-place,
 .score-rank {
   width: 1%;
   font-size: 17px;
@@ -1801,7 +1800,6 @@ button {
   box-shadow: inset 3px 0 0 var(--neon-cyan);
 }
 
-.score-row.is-you .score-place,
 .score-row.is-you .score-rank {
   color: var(--ink);
 }
