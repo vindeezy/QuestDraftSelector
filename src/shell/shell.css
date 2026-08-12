@@ -203,12 +203,19 @@ button {
     var(--bg-0);
 }
 
+/* No `filter: blur()` here either — see `.reveal-stage::before` for why. A radial gradient
+   is already soft; blurring one buys almost nothing visually and costs a compositing layer
+   that can ghost on a fullscreen transition. */
 .landing-glow {
   position: absolute;
   inset: -20%;
   background:
-    radial-gradient(30% 24% at 50% 42%, rgb(76 224 255 / 0.16), transparent 72%);
-  filter: blur(10px);
+    radial-gradient(
+      34% 28% at 50% 42%,
+      rgb(76 224 255 / 0.16) 0%,
+      rgb(76 224 255 / 0.07) 46%,
+      transparent 76%
+    );
   pointer-events: none;
 }
 
@@ -1094,8 +1101,18 @@ button {
   position: absolute;
   inset: 6%;
   border-radius: 50%;
-  background: radial-gradient(closest-side, var(--member-colour), transparent 72%);
-  filter: blur(6px);
+  /* A soft-stopped gradient rather than a hard one behind `filter: blur()`.
+     `filter` promotes an element to its own compositing layer, and re-rasterising a large
+     blurred layer — which entering fullscreen forces — is a well-known source of smeared
+     ghost copies of whatever sits near it. That is exactly what showed up here: a duplicate
+     of the left-hand column, with the DOM containing only one of everything. The extra
+     colour stops reproduce the falloff without needing a layer at all. */
+  background: radial-gradient(
+    closest-side,
+    var(--member-colour) 0%,
+    color-mix(in srgb, var(--member-colour) 55%, transparent) 45%,
+    transparent 78%
+  );
   opacity: 0.3;
   animation: reveal-stage-pulse 3400ms ease-in-out infinite;
   pointer-events: none;

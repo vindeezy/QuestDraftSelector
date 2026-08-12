@@ -68,6 +68,16 @@ export interface BotPortraitDrawing {
  *  relative to its own weapon/armour embellishments. */
 const CHASSIS_BASE_RADIUS = 62;
 
+/**
+ * How much of the portrait canvas the machine fills, measured across its widest axis.
+ *
+ * Short of 1 on purpose: the idle drift rotates the bot a few degrees each way, and a
+ * shape that exactly fills its square at rest clips its own corners as it turns. This
+ * leaves enough room for that swing plus a little air, without the sea of empty space the
+ * portrait had when it was drawn at a fixed size and merely centred.
+ */
+const PORTRAIT_FILL = 0.86;
+
 // --- Shape description ------------------------------------------------------------------
 //
 // One small data shape per chassis, rather than six near-duplicate draw functions: fill,
@@ -628,6 +638,27 @@ export async function mountBotPortraitStage(
   const drawing = drawBotPortrait(build, colour);
   drawing.view.x = size / 2;
   drawing.view.y = size / 2;
+
+  // Scale the drawing to fill the canvas it was given. Without this the bot is drawn at a
+  // fixed ~62-unit radius and merely *centred* in the canvas, so asking for a bigger
+  // portrait bought nothing but more empty space around an unchanged machine — at 640 the
+  // bot occupied under a fifth of its own stage.
+  //
+  // Measured from real local bounds rather than `drawing.radius`, because the chassis is
+  // not the widest thing here: a Hammer or a Vertical Spinner juts well past the hull, and
+  // Spiked Composite's rim spikes stick out all the way round. Scaling off the chassis
+  // alone would push those past the canvas edge and clip them.
+  //
+  // `getLocalBounds` is pre-transform, so this is unaffected by the resting rotation and
+  // idle drift applied below, and the anchors stay exact because `toGlobal` walks the same
+  // transform this scale becomes part of.
+  const bounds = drawing.view.getLocalBounds();
+  const extent = Math.max(bounds.width, bounds.height);
+  if (extent > 0) {
+    const scale = (size * PORTRAIT_FILL) / extent;
+    drawing.view.scale.set(scale);
+  }
+
   app.stage.addChild(drawing.view);
 
   // Presented facing "up", toward the viewer, rather than the sideways +x every other
