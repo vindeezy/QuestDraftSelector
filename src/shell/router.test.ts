@@ -237,3 +237,85 @@ describe('a screen whose teardown throws', () => {
     expect(errors.length).toBeGreaterThan(0);
   });
 });
+
+describe('the back button', () => {
+  const backButton = (container: HTMLElement): HTMLButtonElement | null =>
+    container.querySelector<HTMLButtonElement>('button[data-nav="back"]');
+
+  it('is absent on landing, which has nothing before it', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    mountRouter({ container, seed: SEED, storage });
+
+    expect(container.dataset.beat).toBe('landing');
+    expect(backButton(container)).toBeNull();
+  });
+
+  it('appears on every other beat', () => {
+    for (const beat of BEAT_IDS.slice(1)) {
+      const storage = new MemoryStorage();
+      const container = makeContainer();
+      seedFurthestBeat(storage, beat);
+      mountRouter({ container, seed: SEED, storage });
+
+      expect(backButton(container), `expected a back button on "${beat}"`).not.toBeNull();
+    }
+  });
+
+  it('steps back exactly one beat when clicked', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    backButton(container)!.click();
+
+    expect(router.currentBeat).toBe('standings-2');
+    expect(container.dataset.beat).toBe('standings-2');
+  });
+
+  it('does not shrink furthest progress — the whole point of going back', () => {
+    // The case that motivated this: already at battle 3, wanting to re-watch battle 2
+    // without replaying the Forge. Three steps back, and the frontier stays at battle-3
+    // so the walkthrough is still fully unlocked afterwards.
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    backButton(container)!.click(); // standings-2
+    backButton(container)!.click(); // battle-2-result
+    backButton(container)!.click(); // battle-2
+
+    expect(router.currentBeat).toBe('battle-2');
+    const watch = JSON.parse(storage.getItem(WATCH_KEY)!) as { furthestBeat: BeatId };
+    expect(watch.furthestBeat).toBe('battle-3');
+  });
+
+  it('re-renders itself on every navigation, since the screen container is cleared each time', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-2');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    backButton(container)!.click();
+    expect(backButton(container)).not.toBeNull();
+
+    // And forward again, to prove it survives navigation in both directions.
+    router.navigate('battle-2');
+    expect(backButton(container)).not.toBeNull();
+  });
+
+  it('renders exactly one back button, never a stack of them across navigations', () => {
+    const storage = new MemoryStorage();
+    const container = makeContainer();
+    seedFurthestBeat(storage, 'battle-3');
+    const router = mountRouter({ container, seed: SEED, storage });
+
+    router.navigate('standings-2');
+    router.navigate('battle-3');
+    router.navigate('standings-2');
+
+    expect(container.querySelectorAll('button[data-nav="back"]').length).toBe(1);
+  });
+});

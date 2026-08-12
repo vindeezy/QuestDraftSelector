@@ -191,6 +191,39 @@ button {
   font-size: 17px;
 }
 
+/* The router's back button (see `renderBackButton` in `router.ts`). Deliberately `fixed`
+   rather than part of any screen's layout: it is appended as the last child of #app on
+   every beat, and a screen that centres its content must not shift because this button
+   exists. Quiet by default — it is an escape hatch, not a call to action, and it must
+   never compete with the primary button that moves the walkthrough forward. */
+.beat-back {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 50;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.45;
+  background: rgb(11 15 22 / 0.72);
+  backdrop-filter: blur(6px);
+}
+
+.beat-back:hover {
+  opacity: 1;
+}
+
+/* Reduced further on small screens, where horizontal room is scarcest and the button is
+   most likely to crowd a heading. */
+@media (max-width: 600px) {
+  .beat-back {
+    top: 10px;
+    left: 10px;
+    padding: 7px 13px;
+    font-size: 12px;
+  }
+}
+
 /* --- Landing ------------------------------------------------------------------ */
 
 .screen-landing {

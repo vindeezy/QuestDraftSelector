@@ -1,4 +1,4 @@
-import { FIRST_BEAT, type BeatId } from './beats';
+import { FIRST_BEAT, previousBeat, type BeatId } from './beats';
 import { canNavigateToBeat, loadProgress, recordBeatReached, type ProgressStorage } from './progress';
 import { SCREENS } from './screens';
 import type { ScreenContext } from './screens/types';
@@ -81,6 +81,40 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     };
 
     teardown = SCREENS[beat].render(ctx) ?? null;
+    renderBackButton(beat);
+  }
+
+  /**
+   * The one back affordance for the whole walkthrough, owned by the router rather than
+   * repeated across nineteen screens — the same reason `navigate` lives here.
+   *
+   * Appended AFTER the screen has rendered, because `renderBeat` clears `container`
+   * first; anything added before would be wiped. It is positioned `fixed` (see
+   * `.beat-back` in `shell.css`) so it never joins the screen's own flex or grid layout —
+   * a screen that centres its content cannot be nudged off-centre by this button
+   * existing.
+   *
+   * No button on `landing`: there is nothing before it. Everywhere else, the target is
+   * always a beat already seen, so `canNavigateToBeat` permits it unconditionally and
+   * `recordBeatReached` leaves `furthestBeat` alone — going back never costs progress.
+   * That was designed into `progress.ts` from the start; this only exposes it.
+   */
+  function renderBackButton(beat: BeatId): void {
+    const target = previousBeat(beat);
+    if (target === null) return;
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn beat-back';
+    // Targetable by tests and by any screen that needs to reason about it, without
+    // matching on visible text (which is a wording decision, not a contract).
+    button.dataset.nav = 'back';
+    button.textContent = '← Back';
+    button.setAttribute('aria-label', `Go back to the previous step (${target})`);
+    button.addEventListener('click', () => {
+      go(target);
+    });
+    container.appendChild(button);
   }
 
   function go(beat: BeatId): void {
