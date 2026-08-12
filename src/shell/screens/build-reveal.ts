@@ -89,7 +89,7 @@ function isAnchoredCategory(category: CategoryName): category is keyof BotPortra
  *  `mountBotPortraitStage` for why this is never CSS-rescaled after mount: keeping the
  *  canvas's own CSS size equal to its logical draw size is what lets `anchorPositions()`
  *  hand back exact viewport coordinates without a second scale factor to track. */
-const PORTRAIT_SIZE = 420;
+const PORTRAIT_SIZE = 480;
 
 /** The no-WebGL fallback — same visual vocabulary as `forge.ts`'s own board fallback:
  *  a static shape in the member's colour, since there is no live portrait to draw. No

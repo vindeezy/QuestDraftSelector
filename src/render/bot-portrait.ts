@@ -432,7 +432,13 @@ function drawWeapon(g: Graphics, weaponId: string, frontX: number): Point2 {
  * card's leader line.
  */
 function drawArmour(g: Graphics, armourId: string, shape: ChassisShape): Point2 {
-  const top = pointOnOutline(shape, -Math.PI / 2);
+  // +PI/2, not -PI/2. Armour is a rim treatment running the whole way round, so any point
+  // on the outline describes it equally well — which makes this purely a question of where
+  // the leader line should land. The portrait is presented rotated so the bot faces up,
+  // which maps local +y to screen right and local -y to screen left. At -PI/2 the anchor
+  // sat on the screen's left while its card sits on the right, so every armour leader line
+  // was drawn straight across the machine it was pointing at.
+  const top = pointOnOutline(shape, Math.PI / 2);
 
   switch (armourId) {
     case 'armour-depleted-uranium':
