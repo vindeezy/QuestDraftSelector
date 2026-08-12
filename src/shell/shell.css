@@ -1051,7 +1051,7 @@ button {
      canvas is rendered at its native pixel size and never CSS-rescaled — that is what lets
      the leader-line anchors resolve to exact viewport coordinates — so a narrower track
      does not shrink it, it just lets it overflow. Keep the two in step. */
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 660px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 620px) minmax(0, 1fr);
   align-items: center;
   gap: 18px;
 }
@@ -1087,7 +1087,7 @@ button {
 .reveal-stage {
   --member-colour: var(--neon-cyan);
   position: relative;
-  width: min(100%, 640px);
+  width: min(100%, 600px);
   aspect-ratio: 1;
   display: flex;
   align-items: center;

@@ -98,8 +98,13 @@ function isAnchoredCategory(category: CategoryName): category is keyof BotPortra
  * So the size is *chosen at mount* from the space actually available, then held. Anchors
  * stay exact because the canvas still renders at whatever size was picked.
  */
-const PORTRAIT_MIN_SIZE = 380;
-const PORTRAIT_MAX_SIZE = 640;
+export const PORTRAIT_MIN_SIZE = 380;
+export const PORTRAIT_MAX_SIZE = 600;
+
+/** How long `resize` has to stay quiet before the portrait is rebuilt. A fullscreen
+ *  transition and a window drag both fire it continuously, and each rebuild tears down and
+ *  recreates a PixiJS application — cheap once, wasteful sixty times a second. */
+const RESIZE_SETTLE_MS = 180;
 
 /** Picks the portrait's native size from the room its host actually has, squared off so
  *  the bot is never letterboxed, and clamped so it stays legible on a small window and
@@ -372,9 +377,34 @@ export const buildRevealScreen: Screen = {
       ctx.navigate(nextBeat('build-reveal')!);
     });
 
+    /**
+     * Re-mount the portrait when the window changes size.
+     *
+     * The canvas is rendered at a size measured once, at mount, and is deliberately never
+     * CSS-rescaled — that is what keeps the leader-line anchors in exact viewport
+     * coordinates. The cost is that it does not notice the window changing underneath it:
+     * entering fullscreen grew the layout around a canvas that stayed exactly as it was,
+     * leaving the portrait mis-sized against its container and the leader lines pointing
+     * at coordinates from the old layout.
+     *
+     * Debounced because a fullscreen transition and a window drag both fire `resize` many
+     * times, and each one tears down and rebuilds a PixiJS application.
+     */
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+    const onResize = (): void => {
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        renderFrame();
+      }, RESIZE_SETTLE_MS);
+    };
+    window.addEventListener('resize', onResize);
+
     ctx.container.appendChild(root);
 
     return () => {
+      window.removeEventListener('resize', onResize);
+      if (resizeTimer !== null) clearTimeout(resizeTimer);
       portraitTeardown?.();
       portraitTeardown = null;
     };

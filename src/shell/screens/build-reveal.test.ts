@@ -5,7 +5,12 @@ import { CATEGORIES, partAt } from '../../sim/parts/tables';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { FIRST_BEAT } from '../beats';
 import { claimMember, loadProgress, type ProgressStorage } from '../progress';
-import { buildRevealScreen, portraitSizeFor } from './build-reveal';
+import {
+  buildRevealScreen,
+  portraitSizeFor,
+  PORTRAIT_MIN_SIZE,
+  PORTRAIT_MAX_SIZE,
+} from './build-reveal';
 import type { ScreenContext } from './types';
 
 const SEED = 918273;
@@ -188,12 +193,15 @@ describe('portraitSizeFor', () => {
     // A tiny host means the portrait overflows rather than becoming unreadable. That is
     // the deliberate trade: the small-viewport layout lets the screen scroll, and a
     // 100px bot nobody can make out would be worse than a scrollbar.
-    expect(portraitSizeFor(120, 120)).toBe(380);
-    expect(portraitSizeFor(0, 0)).toBe(380);
+    expect(portraitSizeFor(120, 120)).toBe(PORTRAIT_MIN_SIZE);
+    expect(portraitSizeFor(0, 0)).toBe(PORTRAIT_MIN_SIZE);
   });
 
   it('stops growing before it dwarfs the cards on a very large display', () => {
-    expect(portraitSizeFor(2000, 2000)).toBe(640);
+    // Asserted against the constant, not a literal: the ceiling is a tuning value that has
+    // already moved once (640 -> 600), and a test that pins the number rather than the
+    // behaviour just breaks every time somebody adjusts the layout.
+    expect(portraitSizeFor(2000, 2000)).toBe(PORTRAIT_MAX_SIZE);
   });
 
   it('squares off on the smaller axis, so the bot is never letterboxed', () => {
