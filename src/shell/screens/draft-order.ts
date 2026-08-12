@@ -22,14 +22,18 @@ import type { Screen, ScreenContext } from './types';
  * change what they say.
  */
 
-/** Gap between one pick being uncovered and the next. Slow on purpose — the spec asks for
- *  "counted up from tenth to first, slow", and a reveal that outruns the room reading it
- *  is just a table with extra steps. */
+/**
+ * Gap between one pick being uncovered and the next — every pick, including first.
+ *
+ * Slow on purpose: the spec asks for "counted up from tenth to first, slow", and a reveal
+ * that outruns the room reading it is just a table with extra steps.
+ *
+ * There is deliberately no longer pause before first pick. One was tried, and it was
+ * suspense about nothing: with ten members, uncovering nine of them has already named the
+ * tenth by elimination, so holding on the last row asks the room to wait for something it
+ * worked out a row ago.
+ */
 export const REVEAL_INTERVAL_MS = 1500;
-
-/** The extra beat held before first pick lands. The gap before the last row is the only
- *  moment on the site where everyone already knows what is about to be answered. */
-export const FINAL_REVEAL_PAUSE_MS = 3200;
 
 /** How long after the last row before the way onward appears, so the board is read rather
  *  than clicked past. */
@@ -45,12 +49,6 @@ export function revealSequence(rowCount: number): number[] {
   const order: number[] = [];
   for (let i = rowCount - 1; i >= 0; i--) order.push(i);
   return order;
-}
-
-/** The pause BEFORE uncovering `position` (0-based from first pick). Only first pick gets
- *  the long one. */
-export function delayBefore(position: number): number {
-  return position === 0 ? FINAL_REVEAL_PAUSE_MS : REVEAL_INTERVAL_MS;
 }
 
 /** "1st pick — Pat Driscoll". The running caption over the board, so the reveal has a
@@ -117,7 +115,7 @@ export const draftOrderScreen: Screen = {
         if (stopped) return;
         uncover(index);
         run(sequence, at + 1);
-      }, delayBefore(index));
+      }, REVEAL_INTERVAL_MS);
     };
 
     revealButton.addEventListener('click', () => {

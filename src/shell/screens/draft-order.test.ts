@@ -8,9 +8,7 @@ import { mountRouter } from '../router';
 import { draftOrderRows } from './scoreboard';
 import {
   completeScreen,
-  delayBefore,
   draftOrderScreen,
-  FINAL_REVEAL_PAUSE_MS,
   pickCaption,
   REVEAL_INTERVAL_MS,
   revealSequence,
@@ -111,17 +109,6 @@ describe('revealSequence', () => {
   });
 });
 
-describe('delayBefore', () => {
-  it('holds longer before first pick than any other', () => {
-    expect(delayBefore(0)).toBe(FINAL_REVEAL_PAUSE_MS);
-    expect(delayBefore(0)).toBeGreaterThan(REVEAL_INTERVAL_MS);
-  });
-
-  it('uses the standard interval for everyone else', () => {
-    for (let i = 1; i < 10; i++) expect(delayBefore(i)).toBe(REVEAL_INTERVAL_MS);
-  });
-});
-
 describe('pickCaption', () => {
   it('names the pick and who has it', () => {
     const rows = draftOrderRows(event);
@@ -183,12 +170,27 @@ describe('draftOrderScreen', () => {
     expect(revealed()).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(rows[0]!.classList.contains('is-hidden')).toBe(true);
 
-    // First pick waits out the longer pause.
-    vi.advanceTimersByTime(FINAL_REVEAL_PAUSE_MS - 1);
+    // First pick lands on the same interval as every other — no held pause before it.
+    vi.advanceTimersByTime(REVEAL_INTERVAL_MS - 1);
     expect(rows[0]!.classList.contains('is-hidden')).toBe(true);
     vi.advanceTimersByTime(1);
     expect(rows[0]!.classList.contains('is-hidden')).toBe(false);
     expect(rows[0]!.classList.contains('is-first-pick')).toBe(true);
+  });
+
+  it('spaces every pick evenly, first included', () => {
+    // Pinned because the uneven version was tried and rejected: with ten members, nine
+    // uncovered rows already name the tenth, so a longer hold before it is suspense about
+    // a result the room has worked out.
+    const ctx = makeContext(null);
+    draftOrderScreen.render(ctx);
+    const rows = [...ctx.container.querySelectorAll('.score-row')];
+
+    ctx.container.querySelector<HTMLButtonElement>('[data-role="reveal"]')!.click();
+    for (let i = 0; i < rows.length; i++) {
+      vi.advanceTimersByTime(REVEAL_INTERVAL_MS);
+      expect(ctx.container.querySelectorAll('.score-row:not(.is-hidden)').length, `after pick ${i + 1}`).toBe(i + 1);
+    }
   });
 
   it('names each pick in the caption as it lands', () => {
@@ -212,7 +214,7 @@ describe('draftOrderScreen', () => {
     const continueButton = ctx.container.querySelector('[data-role="continue"]')!;
 
     ctx.container.querySelector<HTMLButtonElement>('[data-role="reveal"]')!.click();
-    vi.advanceTimersByTime(REVEAL_INTERVAL_MS * 9 + FINAL_REVEAL_PAUSE_MS);
+    vi.advanceTimersByTime(REVEAL_INTERVAL_MS * 10);
     expect(continueButton.classList.contains('is-hidden')).toBe(true);
 
     vi.advanceTimersByTime(SETTLE_MS);
@@ -226,7 +228,7 @@ describe('draftOrderScreen', () => {
     const ctx = makeContext(null);
     draftOrderScreen.render(ctx);
     ctx.container.querySelector<HTMLButtonElement>('[data-role="reveal"]')!.click();
-    vi.advanceTimersByTime(REVEAL_INTERVAL_MS * 9 + FINAL_REVEAL_PAUSE_MS + SETTLE_MS);
+    vi.advanceTimersByTime(REVEAL_INTERVAL_MS * 10 + SETTLE_MS);
     ctx.container.querySelector<HTMLButtonElement>('[data-role="continue"]')!.click();
     expect(ctx.navigate).toHaveBeenCalledWith('complete');
   });
