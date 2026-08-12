@@ -1,8 +1,13 @@
 import { DEFAULT_BOARD } from '../../sim/plinko/board';
 import { DEFAULT_PLINKO, advance, createPlinkoRun, type PlinkoRun } from '../../sim/plinko/plinko';
-import { createPlinkoRenderer, type PlinkoBallVisual, type PlinkoRenderer } from '../../render/plinko-renderer';
+import {
+  createPlinkoRenderer,
+  releaseMargin,
+  type PlinkoBallVisual,
+  type PlinkoRenderer,
+} from '../../render/plinko-renderer';
 import { runEvent, type EventMember, type EventResult } from '../../sim/event/event';
-import { CATEGORIES, slotCountFor, type CategoryName } from '../../sim/parts/tables';
+import { CATEGORIES, partAt, slotCountFor, type CategoryName } from '../../sim/parts/tables';
 import { ROSTER, type RosterMember } from '../../config/roster';
 import { categoryForBeat, nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
@@ -20,11 +25,23 @@ import type { Screen, ScreenContext } from './types';
  * already recorded. `forge.test.ts` asserts that equality directly.
  */
 
-/** Ticks of physics advanced per animation frame. Fixed, never derived from measured
- *  frame delta — see the module doc comment on why: this is what keeps the drop
- *  identical on every machine, no matter how fast or slow its frames arrive. Purely a
- *  pacing knob, same as `what-to-expect.ts`'s `DEMO_TICKS_PER_FRAME`. */
-const TICKS_PER_FRAME = 3;
+/**
+ * Ticks of physics advanced per animation frame. Fixed, never derived from measured
+ * frame delta — see the module doc comment on why: this is what keeps the drop
+ * identical on every machine, no matter how fast or slow its frames arrive. Purely a
+ * pacing knob, same as `what-to-expect.ts`'s `DEMO_TICKS_PER_FRAME`.
+ *
+ * 1 — real time, one tick per rendered frame at 60fps — is the slowest this can go
+ * without advancing by less than a whole tick, which `advance()` doesn't support and
+ * fractional/frame-delta stepping would break determinism to get anyway (see the specs
+ * in the task brief this shipped against). Measured across several seeds and every
+ * category, a full board settles in 580-710 ticks, i.e. roughly 10-12 seconds at this
+ * rate — easily long enough to watch a ball actually bounce, against the ~3.5s a full
+ * board took at the old `TICKS_PER_FRAME = 3`. If that ever reads as still too quick to
+ * follow, the next step down is an integer *frames per tick* (2 real frames held per
+ * physics tick, etc.), never a value between 0 and 1.
+ */
+const TICKS_PER_FRAME = 1;
 
 /** How long the board holds on its finished state — the "beat to read the results" the
  *  spec asks for — before the Continue control appears. Presentation only; wall-clock
@@ -135,7 +152,9 @@ export function stepForgeRun(run: PlinkoRun, revealed: boolean[], ticks: number)
 
 /** The no-WebGL fallback board — same visual vocabulary as `what-to-expect.ts`'s own
  *  fallback, since this is the same site reacting to the same limitation. The results
- *  panel keeps working regardless: it's driven by the physics loop, not the renderer. */
+ *  panel keeps working regardless: it's driven by the physics loop, not the renderer.
+ *  Worded to hold true both before and after the drop, since this static markup is
+ *  never updated when the button is pressed. */
 function mountBoardFallback(host: HTMLElement): void {
   const el = document.createElement('div');
   el.className = 'expect-visual__fallback forge-board__fallback';
@@ -143,9 +162,18 @@ function mountBoardFallback(host: HTMLElement): void {
     <div class="fallback-boards" aria-hidden="true">
       <span class="fallback-board"><i></i></span>
     </div>
-    <p class="fallback-note">Ten balls are dropping. Results appear on the right as they land.</p>
+    <p class="fallback-note">Press DROP 'EM to send the ten balls down. Results appear on the right as they land.</p>
   `;
   host.appendChild(el);
+}
+
+/** Every slot's label, in slot order, for `category`'s board — what the board shows on
+ *  each slot from the moment the screen loads, before any ball has dropped. Pure and
+ *  DOM-free on purpose: `forge-renderer.test.ts` mocks the renderer entirely, so the
+ *  labels it receives are only ever checked by calling this directly. */
+export function slotLabelsFor(category: CategoryName): string[] {
+  const count = slotCountFor(category);
+  return Array.from({ length: count }, (_, slot) => partAt(category, slot).label);
 }
 
 function partLabelFor(event: EventResult, boardIndex: number, memberIndex: number): string {
@@ -188,7 +216,7 @@ export function forgeScreen(beat: BeatId): Screen {
           <div class="forge-stepper" role="presentation">${dots}</div>
           <p class="forge-progress">Board ${boardNumber} of ${CATEGORIES.length}</p>
           <h1 class="forge-category">${CATEGORY_LABEL[category]}</h1>
-          <p class="forge-blurb">Ten balls drop at once. Nobody picks — wherever yours lands is what you get.</p>
+          <p class="forge-blurb">Every slot is labelled — study the board, then drop when you're ready. Nobody picks; wherever yours lands is what you get.</p>
         </div>
         <div class="forge-layout">
           <div class="forge-board" data-role="board"></div>
@@ -199,12 +227,14 @@ export function forgeScreen(beat: BeatId): Screen {
           </aside>
         </div>
         <div class="forge-footer">
+          <button type="button" class="btn btn-primary btn-large forge-drop-btn" data-role="drop">DROP 'EM</button>
           <button type="button" class="btn btn-primary btn-large" data-role="continue" hidden>Continue</button>
         </div>
       `;
 
       const boardHost = root.querySelector<HTMLElement>('[data-role="board"]')!;
       const resultsList = root.querySelector<HTMLUListElement>('[data-role="results"]')!;
+      const dropButton = root.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
       const continueButton = root.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
 
       function appendResultRow(memberIndex: number): void {
@@ -228,11 +258,18 @@ export function forgeScreen(beat: BeatId): Screen {
       let readTimer: ReturnType<typeof setTimeout> | null = null;
       let renderer: PlinkoRenderer | null = null;
 
+      // Computed from `run.balls` before anything else touches them — the run is still
+      // at tick 0 here, so this reads the true release positions (see `releaseMargin`'s
+      // doc comment), the ones the "at rest" pre-drop frame needs to be able to show.
+      const boardExtras = { slotLabels: slotLabelsFor(category), topMargin: releaseMargin(run) };
+
       if (canvasSupportsWebGL()) {
-        void createPlinkoRenderer(boardHost, run, highlightIndex, memberBallVisuals(members)).then((created) => {
-          if (unmounted) created.destroy();
-          else renderer = created;
-        });
+        void createPlinkoRenderer(boardHost, run, highlightIndex, memberBallVisuals(members), boardExtras).then(
+          (created) => {
+            if (unmounted) created.destroy();
+            else renderer = created;
+          },
+        );
       } else {
         mountBoardFallback(boardHost);
       }
@@ -260,7 +297,15 @@ export function forgeScreen(beat: BeatId): Screen {
         }
         frame = requestAnimationFrame(tick);
       };
-      frame = requestAnimationFrame(tick);
+
+      // The drop is triggered, not automatic: the board mounts and holds at rest — no
+      // ticks advanced, nothing moving — until this fires. That is the anticipation beat
+      // the project owner asked for; see the module doc comment's "the reason matters"
+      // note. Once pressed, the button is gone for good; there is no re-drop.
+      dropButton.addEventListener('click', () => {
+        dropButton.hidden = true;
+        frame = requestAnimationFrame(tick);
+      });
 
       continueButton.addEventListener('click', () => {
         ctx.navigate(nextBeat(beat)!);

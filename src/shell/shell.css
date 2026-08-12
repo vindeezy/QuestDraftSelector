@@ -667,23 +667,33 @@ button {
 
 /* --- The Forge ------------------------------------------------------------------- */
 
+/* The whole screen — header, board+panel, and the drop/continue control — has to fit a
+   normal desktop viewport with no scrolling, so unlike every other `.screen` this one
+   is pinned to exactly `100vh` (not just a floor) and the board is the one flexible
+   piece that gives up space to everything around it. See `.forge-layout` below for how
+   the board itself then scales into whatever room that leaves it. */
 .screen-forge {
-  max-width: 1120px;
+  max-width: 1200px;
+  height: 100vh;
+  min-height: 0;
   margin: 0 auto;
+  padding: 20px 24px 18px;
+  overflow: hidden;
   gap: 0;
 }
 
 .forge-header {
+  flex: none;
   text-align: center;
-  max-width: 60ch;
-  margin: 0 auto 40px;
+  max-width: 64ch;
+  margin: 0 auto 14px;
 }
 
 .forge-stepper {
   display: flex;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 
 .forge-stepper__dot {
@@ -715,26 +725,34 @@ button {
 }
 
 .forge-category {
-  font-size: clamp(1.9rem, 3.6vw, 2.6rem);
-  margin-bottom: 10px;
+  font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+  margin-bottom: 6px;
 }
 
 .forge-blurb {
   color: var(--ink-dim);
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
+/* The one row that absorbs whatever vertical space the header and footer don't use —
+   `minmax(0, 1fr)` on both axes is what lets it shrink below its content size instead
+   of forcing the screen to grow past 100vh and scroll. */
 .forge-layout {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 720px) minmax(260px, 340px);
-  gap: 32px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 24px;
+  align-items: stretch;
   justify-content: center;
   width: 100%;
 }
 
 .forge-board {
   width: 100%;
+  height: 100%;
+  min-height: 0;
   border-radius: var(--radius);
   border: 1px solid var(--line);
   background: var(--bg-1);
@@ -743,18 +761,25 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 320px;
 }
 
+/* PixiJS's `autoDensity` sets the canvas's own `style.width`/`style.height` inline, in
+   pixels, at its native board size — the `!important`s are what let this rule win over
+   that inline style instead of the reverse. `object-fit: contain` is then what actually
+   does the "scale to the space available" work: the canvas keeps rendering at its one
+   true native resolution (crisp, undistorted), and only its on-screen box is fit to
+   whatever `.forge-board` has room for, letterboxed on whichever axis has spare space. */
 .forge-board canvas {
-  display: block;
-  width: 100%;
-  height: auto;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
 }
 
 .forge-board__fallback {
   width: 100%;
-  min-height: 320px;
+  height: 100%;
+  min-height: 0;
   border: none;
   box-shadow: none;
 }
@@ -762,29 +787,42 @@ button {
 .forge-panel {
   --member-colour: var(--neon-cyan);
   width: 100%;
+  height: 100%;
+  min-height: 0;
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 20px 22px;
   box-shadow: var(--shadow-lift);
   align-self: stretch;
+  display: flex;
+  flex-direction: column;
 }
 
 .forge-panel__title {
+  flex: none;
   font-size: 1.05rem;
   margin-bottom: 4px;
 }
 
 .forge-panel__hint {
+  flex: none;
   color: var(--ink-faint);
   font-size: 0.8rem;
   margin-bottom: 14px;
 }
 
+/* A safety net, not the intended path: ten short rows fit the panel at a normal desktop
+   size with room to spare. If a narrower viewport ever leaves less room than that, this
+   scrolls the list internally rather than the whole page, which is the one thing this
+   screen must never do (see `.screen-forge` above). */
 .forge-result-list {
   list-style: none;
   margin: 0;
   padding: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -852,9 +890,33 @@ button {
 }
 
 .forge-footer {
+  flex: none;
   display: flex;
   justify-content: center;
-  margin-top: 48px;
+  margin-top: 20px;
+}
+
+/* The anticipation beat: bigger and lit, so the board reads as "waiting on you" rather
+   than a loading screen with a button on it. */
+.forge-drop-btn {
+  padding: 18px 52px;
+  font-size: 19px;
+  letter-spacing: 0.04em;
+  animation: forge-drop-glow 2.2s ease-in-out infinite;
+}
+
+@keyframes forge-drop-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(76 224 255 / 0.12) inset,
+      0 12px 28px -14px rgb(76 224 255 / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(76 224 255 / 0.3) inset,
+      0 16px 40px -12px rgb(76 224 255 / 0.65);
+  }
 }
 
 /* --- Stub screens ------------------------------------------------------------- */

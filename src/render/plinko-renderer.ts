@@ -18,6 +18,30 @@ export interface PlinkoBallVisual {
   label: string;
 }
 
+/** Optional extras beyond a bare drop. Both default to "off" so an existing caller that
+ *  never passes this object (the "What to expect" demo loop) renders exactly as before —
+ *  see the doc comments on `slotLabels` and `topMargin` for why each one is opt-in. */
+export interface PlinkoRendererExtras {
+  /** One label per slot, in slot order (`run.board.slots[i]` <-> `slotLabels[i]`) —
+   *  what that slot awards, painted once at mount and never touched again, since slot
+   *  assignment never changes mid-run. Missing entries are simply skipped, so a caller
+   *  with no categories to show (the demo loop) can omit this entirely. */
+  slotLabels?: readonly string[];
+  /**
+   * Extra canvas height ABOVE the board's own, so a ball's full release column — which
+   * starts above y=0, off the board's own drawing surface, so the balls can "fall into
+   * view" once a drop is moving — is instead visible in an "at rest" frame where no
+   * ticks have run yet. Without this, the pre-drop frame the Forge screen wants to hold
+   * on (see `forge.ts`, where `forgeScreen` computes this via `releaseMargin(run)`
+   * before wiring up the drop button) would show an empty board.
+   *
+   * Left at the default 0 for any caller that never shows a genuine tick-0 frame — the
+   * "What to expect" demo loop restarts straight into its first advanced tick, so a
+   * grown canvas would only cost it space for a frame nobody ever sees.
+   */
+  topMargin?: number;
+}
+
 /** Perceived brightness, 0 (black) to 1 (white) — good enough for picking a legible
  *  label colour and deciding whether a ball needs a brighter outline; not a rigorous
  *  WCAG contrast calculation, which this decorative use doesn't need. Same formula as
@@ -43,6 +67,22 @@ function inkFor(colour: number): number {
  *  brighter, thicker outline regardless of whether they're the highlighted one. */
 const DARK_BALL_LUMINANCE = 0.18;
 
+/**
+ * How far above y=0 a run's release column reaches, right now — i.e. how much extra
+ * canvas height an "at rest" frame needs so every ball is visible instead of floating
+ * off the top edge. Reads current ball positions rather than deriving it from config,
+ * so it stays correct no matter what release tuning (`releaseStagger`, `ballRadius`,
+ * `ballCount`) produced them; call it before any `advance()` for the pre-drop figure.
+ */
+export function releaseMargin(run: PlinkoRun): number {
+  let highest = 0;
+  for (const ball of run.balls) {
+    const top = ball.body.radius - ball.body.y; // distance above y=0 this ball's top edge sits, if any.
+    if (top > highest) highest = top;
+  }
+  return highest > 0 ? Math.ceil(highest) + 12 : 0; // +12: a little breathing room above the topmost ball.
+}
+
 export interface PlinkoRenderer {
   /** Draws the current state of the run. Call once per animation frame. */
   draw(run: PlinkoRun): void;
@@ -54,19 +94,28 @@ export async function createPlinkoRenderer(
   run: PlinkoRun,
   highlightBallIndex: number | null,
   ballVisuals?: readonly PlinkoBallVisual[],
+  extras?: PlinkoRendererExtras,
 ): Promise<PlinkoRenderer> {
   const { width, height } = run.config.board;
+  const topMargin = extras?.topMargin ?? 0;
 
   const app = new Application();
   await app.init({
     width,
-    height,
+    height: height + topMargin,
     background: 0x0b0f16,
     antialias: true,
     autoDensity: true,
     resolution: window.devicePixelRatio || 1,
   });
   parent.appendChild(app.canvas);
+
+  // Every dynamic and static coordinate below is still exactly `ball.body.x/y`,
+  // `peg.x/y`, etc. — this container is the ONE place `topMargin` is applied, as a
+  // transform rather than arithmetic scattered through every draw call.
+  const boardLayer = new Container();
+  boardLayer.y = topMargin;
+  app.stage.addChild(boardLayer);
 
   // Static geometry is drawn once — pegs and dividers never move.
   const statics = new Graphics();
@@ -81,16 +130,48 @@ export async function createPlinkoRenderer(
       .rect(slot.minX + 2, run.config.board.slotTopY, slot.maxX - slot.minX - 4, 4)
       .fill(0x1d2836);
   }
-  app.stage.addChild(statics);
+  boardLayer.addChild(statics);
+
+  // Slot labels — what each slot awards, painted once and left alone. Sit just below
+  // the divider line, near the top of each slot's enclosed zone, since that is the
+  // area a ball spends the least time resting over (it falls through there, settling
+  // toward the floor below) — the spot most likely to stay legible after balls land.
+  if (extras?.slotLabels) {
+    const slotLabels = extras.slotLabels;
+    const slotLabelLayer = new Container();
+    for (const slot of run.board.slots) {
+      const label = slotLabels[slot.index];
+      if (label === undefined) continue;
+      const slotWidth = slot.maxX - slot.minX;
+      const text = new BitmapText({
+        text: label,
+        style: {
+          fontFamily: 'Arial',
+          fontSize: 10,
+          fontWeight: '700',
+          fill: 0xc7d2e0,
+          align: 'center',
+          wordWrap: true,
+          wordWrapWidth: Math.max(40, slotWidth - 8),
+          lineHeight: 12,
+        },
+      });
+      text.anchor.set(0.5, 0);
+      text.x = (slot.minX + slot.maxX) / 2;
+      text.y = run.config.board.slotTopY + 8;
+      slotLabelLayer.addChild(text);
+    }
+    boardLayer.addChild(slotLabelLayer);
+  }
 
   const dynamic = new Graphics();
-  app.stage.addChild(dynamic);
+  boardLayer.addChild(dynamic);
 
   // BitmapText, not Text: labels move every frame (see `pixijs-scene-text` skill), and
   // while their *content* is fixed per ball here, an atlas-backed label is also the
   // cheaper one to create ten of.
   const labels = new Container();
-  app.stage.addChild(labels);
+  boardLayer.addChild(labels);
   const labelTexts = run.balls.map((ball) => {
     const visual = ballVisuals?.[ball.index];
     const color = visual?.colour ?? BALL_COLORS[ball.index % BALL_COLORS.length]!;

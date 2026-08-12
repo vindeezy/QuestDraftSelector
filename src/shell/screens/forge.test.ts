@@ -2,10 +2,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import { advance } from '../../sim/plinko/plinko';
 import { runEvent } from '../../sim/event/event';
-import { CATEGORIES } from '../../sim/parts/tables';
+import { CATEGORIES, partAt, slotCountFor } from '../../sim/parts/tables';
 import { ROSTER, toEventMembers } from '../../config/roster';
 import { FIRST_BEAT, type BeatId } from '../beats';
-import { forgeScreen, boardNumberFor, memberBallVisuals, replayForgeBoard, stepForgeRun } from './forge';
+import {
+  forgeScreen,
+  boardNumberFor,
+  memberBallVisuals,
+  replayForgeBoard,
+  slotLabelsFor,
+  stepForgeRun,
+} from './forge';
 import type { ScreenContext } from './types';
 
 const SEED = 918273;
@@ -39,6 +46,24 @@ describe('memberBallVisuals', () => {
       expect(visual.label).toBe(member.initials);
       expect(visual.colour).toBe(parseInt(member.colour.slice(1), 16));
     });
+  });
+});
+
+describe('slotLabelsFor', () => {
+  it('labels every slot to match partAt, for all six categories', () => {
+    CATEGORIES.forEach((category) => {
+      const labels = slotLabelsFor(category);
+      expect(labels).toHaveLength(slotCountFor(category));
+      labels.forEach((label, slot) => {
+        expect(label).toBe(partAt(category, slot).label);
+      });
+    });
+  });
+
+  it('covers both the 6-slot and 7-slot boards', () => {
+    const counts = new Set(CATEGORIES.map((category) => slotLabelsFor(category).length));
+    expect(counts.has(6)).toBe(true);
+    expect(counts.has(7)).toBe(true);
   });
 });
 
@@ -152,10 +177,63 @@ describe('forgeScreen', () => {
     const list = ctx.container.querySelector('[data-role="results"]')!;
     expect(list.children.length).toBe(0);
 
+    const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
+    expect(dropButton.hidden).toBe(false);
+    expect(dropButton.textContent).toBe("DROP 'EM");
+
     const continueButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
     expect(continueButton.hidden).toBe(true);
 
     teardown?.();
+  });
+
+  it("does not start until DROP 'EM is pressed — no frame is ever scheduled beforehand", async () => {
+    vi.useFakeTimers();
+    try {
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+
+      const ctx = makeContext();
+      const teardown = forgeScreen('forge-1').render(ctx)!;
+      const list = ctx.container.querySelector('[data-role="results"]')!;
+
+      // Nothing advances the run except a `requestAnimationFrame`-driven tick, so time
+      // passing with no click is a direct proxy for "the run has not advanced": there is
+      // no other code path that could have moved a ball.
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(rafSpy).not.toHaveBeenCalled();
+      expect(list.children.length).toBe(0);
+
+      teardown();
+      rafSpy.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("after DROP 'EM is clicked, the button is gone and the run advances", async () => {
+    vi.useFakeTimers();
+    try {
+      const ctx = makeContext();
+      const teardown = forgeScreen('forge-1').render(ctx)!;
+      const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
+      const list = ctx.container.querySelector('[data-role="results"]')!;
+
+      dropButton.click();
+      expect(dropButton.hidden).toBe(true);
+
+      let frames = 0;
+      while (list.children.length === 0 && frames < 3000) {
+        await vi.advanceTimersByTimeAsync(16);
+        frames++;
+      }
+
+      expect(frames).toBeLessThan(3000);
+      expect(list.children.length).toBeGreaterThan(0);
+
+      teardown();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('teardown cancels the animation frame loop', () => {
@@ -164,7 +242,9 @@ describe('forgeScreen', () => {
 
     const ctx = makeContext();
     const teardown = forgeScreen('forge-1').render(ctx);
+    const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
 
+    dropButton.click();
     expect(rafSpy).toHaveBeenCalled();
     const scheduledFrameId = rafSpy.mock.results[0]!.value as number;
 
@@ -182,9 +262,11 @@ describe('forgeScreen', () => {
       const ctx = makeContext();
       const teardown = forgeScreen('forge-1').render(ctx)!;
       const list = ctx.container.querySelector('[data-role="results"]')!;
+      const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
       const continueButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
 
       expect(list.children.length).toBe(0);
+      dropButton.click();
 
       let sawPartialReveal = false;
       let frames = 0;
@@ -211,7 +293,10 @@ describe('forgeScreen', () => {
     try {
       const ctx = makeContext('paden');
       const teardown = forgeScreen('forge-1').render(ctx)!;
+      const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
       const continueButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
+
+      dropButton.click();
 
       let frames = 0;
       while (continueButton.hidden && frames < 3000) {
@@ -237,7 +322,10 @@ describe('forgeScreen', () => {
     try {
       const ctx = makeContext();
       const teardown = forgeScreen('forge-6').render(ctx)!;
+      const dropButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="drop"]')!;
       const continueButton = ctx.container.querySelector<HTMLButtonElement>('[data-role="continue"]')!;
+
+      dropButton.click();
 
       let frames = 0;
       while (continueButton.hidden && frames < 3000) {

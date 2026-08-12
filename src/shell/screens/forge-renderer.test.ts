@@ -7,23 +7,27 @@
 // `forge.test.ts`, which needs those mocks absent.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ROSTER } from '../../config/roster';
+import { CATEGORIES, slotCountFor } from '../../sim/parts/tables';
 import { FIRST_BEAT } from '../beats';
 import type { ScreenContext } from './types';
 
 const { createPlinkoRendererMock, drawMock, destroyMock } = vi.hoisted(() => {
   const drawMock = vi.fn();
   const destroyMock = vi.fn();
-  // Typed with four params (rather than `()`) purely so `mock.calls[0]` below is typed
-  // as a 4-tuple and the highlight-index / ball-visuals arguments can be indexed out of
-  // it — the real `createPlinkoRenderer` signature isn't imported here on purpose (this
-  // mock replaces it entirely).
-  const createPlinkoRendererMock = vi.fn(async (parent: unknown, run: unknown, highlight: unknown, visuals: unknown) => {
-    void parent;
-    void run;
-    void highlight;
-    void visuals;
-    return { draw: drawMock, destroy: destroyMock };
-  });
+  // Typed with five params (rather than `()`) purely so `mock.calls[0]` below is typed
+  // as a 5-tuple and the highlight-index / ball-visuals / extras arguments can be
+  // indexed out of it — the real `createPlinkoRenderer` signature isn't imported here on
+  // purpose (this mock replaces it entirely).
+  const createPlinkoRendererMock = vi.fn(
+    async (parent: unknown, run: unknown, highlight: unknown, visuals: unknown, extras: unknown) => {
+      void parent;
+      void run;
+      void highlight;
+      void visuals;
+      void extras;
+      return { draw: drawMock, destroy: destroyMock };
+    },
+  );
   return { createPlinkoRendererMock, drawMock, destroyMock };
 });
 
@@ -33,6 +37,10 @@ vi.mock('../canvas-support', () => ({
 
 vi.mock('../../render/plinko-renderer', () => ({
   createPlinkoRenderer: createPlinkoRendererMock,
+  // `forge.ts` calls this synchronously (before `createPlinkoRenderer` even resolves)
+  // to compute the extras it passes in — it has to exist on the mock too, or every
+  // test in this file blows up before the assertion it's actually checking.
+  releaseMargin: vi.fn(() => 0),
 }));
 
 const SEED = 555111;
@@ -74,6 +82,34 @@ describe('forgeScreen — wiring into the Plinko renderer', () => {
     expect(highlightIndex).toBe(tommyIndex);
 
     teardown();
+  });
+
+  it('passes every slot its label, matching slotLabelsFor for that board — for all six categories', async () => {
+    const { forgeScreen, slotLabelsFor } = await import('./forge');
+    const beats = ['forge-1', 'forge-2', 'forge-3', 'forge-4', 'forge-5', 'forge-6'] as const;
+
+    for (let i = 0; i < beats.length; i++) {
+      createPlinkoRendererMock.mockClear();
+      const ctx = makeContext();
+      const teardown = forgeScreen(beats[i]!).render(ctx)!;
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      const category = CATEGORIES[i]!;
+      const [, , , , extras] = createPlinkoRendererMock.mock.calls[0]! as [
+        unknown,
+        unknown,
+        unknown,
+        unknown,
+        { slotLabels?: readonly string[] },
+      ];
+
+      expect(extras.slotLabels).toEqual(slotLabelsFor(category));
+      expect(extras.slotLabels).toHaveLength(slotCountFor(category));
+
+      teardown();
+    }
   });
 
   it('highlights no one when no member is claimed', async () => {
