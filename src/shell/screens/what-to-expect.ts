@@ -8,6 +8,7 @@ import { createArenaRenderer } from '../../render/arena-renderer';
 import { PLACEMENT_POINTS, KILL_POINTS } from '../../sim/event/scoring';
 import { DEMO_SEED } from '../demo-seed';
 import { nextBeat } from '../beats';
+import { canvasSupportsWebGL } from '../canvas-support';
 import type { Screen, ScreenContext } from './types';
 
 /**
@@ -39,19 +40,6 @@ const DEMO_LOOP_HOLD_MS = 900;
  *  other despite the Forge board and the arena having different native aspect ratios. */
 const FORGE_PANEL_SCALE = 0.34;
 const ARENA_PANEL_SCALE = 0.26;
-
-/** True when this environment can actually give PixiJS a WebGL context. Checked once,
- *  synchronously, before attempting to mount either live panel — so an environment that
- *  can't render (a test harness, a locked-down kiosk browser) gets the static fallback
- *  immediately instead of an async PixiJS init that would only fail (or hang) later. */
-function canvasSupportsWebGL(): boolean {
-  try {
-    const canvas = document.createElement('canvas');
-    return Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Wraps a renderer's canvas in a fixed-size, clipped box scaled down from its native

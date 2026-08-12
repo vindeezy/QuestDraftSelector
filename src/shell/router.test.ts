@@ -58,6 +58,11 @@ describe('mountRouter', () => {
 
       expect(router.currentBeat).toBe(beat);
       expect(container.dataset.beat).toBe(beat);
+
+      // The Forge beats' screen starts a real animation-frame loop (see forge.ts) —
+      // torn down here so it doesn't keep ticking in the background against a detached
+      // container for the rest of the suite.
+      router.destroy();
     }
   });
 
@@ -88,8 +93,27 @@ describe('mountRouter', () => {
     expect(text).toContain('Survive to score, fight to score more.');
   });
 
-  it('shows a placeholder stub for every beat after what-to-expect', () => {
-    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('what-to-expect') + 1);
+  it('shows the real Forge screen (not a stub) for each of the six Forge beats', () => {
+    const forgeBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-1'), BEAT_IDS.indexOf('forge-6') + 1);
+    expect(forgeBeats).toEqual(['forge-1', 'forge-2', 'forge-3', 'forge-4', 'forge-5', 'forge-6']);
+
+    for (const beat of forgeBeats) {
+      const storage = new MemoryStorage();
+      seedFurthestBeat(storage, beat);
+      const container = makeContainer();
+
+      const router = mountRouter({ container, seed: SEED, storage });
+
+      expect(router.currentBeat).toBe(beat);
+      expect(container.querySelector('.screen-forge')).not.toBeNull();
+      expect(container.querySelector('.screen-stub')).toBeNull();
+
+      router.destroy();
+    }
+  });
+
+  it('shows a placeholder stub for every beat after the Forge', () => {
+    const stubBeats = BEAT_IDS.slice(BEAT_IDS.indexOf('forge-6') + 1);
     expect(stubBeats.length).toBeGreaterThan(0);
 
     for (const beat of stubBeats) {
