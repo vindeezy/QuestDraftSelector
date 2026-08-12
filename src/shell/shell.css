@@ -203,9 +203,9 @@ button {
     var(--bg-0);
 }
 
-/* No `filter: blur()` here either — see `.reveal-stage::before` for why. A radial gradient
-   is already soft; blurring one buys almost nothing visually and costs a compositing layer
-   that can ghost on a fullscreen transition. */
+/* No `filter: blur()` here. A radial gradient is already soft, and blurring one costs a
+   compositing layer for almost no visual gain — see `.reveal-stage` for the bug that kind
+   of layer caused on the reveal screen. */
 .landing-glow {
   position: absolute;
   inset: -20%;
@@ -1093,36 +1093,28 @@ button {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  animation: reveal-stage-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* The glow lives here as an animated `box-shadow`, not on a `::before` running an
+     infinite `opacity`/`transform` pulse.
+
+     That pulse was the duplicate-left-edge bug. `opacity` and `transform` are the two
+     compositable properties, so animating either forever promotes the element to its own
+     GPU layer permanently — and this screen was the only one that had such a layer, which
+     is exactly why it was the only screen that ghosted. Resizing into fullscreen changes
+     the layer's bounds, Chrome fails to invalidate it, and stale pixels from the previous
+     layout stay on screen.
+
+     `box-shadow` animates on the paint path with no layer at all. `.forge-drop-btn` has
+     pulsed this way the whole time and has never ghosted, which is the evidence this
+     approach is sound rather than just different. */
+  animation:
+    reveal-stage-in 560ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    reveal-stage-pulse 3400ms ease-in-out infinite;
 }
 
-.reveal-stage::before {
-  content: '';
-  position: absolute;
-  inset: 6%;
-  border-radius: 50%;
-  /* A soft-stopped gradient rather than a hard one behind `filter: blur()`.
-     `filter` promotes an element to its own compositing layer, and re-rasterising a large
-     blurred layer — which entering fullscreen forces — is a well-known source of smeared
-     ghost copies of whatever sits near it. That is exactly what showed up here: a duplicate
-     of the left-hand column, with the DOM containing only one of everything. The extra
-     colour stops reproduce the falloff without needing a layer at all. */
-  background: radial-gradient(
-    closest-side,
-    var(--member-colour) 0%,
-    color-mix(in srgb, var(--member-colour) 55%, transparent) 45%,
-    transparent 78%
-  );
-  opacity: 0.3;
-  animation: reveal-stage-pulse 3400ms ease-in-out infinite;
-  pointer-events: none;
-}
-
-/* `canvas` is an inline-level replaced element and `::before` above is `position:
-   absolute` — under normal CSS painting order a positioned box paints *after* (i.e. on
-   top of) a plain in-flow one, which would put the glow in front of the bot it's meant
-   to sit behind. An explicit `z-index` — needing `position` to apply at all — is what
-   actually puts the canvas above it. */
+/* Keeps the canvas above the stage's own background and box-shadow glow. The glow used
+   to be an absolutely-positioned `::before`, which painted over the bot without this; it
+   is now a `box-shadow` on the stage itself, but the stacking guarantee is still worth
+   stating explicitly rather than relying on default paint order. */
 .reveal-stage canvas {
   position: relative;
   z-index: 1;
@@ -1142,24 +1134,24 @@ button {
 
 @keyframes reveal-stage-in {
   from {
-    opacity: 0;
-    transform: scale(0.72);
+    opacity: 0.001;
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
 @keyframes reveal-stage-pulse {
   0%,
   100% {
-    opacity: 0.22;
-    transform: scale(0.96);
+    box-shadow:
+      0 0 60px -12px color-mix(in srgb, var(--member-colour) 45%, transparent),
+      0 0 120px -30px color-mix(in srgb, var(--member-colour) 30%, transparent);
   }
   50% {
-    opacity: 0.42;
-    transform: scale(1.06);
+    box-shadow:
+      0 0 90px -8px color-mix(in srgb, var(--member-colour) 70%, transparent),
+      0 0 180px -24px color-mix(in srgb, var(--member-colour) 45%, transparent);
   }
 }
 
