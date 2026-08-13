@@ -1,7 +1,6 @@
 import { checkOfficialRecord, checkRecord, type ChecksumCheck } from './checksum-gate';
 import { mountRouter } from './router';
 import { clearProgress } from './progress';
-import { mountPreview, parsePreviewRequest } from './screens/preview';
 import type { EventRecord } from '../sim/event/record';
 
 /**
@@ -90,39 +89,7 @@ function applyResetParam(seed: number): void {
   window.history.replaceState(null, '', url.toString());
 }
 
-/**
- * Candidate seeds offered as "next" at the end of a preview run, so all three battles of
- * one and then all three of the other can be watched without editing the URL by hand.
- *
- * A plain list rather than anything derived: these are the two finalists under
- * consideration right now, and when the official seed is chosen this route and this
- * constant both go away.
- */
-const PREVIEW_SEEDS = [43000236, 21000073];
-
-export async function boot(container: HTMLElement, record?: EventRecord): Promise<ChecksumCheck | null> {
-  /**
-   * `?preview=<seed>` — watch a CANDIDATE seed's battles, anonymised, while choosing which
-   * seed to record.
-   *
-   * Handled before the checksum gate, and returning `null` instead of a `ChecksumCheck`,
-   * because a preview is not the event: the gate exists to refuse an official record that
-   * disagrees with the simulation, and a candidate seed has no record to disagree with.
-   * Running the gate here would either block previews whenever the shipped record is stale
-   * — exactly when choosing a new seed matters most — or pointlessly re-simulate an event
-   * nobody is about to watch.
-   */
-  if (typeof window !== 'undefined') {
-    const request = parsePreviewRequest(window.location.search);
-    if (request !== null) {
-      renderLoading(container);
-      await nextPaint();
-      container.innerHTML = '';
-      mountPreview(container, request, PREVIEW_SEEDS);
-      return null;
-    }
-  }
-
+export async function boot(container: HTMLElement, record?: EventRecord): Promise<ChecksumCheck> {
   renderLoading(container);
   await nextPaint();
 

@@ -38,7 +38,7 @@ describe('boot', () => {
 
     const check = await boot(container, brokenRecord);
 
-    expect(check!.ok).toBe(false);
+    expect(check.ok).toBe(false);
     expect(container.querySelector('.gate--error')).not.toBeNull();
     expect(container.textContent).toContain("Something's not right");
     // The event itself must never render behind (or instead of) the error.
@@ -52,7 +52,7 @@ describe('boot', () => {
 
     const check = await boot(container, record);
 
-    expect(check!.ok).toBe(true);
+    expect(check.ok).toBe(true);
     expect(container.querySelector('.gate--error')).toBeNull();
     expect(container.dataset.beat).toBe('landing');
   });
@@ -131,7 +131,7 @@ describe('the ?reset escape hatch', () => {
 
     const check = await boot(makeContainer(), { ...record, checksum: 'wrong' });
 
-    expect(check!.ok).toBe(false);
+    expect(check.ok).toBe(false);
     expect(loadProgress(record.masterSeed).claimedMemberId).toBe(CLAIMED);
   });
 });
