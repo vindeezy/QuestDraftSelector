@@ -1,8 +1,8 @@
 {
   "version": 1,
   "leagueId": "default-league",
-  "label": "Official event - seed 2058548378",
-  "masterSeed": 2058548378,
+  "label": "Official event - seed 43000236",
+  "masterSeed": 43000236,
   "members": [
     {
       "id": "paden",
@@ -55,6 +55,6 @@
       "colour": "#9FB0C0"
     }
   ],
-  "checksum": "00202b87",
-  "recordedAt": "2026-08-12T15:34:49.743Z"
+  "checksum": "2e92efe2",
+  "recordedAt": "2026-08-13T20:21:35.036Z"
 }
