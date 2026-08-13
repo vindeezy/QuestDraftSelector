@@ -230,12 +230,29 @@ function pushStringCodes(values: number[], text: string): void {
   values.push(-1);
 }
 
-/** Runs the entire event from a single master seed. */
-export function runEvent(config: EventConfig): EventResult {
-  const { members } = config;
-  const memberCount = members.length;
+/** Everything a master seed decides BEFORE any battle runs. See `runForgeOnly`. */
+export interface ForgeOnlyResult {
+  battleSeeds: number[];
+  forge: ForgeBoardResult[];
+  builds: BotBuild[];
+  assembledBots: AssembledBot[];
+  partLabels: Record<CategoryName, string>[];
+}
 
-  const { forgeSeeds, battleSeeds } = deriveSubSeeds(config.masterSeed);
+/**
+ * The Forge phase alone: six Plinko boards, and the builds they deal.
+ *
+ * Split out of `runEvent` — which now calls it — so a caller can ask what a seed BUILDS
+ * without paying for what it then does. Three ten-bot battles are several orders of
+ * magnitude more work than six ball drops, so anything scanning many seeds for a property
+ * of the builds (`tools/seed-search.ts`) can reject almost everything at a fraction of the
+ * cost and only run battles on what survives.
+ *
+ * Deliberately the same code path rather than a reimplementation: a separate derivation
+ * that drifted from this one would silently score seeds on builds the event never deals.
+ */
+export function runForgeOnly(masterSeed: number, memberCount: number): ForgeOnlyResult {
+  const { forgeSeeds, battleSeeds } = deriveSubSeeds(masterSeed);
 
   const forge: ForgeBoardResult[] = forgeSeeds.map((seed, i) =>
     runForgeBoard(i, CATEGORIES[i]!, seed, memberCount),
@@ -244,9 +261,22 @@ export function runEvent(config: EventConfig): EventResult {
   // Every member's build, and the assembled bot the battles actually run on. Personality
   // and ability the Forge assigned flow straight into the match through `assembledBots` —
   // see `createMatch`'s `builds` option.
-  const builds: BotBuild[] = members.map((_, i) => buildFor(forge, i));
+  const builds: BotBuild[] = Array.from({ length: memberCount }, (_, i) => buildFor(forge, i));
   const assembledBots: AssembledBot[] = builds.map((build) => assemble(build));
   const partLabels: Record<CategoryName, string>[] = assembledBots.map((bot) => bot.partLabels);
+
+  return { battleSeeds, forge, builds, assembledBots, partLabels };
+}
+
+/** Runs the entire event from a single master seed. */
+export function runEvent(config: EventConfig): EventResult {
+  const { members } = config;
+  const memberCount = members.length;
+
+  const { battleSeeds, forge, builds, assembledBots, partLabels } = runForgeOnly(
+    config.masterSeed,
+    memberCount,
+  );
 
   const battles: BattleResult[] = [];
   // Indexed [battleIndex][memberIndex] — kept per battle, not folded into a single running

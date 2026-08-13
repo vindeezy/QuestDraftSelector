@@ -20,10 +20,10 @@
  * decisions and the committing one should be explicit.
  */
 import { runEvent, type EventResult } from '../src/sim/event/event';
-import { createRng } from '../src/sim/rng';
 import { CATEGORIES, type CategoryName } from '../src/sim/parts/tables';
 import { ARENA_VARIANT_NAMES } from '../src/sim/event/arenas';
 import { toEventMembers, ROSTER } from '../src/config/roster';
+import { anonymiseFor } from '../src/config/anonymise';
 
 const TICKS_PER_SECOND = 60;
 const MEMBER_COUNT = 10;
@@ -38,30 +38,14 @@ function pct(n: number, d: number): string {
   return d === 0 ? '  0%' : `${((n / d) * 100).toFixed(0).padStart(3)}%`;
 }
 
-/**
- * A permutation of 0..9 derived from `seed`, mapping member index -> anonymous letter.
- *
- * Keyed off a value derived from the seed rather than the seed itself, so this draw can
- * never accidentally mirror the event's own `deriveSubSeeds` stream and correlate a
- * letter with anything the simulation did.
- */
-function anonymiseFor(seed: number): string[] {
-  const rng = createRng(seed * 2 + 1);
-  const order = Array.from({ length: MEMBER_COUNT }, (_, i) => i);
-  for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(rng.next() * (i + 1));
-    [order[i], order[j]] = [order[j]!, order[i]!];
-  }
-  const labels = new Array<string>(MEMBER_COUNT);
-  order.forEach((memberIndex, position) => {
-    labels[memberIndex] = String.fromCharCode(65 + position);
-  });
-  return labels;
-}
-
 interface SeedReport {
   seed: number;
   battleTicks: number[];
+  /** Seconds each battle spent as a one-on-one — the eighth elimination to the finish.
+   *  See `tools/seed-search.ts`'s `duelTails` for why this is the dead-air measure. */
+  duelTails: number[];
+  /** How each battle was decided: a credited kill, or a hazard/fall nobody is credited for. */
+  endedBy: string[];
   combatKills: number;
   hazardKills: number;
   fallKills: number;
@@ -96,7 +80,7 @@ function leaderAfter(result: EventResult, labels: string[], upTo: number): strin
 
 function analyse(seed: number): SeedReport {
   const result = runEvent({ masterSeed: seed, members: toEventMembers() });
-  const labels = anonymiseFor(seed);
+  const labels = anonymiseFor(seed, MEMBER_COUNT);
 
   let combatKills = 0;
   let hazardKills = 0;
@@ -136,9 +120,21 @@ function analyse(seed: number): SeedReport {
   const battle3WinnerIndex = result.battles[2]!.places.indexOf(1);
   const topTwoGap = result.standings[0]!.points - result.standings[1]!.points;
 
+  const duelTails = result.battles.map((b) => {
+    const startsDuel = b.eliminations[b.eliminations.length - 2];
+    return startsDuel === undefined ? 0 : Math.round((b.ticks - startsDuel.tick) / TICKS_PER_SECOND);
+  });
+  const endedBy = result.battles.map((b) => {
+    const last = b.eliminations[b.eliminations.length - 1];
+    if (last === undefined) return 'no finish';
+    return last.byId !== null ? 'kill' : last.cause === 'fell' ? 'fall' : 'hazard';
+  });
+
   return {
     seed,
     battleTicks: result.battles.map((b) => b.ticks),
+    duelTails,
+    endedBy,
     combatKills,
     hazardKills,
     fallKills,
@@ -199,6 +195,10 @@ function printReport(report: SeedReport): void {
       `falls ${report.fallKills} (${pct(report.fallKills, totalKills).trim()})`,
   );
 
+  console.log(
+    `  final duels      ` +
+      report.duelTails.map((t, i) => `${ARENA_VARIANT_NAMES[i]} ${t}s (${report.endedBy[i]})`).join('   '),
+  );
   console.log(
     `  lead             after B1: ${report.leaders[0]}   after B2: ${report.leaders[1]}   final: ${report.leaders[2]}` +
       `   (${report.leadChanges} lead change${report.leadChanges === 1 ? '' : 's'})`,
@@ -285,6 +285,8 @@ if (asJson) {
         seed: r.seed,
         arenas: ARENA_VARIANT_NAMES,
         battleSeconds: r.battleTicks.map((t) => Math.round(t / TICKS_PER_SECOND)),
+        duelTails: r.duelTails,
+        endedBy: r.endedBy,
         eliminations: { combat: r.combatKills, hazard: r.hazardKills, fall: r.fallKills },
         leaders: r.leaders,
         leadChanges: r.leadChanges,

@@ -1925,3 +1925,43 @@ button {
     transition: none;
   }
 }
+
+/* --- Seed preview (?preview=) ------------------------------------------------------ */
+
+/* The candidate-seed preview reuses the battle screen's layout wholesale — same header,
+   same arena box, same start button — so what is watched here looks exactly like what the
+   league will watch. Only the anonymity furniture is new. */
+
+.preview-note {
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+}
+
+.battle-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 14px;
+  min-height: 42px;
+}
+
+.preview-status {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The "next battle" control is an anchor, not a button — the preview is a plain URL route,
+   so moving between battles is a navigation. It still has to look like every other primary
+   control on the site. */
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.battle-footer .is-hidden {
+  display: none;
+}
