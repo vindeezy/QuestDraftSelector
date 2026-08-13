@@ -216,7 +216,16 @@ export function battleScreen(beat: BeatId): Screen {
       // size, with nothing to go stale on resize and so nothing to re-measure — the same
       // reason `forge.ts`'s own board never needed a resize listener either.
       if (canvasSupportsWebGL()) {
-        void createArenaRenderer(arenaHost, match, highlightIndex, new Map(), memberBallVisuals(members)).then(
+        // `result.builds` is what turns ten identical circles into ten machines: the
+        // renderer draws each bot's real chassis, armour and weapon rather than a disc.
+        void createArenaRenderer(
+          arenaHost,
+          match,
+          highlightIndex,
+          new Map(),
+          memberBallVisuals(members),
+          event.builds,
+        ).then(
           (created) => {
             if (unmounted) created.destroy();
             else renderer = created;

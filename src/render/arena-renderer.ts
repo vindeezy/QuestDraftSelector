@@ -5,6 +5,8 @@ import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/su
 import { ZoneShape } from '../sim/arena/zone';
 import { isActive } from '../sim/arena/activation';
 import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
+import { drawBotPortrait } from './bot-portrait';
+import type { BotBuild } from '../sim/parts/assemble';
 import type { Elimination, Match } from '../sim/arena/match';
 
 const BOT_COLORS = [
@@ -220,6 +222,7 @@ export async function createArenaRenderer(
   highlightIndex: number | null,
   personalityTags: Map<string, string> = new Map(),
   botVisuals?: readonly ArenaBotVisual[],
+  builds?: readonly BotBuild[],
 ): Promise<ArenaRenderer> {
   const { width, height } = match.arena.grid;
   const canvasWidth = width + KILL_FEED_WIDTH;
@@ -247,6 +250,29 @@ export async function createArenaRenderer(
   // atlas-backed label is the cheaper one to reposition ten times a frame. Content and ink
   // colour are fixed for the match's lifetime (see `resolveBotVisual`), so both are set
   // once here rather than in `draw`.
+  /**
+   * One pre-built machine per bot, or an empty array when no builds were supplied — the
+   * "What to expect" demo loop has no real event behind it and keeps the plain circles.
+   *
+   * Built once. `drawBotPortrait` returns a container whose local origin is the bot's
+   * centre facing +x, which is the convention `heading` already uses, so per frame the
+   * draw loop only sets x, y and rotation. Scaled from the portrait's own drawn radius to
+   * this bot's physics radius so the silhouette matches its collision circle: weapon and
+   * armour geometry inside the portrait is sized in absolute units against the chassis
+   * extent, so scaling the whole container is the only way to keep those proportions.
+   */
+  const silhouetteLayer = new Container();
+  app.stage.addChild(silhouetteLayer);
+  const silhouettes: (Container | null)[] = match.bots.map((bot, index) => {
+    const build = builds?.[index];
+    if (!build) return null;
+    const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour);
+    const scale = bot.body.radius / drawing.radius;
+    drawing.view.scale.set(scale);
+    silhouetteLayer.addChild(drawing.view);
+    return drawing.view;
+  });
+
   const labels = new Container();
   app.stage.addChild(labels);
   const labelTexts = match.bots.map((_, index) => {
@@ -475,6 +501,10 @@ export async function createArenaRenderer(
       if (!bot.alive) {
         label.visible = false;
         tag.visible = false;
+        // Silhouettes persist between frames rather than being cleared with `dynamic`, so
+        // a dead bot has to be hidden explicitly or its wreck sits on the floor forever.
+        const dead = silhouettes[index];
+        if (dead) dead.visible = false;
         return;
       }
       label.visible = true;
@@ -491,25 +521,42 @@ export async function createArenaRenderer(
         dynamic.circle(x, y, r + 6).fill({ color: 0xffffff, alpha: 0.16 });
       }
 
-      dynamic.circle(x, y, r).fill(color);
-      // A thin outline on every bot, brighter and thicker for the highlighted bot and for
-      // any bot dark enough to lose its edge against the arena floor (Tommy, `#1C1F26` —
-      // see `needsBrightOutline`'s doc comment) — the same three-way rule
-      // `plinko-renderer.ts` applies to a ball.
-      dynamic.circle(x, y, r).stroke({
-        width: isHighlighted ? 3 : needsBrightOutline(color) ? 2.5 : 1.5,
-        color: 0xffffff,
-        alpha: isHighlighted ? 0.9 : needsBrightOutline(color) ? 0.65 : 0.25,
-      });
+      const silhouette = silhouettes[index];
+      if (silhouette) {
+        // The machine the Forge actually dealt: chassis silhouette, armour rim and weapon,
+        // the same drawing the build reveal shows, rotated to the bot's heading.
+        //
+        // Positioned rather than redrawn. The geometry is built once at mount, so a frame
+        // costs three property writes per bot instead of re-tessellating ten shapes —
+        // cheaper than the circle it replaces, which was rebuilt into `dynamic` every
+        // frame.
+        silhouette.visible = true;
+        silhouette.x = x;
+        silhouette.y = y;
+        silhouette.rotation = (bot.heading / ANGLE_STEPS) * Math.PI * 2;
+        // No heading spike: the silhouette faces where the bot faces, so the shape itself
+        // now says what the spike used to.
+      } else {
+        dynamic.circle(x, y, r).fill(color);
+        // A thin outline on every bot, brighter and thicker for the highlighted bot and for
+        // any bot dark enough to lose its edge against the arena floor (Tommy, `#1C1F26` —
+        // see `needsBrightOutline`'s doc comment) — the same three-way rule
+        // `plinko-renderer.ts` applies to a ball.
+        dynamic.circle(x, y, r).stroke({
+          width: isHighlighted ? 3 : needsBrightOutline(color) ? 2.5 : 1.5,
+          color: 0xffffff,
+          alpha: isHighlighted ? 0.9 : needsBrightOutline(color) ? 0.65 : 0.25,
+        });
 
-      // Heading spike, so facing is readable at a glance. This is why combat feels
-      // directional rather than random.
-      const hx = cosOf(bot.heading);
-      const hy = sinOf(bot.heading);
-      dynamic
-        .moveTo(x + hx * r * 0.4, y + hy * r * 0.4)
-        .lineTo(x + hx * (r + 12), y + hy * (r + 12))
-        .stroke({ width: 5, color: 0xffffff, alpha: 0.85 });
+        // Heading spike, so facing is readable at a glance. This is why combat feels
+        // directional rather than random.
+        const hx = cosOf(bot.heading);
+        const hy = sinOf(bot.heading);
+        dynamic
+          .moveTo(x + hx * r * 0.4, y + hy * r * 0.4)
+          .lineTo(x + hx * (r + 12), y + hy * (r + 12))
+          .stroke({ width: 5, color: 0xffffff, alpha: 0.85 });
+      }
 
       // Health bar above the bot.
       const frac = bot.health / bot.maxHealth;
