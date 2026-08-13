@@ -147,6 +147,18 @@ export function killFeedLine(
  *  210, not the original 190 — wide enough for the longest real line
  *  (`"XX eliminated by YY"`, two two-letter initials) plus its colour dot without
  *  wrapping or clipping. */
+/**
+ * How much bigger a weapon is drawn in the arena than on the build reveal.
+ *
+ * A bot here is drawn at its physics radius, roughly a third of the portrait's, and at
+ * that size an unscaled weapon is a few pixels of metal — enough to see a machine has
+ * something on its front, not enough to tell a hammer from a spinner. 1.7 was chosen to
+ * make the silhouette readable while still fitting inside the space a bot needs to not
+ * look like it is wielding a lamp post; it does not change the weapon's ARC or reach,
+ * both of which live in the simulation and are unaffected by anything in this file.
+ */
+const ARENA_WEAPON_SCALE = 1.7;
+
 const KILL_FEED_WIDTH = 210;
 const KILL_FEED_HEADER_HEIGHT = 30;
 const KILL_FEED_ROW_HEIGHT = 20;
@@ -266,7 +278,9 @@ export async function createArenaRenderer(
   const silhouettes: (Container | null)[] = match.bots.map((bot, index) => {
     const build = builds?.[index];
     if (!build) return null;
-    const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour);
+    const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
+      weaponScale: ARENA_WEAPON_SCALE,
+    });
     const scale = bot.body.radius / drawing.radius;
     drawing.view.scale.set(scale);
     silhouetteLayer.addChild(drawing.view);

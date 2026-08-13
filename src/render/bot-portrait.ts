@@ -542,7 +542,26 @@ const DARK_FILL_LUMINANCE = 0.18;
  * call from a plain unit test (`Graphics` builds its draw instructions and local bounds
  * without a renderer; only turning them into pixels needs a WebGL/WebGPU context).
  */
-export function drawBotPortrait(build: BotBuild, colour: number): BotPortraitDrawing {
+/** Extras a caller can ask for. Everything defaults to the build reveal's behaviour, so
+ *  the screen this module was written for is unaffected. */
+export interface BotPortraitOptions {
+  /**
+   * Multiplier on the weapon's size, scaled about where it mounts on the chassis front so
+   * it grows outward rather than detaching.
+   *
+   * Exists for the arena. A bot there is drawn at its physics radius — about a third of
+   * the portrait's — and at that size a weapon is a few pixels: you can tell a machine has
+   * something on its front, but not what. Enlarging it only in the arena keeps the build
+   * reveal, where the bot is 600px tall and the weapon already reads, exactly as it was.
+   */
+  weaponScale?: number;
+}
+
+export function drawBotPortrait(
+  build: BotBuild,
+  colour: number,
+  options: BotPortraitOptions = {},
+): BotPortraitDrawing {
   const chassisPart = partAt('chassis', build.chassis);
   const weaponPart = partAt('weapon', build.weapon);
   const armourPart = partAt('armour', build.armour);
@@ -570,13 +589,30 @@ export function drawBotPortrait(build: BotBuild, colour: number): BotPortraitDra
   const weaponGfx = new Graphics();
   const frontX = extentX(shape, 1);
   const weaponAnchor = drawWeapon(weaponGfx, weaponPart.id, frontX);
+  const weaponScale = options.weaponScale ?? 1;
+  if (weaponScale !== 1) {
+    // Scaled about the mount point, not the bot's centre: pivoting at (frontX, 0) and
+    // positioning there leaves that point fixed while everything drawn beyond it grows.
+    // Scaling about the origin would push the weapon off the chassis as it enlarged.
+    weaponGfx.pivot.set(frontX, 0);
+    weaponGfx.position.set(frontX, 0);
+    weaponGfx.scale.set(weaponScale);
+  }
   view.addChild(weaponGfx);
 
   const chassisAnchor: Point2 = { x: extentX(shape, -1), y: 0 };
 
   return {
     view,
-    anchors: { chassis: chassisAnchor, weapon: weaponAnchor, armour: armourAnchor },
+    anchors: {
+      chassis: chassisAnchor,
+      // Moved with the weapon, so a leader line still lands on the tip it points at.
+      weapon: {
+        x: frontX + (weaponAnchor.x - frontX) * weaponScale,
+        y: weaponAnchor.y * weaponScale,
+      },
+      armour: armourAnchor,
+    },
     radius: r,
   };
 }
