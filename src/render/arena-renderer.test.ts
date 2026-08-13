@@ -1,3 +1,11 @@
+// @vitest-environment jsdom
+//
+// Not for the DOM — every test below is a pure function. It is for the IMPORT: this file
+// reaches `src/render/`, which pulls in pixi.js, and pixi touches `navigator` at module
+// load. Node only defines `navigator` globally from v21, so under vitest's default `node`
+// environment this file passes on a modern local Node and dies on CI's Node 20 with
+// `ReferenceError: navigator is not defined`. jsdom supplies the global and makes the
+// result independent of whichever Node is running.
 import { describe, it, expect } from 'vitest';
 import {
   DARK_BOT_LUMINANCE,

@@ -21,9 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 22, not 20. Node 20 is past end of life, and it is also the version that broke this
+      # workflow the first time it ran the render tests: `navigator` only became a Node
+      # global in v21, pixi.js reads it at import, and the tests passed on a developer's
+      # Node 24 while dying here. Those tests now declare `@vitest-environment jsdom` so
+      # they no longer depend on it either way — this keeps CI on a supported runtime and
+      # closer to what the code is actually developed against.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - run: npm ci
