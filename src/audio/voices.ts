@@ -1,4 +1,4 @@
-import { PEG_PING_SECONDS, type SoundId } from './palette';
+import { PEG_PING_SECONDS, SAW_BUZZ_MAX_SECONDS, type SoundId } from './palette';
 import { MAX_DECAY_S } from './synth';
 
 /**
@@ -89,11 +89,29 @@ export const EXEMPT: ReadonlySet<SoundId> = new Set<SoundId>(['explosion', 'mech
 /**
  * How long a voice occupies a slot.
  *
- * Tied to the synthesis layer's own longest tail rather than picked, so retuning the decay
- * curves cannot silently change how dense the mix is allowed to get.
+ * Tied to the synthesis layer's own lengths rather than picked, so retuning a voice cannot
+ * silently change how dense the mix is allowed to get.
+ *
+ * `MAX_DECAY_S` covers every voice built out of the standard intensity curves. The two
+ * exceptions declare their own length, and both matter: a peg note is a tenth as long as a
+ * hit, and a saw is a sustained cut rather than an impact and outlasts the decay curve
+ * entirely. Getting either wrong means the cap counts a voice as finished while it is still
+ * audible, which is the failure that produces mush.
+ *
+ * A switch rather than a table built at module scope. The table version read better and cost
+ * a module-initialisation order hazard to get it — this module is imported by the playback
+ * loop, and nothing it does at import time is worth a chance of the whole audio layer failing
+ * to load.
  */
 export function lifetimeMs(id: SoundId): number {
-  return (id === 'pegPing' ? PEG_PING_SECONDS : MAX_DECAY_S) * 1000;
+  switch (id) {
+    case 'pegPing':
+      return PEG_PING_SECONDS * 1000;
+    case 'sawBuzz':
+      return SAW_BUZZ_MAX_SECONDS * 1000;
+    default:
+      return MAX_DECAY_S * 1000;
+  }
 }
 
 export function emptyState(): VoiceState {

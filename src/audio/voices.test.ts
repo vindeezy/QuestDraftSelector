@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SOUND_IDS } from './palette';
+import { SAW_BUZZ_MAX_SECONDS, SOUND_IDS } from './palette';
 import { MAX_DECAY_S } from './synth';
 import {
   DEFAULT_CAP, EXEMPT, GLOBAL_CAP, admit, capFor, emptyState, lifetimeMs, remember,
@@ -185,5 +185,21 @@ describe('robustness', () => {
     const { kept } = admit([{ id: 'metallicTick', intensity: Number.NaN }], emptyState(), 0);
     expect(kept.length).toBe(1);
     expect(Number.isFinite(kept[0]!.intensity)).toBe(true);
+  });
+});
+
+describe('sounds that outlast the decay curve', () => {
+  it('gives the saw a slot for as long as it actually cuts', () => {
+    // A saw is a sustained cut, not an impact, and runs past MAX_DECAY_S. If the mixer used
+    // the standard window it would free the slot while the blade was still audible — the
+    // exact accounting error that produces mush.
+    expect(lifetimeMs('sawBuzz')).toBeCloseTo(SAW_BUZZ_MAX_SECONDS * 1000);
+    expect(lifetimeMs('sawBuzz')).toBeGreaterThan(MAX_DECAY_S * 1000);
+  });
+
+  it('has a lifetime for every voice, none of them zero', () => {
+    for (const id of SOUND_IDS) {
+      expect(lifetimeMs(id), id).toBeGreaterThan(0);
+    }
   });
 });

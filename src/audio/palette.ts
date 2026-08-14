@@ -1,5 +1,5 @@
 import type { AudioBus } from './context';
-import { chime, decayFor, gainFor, noiseBurst, pitchFor, sweep, tone } from './synth';
+import { chime, clamp01, decayFor, gainFor, grind, noiseBurst, pitchFor, sweep, tone } from './synth';
 
 /**
  * The palette: every sound the site can make, named for WHAT IT IS rather than for what
@@ -76,17 +76,130 @@ const heavyClang: Voice = (bus, o) => {
   });
 };
 
-/** Saw Blade. Teeth, not a single impact — a tight resonant band reads as something biting
- *  repeatedly rather than striking once. */
+/**
+ * How long the saw stays in contact.
+ *
+ * The only weapon whose length is set here rather than by `decayFor`. Every other weapon is
+ * an impact — struck, then fading — and a saw is not: it is a sustained cut with a beginning,
+ * a middle and an end. `voices.ts` reads the maximum so a saw occupies a mixer slot for as
+ * long as it can actually be heard.
+ */
+export const SAW_BUZZ_MIN_SECONDS = 0.1;
+export const SAW_BUZZ_MAX_SECONDS = 0.25;
+
+/**
+ * Saw Blade. The one weapon that must not sound like a hit.
+ *
+ * Everything else in this file is a struck object. A powered blade is a machine doing work
+ * against resistance, and its defining quality is abrasion — teeth cutting and scraping, not
+ * metal being knocked. The previous version was a single resonant noise burst at Q 18, which
+ * is a recipe for a struck bell: a filter that narrow rings at its centre frequency, so what
+ * came out was a ping wearing a saw's name.
+ *
+ * Five layers, arranged as one gesture:
+ *
+ *     high-speed blade -> teeth catch metal -> violent grinding -> blade skips free
+ *
+ * 1. **The catch** — 22ms of bright metallic skreech. Long enough to hear teeth find armour,
+ *    far too short to read as a struck note. This is the ONLY part that resembles an impact,
+ *    and it is deliberately quieter than the grind that follows it.
+ * 2. **The grind bed** — the loudest layer and the whole character of the sound. Broadband
+ *    noise at a deliberately LOW Q so it scrapes rather than rings, held at a plateau for the
+ *    full contact instead of decaying, chopped at 52Hz so the teeth chatter across the
+ *    surface, and wobbled so the blade audibly fights resistance.
+ * 3. **The rasp** — individual teeth at audio rate, a sawtooth because that is literally the
+ *    shape a tooth makes. It bogs down slightly across the contact: a blade under load slows.
+ * 4. **Skip ticks** — a few sharp catches scattered through the middle, at genuinely random
+ *    times so no two hits are the same, for teeth snagging on uneven armour.
+ * 5. **Free** — the pitch climbs as the blade unloads and leaves the metal. Physically true
+ *    (less resistance, more RPM) and the thing that makes the gesture end rather than stop.
+ *
+ * Believable rather than cinematic: no boom, no sub-bass, nothing that reads as an explosion.
+ */
 const sawBuzz: Voice = (bus, o) => {
   const { intensity, pan, delay } = opt(o);
+  const bite = clamp01(intensity);
+  const duration = SAW_BUZZ_MIN_SECONDS + (SAW_BUZZ_MAX_SECONDS - SAW_BUZZ_MIN_SECONDS) * bite;
+  const level = gainFor(intensity);
+
+  // Teeth per second. A harder bite loads the blade and drags its speed down, which is both
+  // true of a real saw and useful here: a heavy hit reads lower and angrier than a graze.
+  const toothHz = pitchFor(intensity, 1500);
+
+  const CATCH = 0.022;
+  const body = duration - CATCH * 0.5;
+  const bodyDelay = delay + CATCH * 0.5;
+
+  // 1. The catch.
   noiseBurst(bus, {
-    duration: decayFor(intensity) * 1.4,
-    frequency: pitchFor(intensity, 1900),
-    q: 18,
-    gain: gainFor(intensity) * 0.45,
+    duration: CATCH,
+    frequency: 5400,
+    frequencyTo: 3100,
+    q: 7,
+    gain: level * 0.32,
     pan,
     delay,
+  });
+
+  // 2. The grind bed.
+  grind(bus, {
+    duration: body,
+    delay: bodyDelay,
+    source: 'noise',
+    frequency: 2400,
+    frequencyTo: 1750,
+    q: 1.1,
+    attack: 0.005,
+    release: 0.035,
+    chopHz: 52,
+    chopDepth: 0.4,
+    wobbleHz: 31,
+    wobbleDepth: 0.18,
+    gain: level * 0.6,
+    pan,
+  });
+
+  // 3. The rasp.
+  grind(bus, {
+    duration: body,
+    delay: bodyDelay,
+    source: 'sawtooth',
+    frequency: toothHz,
+    frequencyTo: toothHz * 0.86,
+    attack: 0.008,
+    release: 0.04,
+    chopHz: 52,
+    chopDepth: 0.3,
+    wobbleHz: 23,
+    wobbleDepth: 0.05,
+    gain: level * 0.18,
+    pan,
+  });
+
+  // 4. Skip ticks.
+  const window = duration - CATCH - 0.02;
+  const ticks = 2 + Math.round(bite * 2);
+  for (let n = 0; n < ticks && window > 0; n++) {
+    noiseBurst(bus, {
+      duration: 0.011,
+      frequency: 3200 + Math.random() * 2600,
+      q: 11,
+      gain: level * 0.15,
+      pan,
+      delay: delay + CATCH + Math.random() * window,
+    });
+  }
+
+  // 5. Free.
+  const FREE = 0.045;
+  sweep(bus, {
+    from: toothHz * 0.9,
+    to: toothHz * 1.7,
+    duration: FREE,
+    type: 'sawtooth',
+    gain: level * 0.11,
+    pan,
+    delay: delay + Math.max(0, duration - FREE),
   });
 };
 

@@ -33,7 +33,7 @@ export const MAX_DECAY_S = 0.22;
 const MIN_GAIN = 0.18;
 const MAX_GAIN = 1;
 
-function clamp01(n: number): number {
+export function clamp01(n: number): number {
   if (!Number.isFinite(n) || n < 0) return 0;
   return n > 1 ? 1 : n;
 }
@@ -246,4 +246,143 @@ export function chime(bus: AudioBus, options: ChimeOptions): void {
   env.connect(target);
   osc.start(at);
   osc.stop(at + options.duration + 0.02);
+}
+
+// --- sustained textures --------------------------------------------------------------------
+
+export interface GrindOptions extends VoiceOptions {
+  duration: number;
+  /** `'noise'` for filtered noise, or an oscillator type for a pitched rasp. */
+  source?: 'noise' | OscillatorType;
+  /** Noise: the band-pass centre. Oscillator: its pitch. */
+  frequency: number;
+  /** Slides there across the burst — loading up, or spinning free. */
+  frequencyTo?: number;
+  /** Noise only. Keep this LOW: a high Q on noise is a ringing bell, not a scrape. */
+  q?: number;
+  /** Seconds to full volume. Tiny for anything abrasive. */
+  attack?: number;
+  /** Seconds of fall at the end. */
+  release?: number;
+  /** Amplitude modulation rate. Below ~30Hz it is chatter; above it, a metallic rasp. */
+  chopHz?: number;
+  /** 0-1, how deep the chop cuts. */
+  chopDepth?: number;
+  /** Frequency wobble rate — something fighting resistance rather than running free. */
+  wobbleHz?: number;
+  /** 0-1, as a fraction of `frequency`. */
+  wobbleDepth?: number;
+}
+
+/**
+ * A sustained, abrasive texture: a source that holds at full volume for most of its length
+ * instead of decaying from the first millisecond.
+ *
+ * Everything else in this file is an impact — struck, then fading. That envelope is why a
+ * scraping, cutting or burning sound cannot be built from `noiseBurst`: those are events with
+ * duration, and an exponential decay makes any of them read as a single hit no matter how the
+ * filter is set. This holds a plateau instead, and adds the two modulations that separate a
+ * machine from a hiss:
+ *
+ * - **chop** — amplitude modulation. Slow, it is teeth catching and skipping; fast, it is the
+ *   metallic rasp of many teeth striking per second.
+ * - **wobble** — frequency modulation. A blade under load does not hold a steady note, and a
+ *   perfectly steady one sounds synthetic in a way listeners notice without being able to
+ *   name.
+ */
+export function grind(bus: AudioBus, options: GrindOptions): void {
+  const ctx = bus.ctx;
+  const target = output(bus, options.pan ?? 0);
+  if (!ctx || !target) return;
+
+  const at = ctx.currentTime + (options.delay ?? 0);
+  const duration = Math.max(0.02, options.duration);
+  const end = at + duration;
+  const kind = options.source ?? 'noise';
+  const frequency = Math.max(20, options.frequency);
+
+  // Everything that has to be started and stopped, collected so the two source shapes share
+  // one lifecycle rather than each remembering to clean up after itself.
+  const scheduled: Array<AudioScheduledSourceNode> = [];
+
+  let head: AudioNode;
+  let freqParam: AudioParam;
+
+  if (kind === 'noise') {
+    const source = ctx.createBufferSource();
+    source.buffer = noiseBuffer(ctx);
+    source.loop = true;
+    source.loopStart = Math.random() * (NOISE_SECONDS * 0.5);
+    source.loopEnd = NOISE_SECONDS;
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = options.q ?? 1;
+    source.connect(filter);
+
+    head = filter;
+    freqParam = filter.frequency;
+    scheduled.push(source);
+  } else {
+    const osc = ctx.createOscillator();
+    osc.type = kind;
+    head = osc;
+    freqParam = osc.frequency;
+    scheduled.push(osc);
+  }
+
+  freqParam.setValueAtTime(frequency, at);
+  if (options.frequencyTo !== undefined) {
+    freqParam.exponentialRampToValueAtTime(Math.max(20, options.frequencyTo), end);
+  }
+
+  if (options.wobbleHz && options.wobbleDepth) {
+    const wobble = ctx.createOscillator();
+    wobble.frequency.value = options.wobbleHz;
+    const depth = ctx.createGain();
+    depth.gain.value = frequency * clamp01(options.wobbleDepth);
+    wobble.connect(depth);
+    depth.connect(freqParam);
+    scheduled.push(wobble);
+  }
+
+  let chain = head;
+  if (options.chopHz && options.chopDepth) {
+    // Standard amplitude modulation: the gain rests at 1 - depth and the LFO swings it up to
+    // 1. A sawtooth LFO rather than a sine because a tooth strikes and releases — the shape
+    // is asymmetric, and a sine here sounds like a tremolo pedal instead of a machine.
+    const amount = clamp01(options.chopDepth);
+    const chop = ctx.createGain();
+    chop.gain.value = 1 - amount;
+
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sawtooth';
+    lfo.frequency.value = options.chopHz;
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = amount;
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(chop.gain);
+
+    chain.connect(chop);
+    chain = chop;
+    scheduled.push(lfo);
+  }
+
+  const peak = Math.max(0.0001, options.gain ?? 0.5);
+  const attack = Math.min(Math.max(options.attack ?? 0.004, 0.001), duration * 0.4);
+  const release = Math.min(Math.max(options.release ?? 0.03, 0.001), duration - attack);
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, at);
+  env.gain.exponentialRampToValueAtTime(peak, at + attack);
+  env.gain.setValueAtTime(peak, end - release);
+  env.gain.exponentialRampToValueAtTime(0.0001, end);
+
+  chain.connect(env);
+  env.connect(target);
+
+  for (const node of scheduled) {
+    node.start(at);
+    node.stop(end + 0.02);
+  }
 }
