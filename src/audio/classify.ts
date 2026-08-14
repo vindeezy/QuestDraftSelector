@@ -64,7 +64,7 @@ export const ABILITY_SOUNDS = new Map<string, SoundId>([
  * `crusher` — so the prefix before the first `-` is the family. Reading the prefix rather
  * than the whole id means adding a fourteenth flame jet needs no audio change at all.
  */
-const HAZARD_SOUNDS = new Map<string, SoundId>([
+export const HAZARD_SOUNDS = new Map<string, SoundId>([
   ['flame', 'flameHiss'],
   ['saw', 'sawGrind'],
   ['cannon', 'shellImpact'],
