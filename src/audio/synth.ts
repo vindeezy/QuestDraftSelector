@@ -260,6 +260,23 @@ export interface GrindOptions extends VoiceOptions {
   frequencyTo?: number;
   /** Noise only. Keep this LOW: a high Q on noise is a ringing bell, not a scrape. */
   q?: number;
+  /**
+   * Roll everything above this away.
+   *
+   * The difference between abrasive and painful. Human hearing peaks in sensitivity around
+   * 2-5kHz, so a texture with unchecked energy up there reads as harsh and tiring however
+   * quiet it is — and a raw sawtooth has harmonics running all the way up. Anything meant to
+   * be heard hundreds of times across a battle needs a ceiling.
+   */
+  lowpass?: number;
+  /**
+   * Shape of the chop LFO. Triangle by default.
+   *
+   * A sawtooth LFO jumps instantaneously once per cycle, and a step in a gain envelope is a
+   * click — a broadband spike of exactly the kind that makes a sound fatiguing. It buys a
+   * harder-edged strike and costs grit, which is a bad trade for anything sustained.
+   */
+  chopShape?: OscillatorType;
   /** Seconds to full volume. Tiny for anything abrasive. */
   attack?: number;
   /** Seconds of fall at the end. */
@@ -349,14 +366,15 @@ export function grind(bus: AudioBus, options: GrindOptions): void {
   let chain = head;
   if (options.chopHz && options.chopDepth) {
     // Standard amplitude modulation: the gain rests at 1 - depth and the LFO swings it up to
-    // 1. A sawtooth LFO rather than a sine because a tooth strikes and releases — the shape
-    // is asymmetric, and a sine here sounds like a tremolo pedal instead of a machine.
+    // 1. Triangle by default -- see `chopShape`. A sawtooth reads as a harder strike and was
+    // the first choice here, but its once-per-cycle jump is a click, and a click repeated
+    // fifty times a second is grit.
     const amount = clamp01(options.chopDepth);
     const chop = ctx.createGain();
     chop.gain.value = 1 - amount;
 
     const lfo = ctx.createOscillator();
-    lfo.type = 'sawtooth';
+    lfo.type = options.chopShape ?? 'triangle';
     lfo.frequency.value = options.chopHz;
     const lfoDepth = ctx.createGain();
     lfoDepth.gain.value = amount;
@@ -366,6 +384,15 @@ export function grind(bus: AudioBus, options: GrindOptions): void {
     chain.connect(chop);
     chain = chop;
     scheduled.push(lfo);
+  }
+
+  if (options.lowpass !== undefined) {
+    const tone = ctx.createBiquadFilter();
+    tone.type = 'lowpass';
+    tone.frequency.value = Math.max(200, options.lowpass);
+    tone.Q.value = 0.7; // no resonant peak at the corner -- that would add the very edge this removes
+    chain.connect(tone);
+    chain = tone;
   }
 
   const peak = Math.max(0.0001, options.gain ?? 0.5);

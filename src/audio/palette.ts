@@ -130,74 +130,81 @@ const sawBuzz: Voice = (bus, o) => {
   const body = duration - CATCH * 0.5;
   const bodyDelay = delay + CATCH * 0.5;
 
-  // 1. The catch.
+  // 1. The catch. Lower and blunter than a true skreech: at 5kHz with a sharp Q this was a
+  //    needle straight into the ear's most sensitive octave, several times a second.
   noiseBurst(bus, {
     duration: CATCH,
-    frequency: 5400,
-    frequencyTo: 3100,
-    q: 7,
-    gain: level * 0.32,
+    frequency: 3400,
+    frequencyTo: 2100,
+    q: 3,
+    gain: level * 0.24,
     pan,
     delay,
   });
 
-  // 2. The grind bed.
+  // 2. The grind bed. Centre pulled well below the 2-5kHz sensitivity peak and capped, so the
+  //    weight of the sound sits in the chest rather than the ears.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'noise',
-    frequency: 2400,
-    frequencyTo: 1750,
-    q: 1.1,
-    attack: 0.005,
-    release: 0.035,
-    chopHz: 52,
-    chopDepth: 0.4,
-    wobbleHz: 31,
-    wobbleDepth: 0.18,
-    gain: level * 0.6,
+    frequency: 1450,
+    frequencyTo: 1050,
+    q: 0.9,
+    lowpass: 3200,
+    attack: 0.012,
+    release: 0.045,
+    chopHz: 46,
+    chopDepth: 0.26,
+    wobbleHz: 29,
+    wobbleDepth: 0.15,
+    gain: level * 0.55,
     pan,
   });
 
-  // 3. The rasp.
+  // 3. The rasp. A raw sawtooth runs harmonics to the top of hearing and was most of the
+  //    grit; capped at 2.2kHz it keeps the teeth and loses the buzzsaw whine.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'sawtooth',
     frequency: toothHz,
     frequencyTo: toothHz * 0.86,
-    attack: 0.008,
-    release: 0.04,
-    chopHz: 52,
-    chopDepth: 0.3,
+    lowpass: 2200,
+    attack: 0.016,
+    release: 0.05,
+    chopHz: 46,
+    chopDepth: 0.2,
     wobbleHz: 23,
     wobbleDepth: 0.05,
-    gain: level * 0.18,
+    gain: level * 0.15,
     pan,
   });
 
-  // 4. Skip ticks.
+  // 4. Skip ticks. Fewer, lower, blunter and quieter. At Q 11 up at 5kHz these were the
+  //    sharpest thing in the sound and the part that made repeated hits tiring.
   const window = duration - CATCH - 0.02;
-  const ticks = 2 + Math.round(bite * 2);
+  const ticks = 1 + Math.round(bite * 2);
   for (let n = 0; n < ticks && window > 0; n++) {
     noiseBurst(bus, {
-      duration: 0.011,
-      frequency: 3200 + Math.random() * 2600,
-      q: 11,
-      gain: level * 0.15,
+      duration: 0.014,
+      frequency: 1700 + Math.random() * 1100,
+      q: 4,
+      gain: level * 0.1,
       pan,
       delay: delay + CATCH + Math.random() * window,
     });
   }
 
-  // 5. Free.
-  const FREE = 0.045;
+  // 5. Free. Triangle rather than sawtooth: the gesture needs the pitch to lift, not a second
+  //    burst of harmonics on the way out.
+  const FREE = 0.05;
   sweep(bus, {
     from: toothHz * 0.9,
-    to: toothHz * 1.7,
+    to: toothHz * 1.55,
     duration: FREE,
-    type: 'sawtooth',
-    gain: level * 0.11,
+    type: 'triangle',
+    gain: level * 0.1,
     pan,
     delay: delay + Math.max(0, duration - FREE),
   });
