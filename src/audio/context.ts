@@ -30,12 +30,23 @@ export interface AudioBus {
   readonly muted: boolean;
   readonly volume: number;
   /**
+   * Decibels taken off the top end, 0 to `MAX_TONE_CUT`. 0 leaves the mix untouched.
+   *
+   * A safety net over the whole palette rather than a per-voice fix. Every voice is a guess
+   * made by someone who cannot hear it, and "too bright" is the single most likely way for
+   * that guess to be wrong — it is also the one mistake that makes a two-hour draft night
+   * physically unpleasant rather than merely imperfect.
+   */
+  readonly toneCut: number;
+  /**
    * Creates and resumes the context. Idempotent, because the gesture that triggers it is a
    * button a viewer can press twice, and because both the Forge and the battles unlock on
    * their own start control.
    */
   unlock(): void;
   setMuted(muted: boolean): void;
+  /** Clamped to 0..`MAX_TONE_CUT` decibels of shelf cut above `TONE_SHELF_HZ`. */
+  setToneCut(decibels: number): void;
   /** Clamped to 0..1. Remembered while muted, so unmuting restores it rather than jumping
    *  to full. */
   setVolume(volume: number): void;
@@ -54,6 +65,18 @@ export interface AudioBusOptions {
  * elimination all land within a few milliseconds.
  */
 const LIMITER = { threshold: -6, knee: 0, ratio: 20, attack: 0.003, release: 0.25 };
+
+/**
+ * Where the master tone control starts working.
+ *
+ * 2.2kHz, just below the 2-5kHz band human hearing is most sensitive to. A shelf rather than
+ * a lowpass so it leans on brightness instead of removing the top of the spectrum: a saw
+ * should be able to sound dull without also sounding muffled.
+ */
+export const TONE_SHELF_HZ = 2200;
+
+/** As far as the tone control goes. Beyond this everything sounds like it is underwater. */
+export const MAX_TONE_CUT = 18;
 
 /** The real thing, resolved lazily so importing this module in Node does not throw. */
 function browserAudioContext(): AudioContext {
@@ -76,11 +99,17 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
 
   let ctx: AudioContext | null = null;
   let masterGain: GainNode | null = null;
+  let toneShelf: BiquadFilterNode | null = null;
   let muted = false;
   let volume = 1;
+  let toneCut = 0;
 
   const applyGain = (): void => {
     if (masterGain) masterGain.gain.value = muted ? 0 : volume;
+  };
+
+  const applyTone = (): void => {
+    if (toneShelf) toneShelf.gain.value = -toneCut;
   };
 
   return {
@@ -99,12 +128,23 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
     get volume() {
       return volume;
     },
+    get toneCut() {
+      return toneCut;
+    },
 
     unlock() {
       if (ctx !== null) return;
       try {
         const created = factory();
         const gain = created.createGain();
+
+        // Before the limiter, so taming the top end also reduces how hard the limiter has to
+        // work. After it, the shelf would be smoothing over distortion the limiter had
+        // already introduced.
+        const shelf = created.createBiquadFilter();
+        shelf.type = 'highshelf';
+        shelf.frequency.value = TONE_SHELF_HZ;
+
         const limiter = created.createDynamicsCompressor();
         limiter.threshold.value = LIMITER.threshold;
         limiter.knee.value = LIMITER.knee;
@@ -112,12 +152,15 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
         limiter.attack.value = LIMITER.attack;
         limiter.release.value = LIMITER.release;
 
-        gain.connect(limiter);
+        gain.connect(shelf);
+        shelf.connect(limiter);
         limiter.connect(created.destination);
 
         ctx = created;
         masterGain = gain;
+        toneShelf = shelf;
         applyGain();
+        applyTone();
 
         // A context created before a user gesture starts suspended and makes no sound.
         // The rejection is swallowed for the same reason the whole call is guarded: sound
@@ -127,6 +170,7 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
         // Some browsers refuse to construct a context at all. Leave the site silent.
         ctx = null;
         masterGain = null;
+        toneShelf = null;
       }
     },
 
@@ -138,6 +182,11 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
     setVolume(next: number) {
       volume = clamp01(next);
       applyGain();
+    },
+
+    setToneCut(next: number) {
+      toneCut = Number.isFinite(next) ? Math.max(0, Math.min(MAX_TONE_CUT, next)) : 0;
+      applyTone();
     },
 
     now() {

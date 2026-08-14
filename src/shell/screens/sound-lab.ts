@@ -1,5 +1,5 @@
 import { ABILITY_SOUNDS, HAZARD_SOUNDS, WEAPON_SOUNDS, soundFor } from '../../audio/classify';
-import { createAudioBus, type AudioBus } from '../../audio/context';
+import { MAX_TONE_CUT, TONE_SHELF_HZ, createAudioBus, type AudioBus } from '../../audio/context';
 import { playSound, type SoundId } from '../../audio/palette';
 import { GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../../audio/voices';
 import { ARENA_VARIANTS } from '../../sim/event/arenas';
@@ -185,6 +185,28 @@ export function mountSoundLab(options: SoundLabOptions): () => void {
   volumeRow.appendChild(volume);
   volumeRow.appendChild(volumeValue);
   transport.appendChild(volumeRow);
+
+  // Softness. Here because two rounds of per-voice fixes for "too harsh" both missed, and the
+  // person who can actually hear it should be able to find the number rather than describe it.
+  // Whatever setting feels right is worth knowing: it says whether the fix belongs in one
+  // voice or in the whole palette.
+  const toneRow = el('label', 'lab__control');
+  toneRow.appendChild(el('span', 'lab__control-label', 'Softness'));
+  const tone = el('input', 'lab__slider');
+  tone.type = 'range';
+  tone.min = '0';
+  tone.max = String(MAX_TONE_CUT);
+  tone.step = '1';
+  tone.value = String(bus.toneCut);
+  const toneValue = el('span', 'lab__control-value', `${bus.toneCut}dB`);
+  tone.addEventListener('input', () => {
+    bus.setToneCut(Number(tone.value));
+    toneValue.textContent = `${tone.value}dB`;
+  });
+  toneRow.appendChild(tone);
+  toneRow.appendChild(toneValue);
+  toneRow.title = `Decibels taken off everything above ${TONE_SHELF_HZ}Hz.`;
+  transport.appendChild(toneRow);
 
   const mute = el('button', 'lab__button lab__button--toggle', 'Mute');
   mute.type = 'button';

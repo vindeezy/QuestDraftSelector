@@ -88,33 +88,37 @@ export const SAW_BUZZ_MIN_SECONDS = 0.1;
 export const SAW_BUZZ_MAX_SECONDS = 0.25;
 
 /**
- * Saw Blade. The one weapon that must not sound like a hit.
+ * Saw Blade. The one weapon that must not sound like a hit — and must not hurt to hear.
  *
  * Everything else in this file is a struck object. A powered blade is a machine doing work
- * against resistance, and its defining quality is abrasion — teeth cutting and scraping, not
- * metal being knocked. The previous version was a single resonant noise burst at Q 18, which
- * is a recipe for a struck bell: a filter that narrow rings at its centre frequency, so what
- * came out was a ping wearing a saw's name.
+ * against resistance, so this is built as one continuous gesture instead:
  *
- * Five layers, arranged as one gesture:
+ *     spinning blade -> teeth bite -> controlled grind and chatter -> blade releases
  *
- *     high-speed blade -> teeth catch metal -> violent grinding -> blade skips free
+ * Getting there took three attempts and the two failures are the useful part of this comment.
  *
- * 1. **The catch** — 22ms of bright metallic skreech. Long enough to hear teeth find armour,
- *    far too short to read as a struck note. This is the ONLY part that resembles an impact,
- *    and it is deliberately quieter than the grind that follows it.
- * 2. **The grind bed** — the loudest layer and the whole character of the sound. Broadband
- *    noise at a deliberately LOW Q so it scrapes rather than rings, held at a plateau for the
- *    full contact instead of decaying, chopped at 52Hz so the teeth chatter across the
- *    surface, and wobbled so the blade audibly fights resistance.
- * 3. **The rasp** — individual teeth at audio rate, a sawtooth because that is literally the
- *    shape a tooth makes. It bogs down slightly across the contact: a blade under load slows.
- * 4. **Skip ticks** — a few sharp catches scattered through the middle, at genuinely random
- *    times so no two hits are the same, for teeth snagging on uneven armour.
- * 5. **Free** — the pitch climbs as the blade unloads and leaves the metal. Physically true
- *    (less resistance, more RPM) and the thing that makes the gesture end rather than stop.
+ * The first version was one noise burst at Q 18. A filter that narrow rings at its centre
+ * frequency, so it was a struck bell wearing a saw's name.
  *
- * Believable rather than cinematic: no boom, no sub-bass, nothing that reads as an explosion.
+ * The second had the right structure and was painful to listen to. Three causes, all mine:
+ * the texture sat at 1450Hz with a raw sawtooth on top of it, right in the 2-5kHz band where
+ * human hearing is most sensitive; the chop LFO was a sawtooth, whose once-per-cycle jump is
+ * a step in a gain envelope, which is a click, fifty times a second; and the layers summed to
+ * about 0.74 against a limiter threshold of 0.5, so every hit was driven hard into the master
+ * limiter and came back with limiter distortion on it. That last one is why softening the
+ * synthesis alone did not fix it — the grit was being added downstream of the synthesis.
+ *
+ * So the rules this version follows:
+ *
+ * - **Everything lives low.** The buzz is 310-780Hz and no layer is allowed past 1.6kHz.
+ *   Character comes from modulation, not from brightness.
+ * - **No resonant peaks anywhere.** Every Q is at or below 1, and the bite uses a lowpass
+ *   rather than a bandpass so it has no peak at all.
+ * - **It stays under the limiter.** The sustained layers sum to about 0.5, so the master
+ *   limiter shapes peaks instead of crushing every hit.
+ * - **One rotation rate, shared.** All three sustained layers chop at 44Hz, which is what
+ *   makes the blade audibly keep spinning through the contact instead of sounding like three
+ *   unrelated noises stacked up.
  */
 const sawBuzz: Voice = (bus, o) => {
   const { intensity, pan, delay } = opt(o);
@@ -122,89 +126,99 @@ const sawBuzz: Voice = (bus, o) => {
   const duration = SAW_BUZZ_MIN_SECONDS + (SAW_BUZZ_MAX_SECONDS - SAW_BUZZ_MIN_SECONDS) * bite;
   const level = gainFor(intensity);
 
-  // Teeth per second. A harder bite loads the blade and drags its speed down, which is both
-  // true of a real saw and useful here: a heavy hit reads lower and angrier than a graze.
-  const toothHz = pitchFor(intensity, 1500);
+  // The buzz pitch: 780Hz at a graze down to 310Hz at a heavy bite. Low on purpose. This is
+  // the difference between "VRRRT" and "SKREEE" -- the character of a cut has to come from
+  // modulation down here, not from brightness up where it hurts.
+  const toothHz = pitchFor(intensity, 780);
 
-  const CATCH = 0.022;
+  // Blade rotation, and the one rate everything shares. ~44Hz is about 2,600rpm, and hearing
+  // the same pulse in all three layers is what makes the blade audibly keep spinning through
+  // the contact rather than sounding like three separate noises.
+  const SPIN_HZ = 44;
+
+  const CATCH = 0.03;
   const body = duration - CATCH * 0.5;
   const bodyDelay = delay + CATCH * 0.5;
 
-  // 1. The catch. Lower and blunter than a true skreech: at 5kHz with a sharp Q this was a
-  //    needle straight into the ear's most sensitive octave, several times a second.
+  // 1. The bite. A low-mid crunch, not a skreech. `lowpass` rather than the usual bandpass so
+  //    there is no resonant peak at all -- a peak here is precisely the piercing ring to avoid.
   noiseBurst(bus, {
     duration: CATCH,
-    frequency: 3400,
-    frequencyTo: 2100,
-    q: 3,
-    gain: level * 0.24,
+    type: 'lowpass',
+    frequency: 1500,
+    frequencyTo: 800,
+    q: 0.5,
+    gain: level * 0.16,
     pan,
     delay,
   });
 
-  // 2. The grind bed. Centre pulled well below the 2-5kHz sensitivity peak and capped, so the
-  //    weight of the sound sits in the chest rather than the ears.
+  // 2. The rumble. Mechanical weight under the cut, so the contact has body instead of being
+  //    all texture. Capped hard: this layer should be felt more than heard.
+  grind(bus, {
+    duration: body,
+    delay: bodyDelay,
+    source: 'sawtooth',
+    frequency: 96,
+    lowpass: 340,
+    attack: 0.014,
+    release: 0.05,
+    chopHz: SPIN_HZ,
+    chopDepth: 0.16,
+    gain: level * 0.16,
+    pan,
+  });
+
+  // 3. The cut. The main texture, and the layer that was doing the damage before: noise
+  //    centred at 1450Hz reads as a hiss however it is capped. Down at 720Hz with a 1.6kHz
+  //    ceiling the same noise reads as crunch.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'noise',
-    frequency: 1450,
-    frequencyTo: 1050,
-    q: 0.9,
-    lowpass: 3200,
-    attack: 0.012,
-    release: 0.045,
-    chopHz: 46,
-    chopDepth: 0.26,
-    wobbleHz: 29,
-    wobbleDepth: 0.15,
-    gain: level * 0.55,
+    frequency: 720,
+    frequencyTo: 600,
+    q: 0.8,
+    lowpass: 1600,
+    attack: 0.014,
+    release: 0.05,
+    chopHz: SPIN_HZ,
+    chopDepth: 0.3,
+    wobbleHz: 26,
+    wobbleDepth: 0.14,
+    gain: level * 0.22,
     pan,
   });
 
-  // 3. The rasp. A raw sawtooth runs harmonics to the top of hearing and was most of the
-  //    grit; capped at 2.2kHz it keeps the teeth and loses the buzzsaw whine.
+  // 4. The teeth. A sawtooth at tooth rate, capped just above its own fundamental so what
+  //    survives is the buzz and not the harmonics. The wobble is the teeth biting, dragging
+  //    and releasing; the downward slide is the blade loading up against the armour.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'sawtooth',
     frequency: toothHz,
-    frequencyTo: toothHz * 0.86,
-    lowpass: 2200,
-    attack: 0.016,
-    release: 0.05,
-    chopHz: 46,
-    chopDepth: 0.2,
-    wobbleHz: 23,
-    wobbleDepth: 0.05,
-    gain: level * 0.15,
+    frequencyTo: toothHz * 0.88,
+    lowpass: 1250,
+    attack: 0.018,
+    release: 0.055,
+    chopHz: SPIN_HZ,
+    chopDepth: 0.22,
+    wobbleHz: 19,
+    wobbleDepth: 0.07,
+    gain: level * 0.13,
     pan,
   });
 
-  // 4. Skip ticks. Fewer, lower, blunter and quieter. At Q 11 up at 5kHz these were the
-  //    sharpest thing in the sound and the part that made repeated hits tiring.
-  const window = duration - CATCH - 0.02;
-  const ticks = 1 + Math.round(bite * 2);
-  for (let n = 0; n < ticks && window > 0; n++) {
-    noiseBurst(bus, {
-      duration: 0.014,
-      frequency: 1700 + Math.random() * 1100,
-      q: 4,
-      gain: level * 0.1,
-      pan,
-      delay: delay + CATCH + Math.random() * window,
-    });
-  }
-
-  // 5. Free. Triangle rather than sawtooth: the gesture needs the pitch to lift, not a second
-  //    burst of harmonics on the way out.
+  // 5. Release. The blade unloads and its pitch lifts. A triangle carries almost no harmonics,
+  //    so the sound ends without one last bright edge on the way out.
   const FREE = 0.05;
   sweep(bus, {
-    from: toothHz * 0.9,
-    to: toothHz * 1.55,
+    from: toothHz * 0.92,
+    to: toothHz * 1.35,
     duration: FREE,
     type: 'triangle',
-    gain: level * 0.1,
+    gain: level * 0.05,
     pan,
     delay: delay + Math.max(0, duration - FREE),
   });

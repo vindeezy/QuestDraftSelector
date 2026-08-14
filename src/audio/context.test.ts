@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createAudioBus } from './context';
+import { MAX_TONE_CUT, createAudioBus } from './context';
 
 /**
  * jsdom has no Web Audio, and mocking a global would leave the module reaching for
@@ -39,6 +39,15 @@ function fakeContextFactory(log: Connection[] = []) {
     },
     createGain() {
       return { ...node('gain'), gain: { value: 1 } };
+    },
+    createBiquadFilter() {
+      return {
+        ...node('shelf'),
+        type: '' as string,
+        frequency: { value: 0 },
+        gain: { value: 0 },
+        Q: { value: 0 },
+      };
     },
     createDynamicsCompressor() {
       return {
@@ -96,10 +105,14 @@ describe('createAudioBus', () => {
   });
 
   it('routes everything through one master gain and one limiter, in that order', () => {
+    // Asserted as the WHOLE chain rather than as "contains these hops", so a node quietly
+    // added or reordered fails here. Mute has holes in it the moment anything bypasses the
+    // gain, and a brawl clips the moment anything bypasses the limiter.
     const { bus, log } = makeBus();
     bus.unlock();
     expect(log).toEqual([
-      { from: 'gain', to: 'limiter' },
+      { from: 'gain', to: 'shelf' },
+      { from: 'shelf', to: 'limiter' },
       { from: 'limiter', to: 'destination' },
     ]);
   });
@@ -168,5 +181,43 @@ describe('createAudioBus', () => {
     expect(() => bus.unlock()).not.toThrow();
     expect(bus.ready).toBe(false);
     expect(bus.masterGain).toBeNull();
+  });
+});
+
+describe('the master tone control', () => {
+  it('starts flat, so it changes nothing until someone asks it to', () => {
+    const { bus } = makeBus();
+    expect(bus.toneCut).toBe(0);
+  });
+
+  it('clamps to a sane range rather than trusting the caller', () => {
+    const { bus } = makeBus();
+    bus.setToneCut(-5);
+    expect(bus.toneCut).toBe(0);
+    bus.setToneCut(999);
+    expect(bus.toneCut).toBe(MAX_TONE_CUT);
+    bus.setToneCut(Number.NaN);
+    expect(bus.toneCut).toBe(0);
+  });
+
+  it('sits BEFORE the limiter, so softening also eases what the limiter has to do', () => {
+    // The other order would smooth over distortion the limiter had already introduced --
+    // which is the failure that made two rounds of per-voice softening miss.
+    const { bus, log } = makeBus();
+    bus.unlock();
+    expect(log).toContainEqual({ from: 'gain', to: 'shelf' });
+    expect(log).toContainEqual({ from: 'shelf', to: 'limiter' });
+    expect(log).not.toContainEqual({ from: 'gain', to: 'limiter' });
+  });
+
+  it('survives a browser with no Web Audio', () => {
+    const bus = createAudioBus({
+      factory: () => {
+        throw new Error('no audio');
+      },
+    });
+    bus.unlock();
+    expect(() => bus.setToneCut(9)).not.toThrow();
+    expect(bus.toneCut).toBe(9);
   });
 });
