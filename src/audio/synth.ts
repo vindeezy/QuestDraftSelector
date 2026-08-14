@@ -1,0 +1,249 @@
+import type { AudioBus } from './context';
+
+/**
+ * Synthesis primitives. These know nothing about the game — no effects, no bots, no
+ * hazards. `palette.ts` builds recognisable sounds out of them; `classify.ts` decides which
+ * one an event deserves.
+ *
+ * Everything here is generated at runtime. No files ship, which means nothing to download,
+ * nothing to fail on draft night, and a battle that works offline. It also means intensity
+ * is a real parameter rather than a volume knob: the bus hands over 0-1, and the three
+ * curves below turn that into pitch, length and loudness, so a glancing blow and a heavy
+ * one are genuinely different sounds rather than the same recording played twice.
+ *
+ * `Math.random` is fine in this file. It is presentation, downstream of the effect bus, and
+ * cannot reach the simulation — the lint guard makes sure of the reverse direction too.
+ */
+
+// --- the intensity curves ---------------------------------------------------------------
+
+/** Shortest a hit can ring. Below this it stops reading as an impact and starts reading as
+ *  a click. */
+export const MIN_DECAY_S = 0.045;
+
+/**
+ * Longest a hit can ring.
+ *
+ * Deliberately short. Ten bots in a scrum land hits far faster than a quarter second apart,
+ * and a longer tail means each impact smears into the next until the fight sounds like
+ * static rather than like blows. Explosions are the exception and set their own length.
+ */
+export const MAX_DECAY_S = 0.22;
+
+const MIN_GAIN = 0.18;
+const MAX_GAIN = 1;
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n > 1 ? 1 : n;
+}
+
+/**
+ * Pitch for a given intensity, dropping as intensity rises: a heavy blow is a lower, fuller
+ * sound than a glancing one, which is how impacts behave in the world.
+ *
+ * Bottoms out at 40% of the base rather than approaching zero — an oscillator at a few Hz
+ * is not a low sound, it is silence with a click at each end.
+ */
+export function pitchFor(intensity: number, base: number): number {
+  return base * (1 - 0.6 * clamp01(intensity));
+}
+
+/** How long the sound rings, between `MIN_DECAY_S` and `MAX_DECAY_S`. */
+export function decayFor(intensity: number): number {
+  return MIN_DECAY_S + (MAX_DECAY_S - MIN_DECAY_S) * clamp01(intensity);
+}
+
+/**
+ * Loudness for a given intensity.
+ *
+ * Two deliberate choices. It never reaches zero, because a hit that dealt almost no damage
+ * still happened and glancing blows are most of a battle — scaling straight from silence
+ * would delete the majority of the combat. And it is curved rather than linear, because
+ * perceived loudness is roughly logarithmic: a linear ramp makes everything short of a
+ * heavy hit sound like nothing at all.
+ */
+export function gainFor(intensity: number): number {
+  const t = clamp01(intensity);
+  return MIN_GAIN + (MAX_GAIN - MIN_GAIN) * Math.sqrt(t);
+}
+
+// --- shared resources ---------------------------------------------------------------------
+
+/**
+ * One noise buffer per context, generated once and reused by every burst.
+ *
+ * Allocating a fresh buffer per hit would mean tens of thousands of short-lived
+ * `AudioBuffer`s across a battle, and the garbage collector arriving mid-fight is exactly
+ * the kind of hitch that ruins a frame.
+ */
+const noiseBuffers = new WeakMap<AudioContext, AudioBuffer>();
+const NOISE_SECONDS = 1;
+
+function noiseBuffer(ctx: AudioContext): AudioBuffer {
+  const existing = noiseBuffers.get(ctx);
+  if (existing) return existing;
+
+  const length = Math.floor(ctx.sampleRate * NOISE_SECONDS);
+  const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
+  noiseBuffers.set(ctx, buffer);
+  return buffer;
+}
+
+/** Where a voice connects: through its own panner so position is audible, into the master
+ *  gain so mute and the limiter both apply. */
+function output(bus: AudioBus, pan: number): AudioNode | null {
+  const ctx = bus.ctx;
+  const master = bus.masterGain;
+  if (!ctx || !master) return null;
+  if (!ctx.createStereoPanner) return master;
+
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = Math.max(-1, Math.min(1, pan));
+  panner.connect(master);
+  return panner;
+}
+
+// --- primitives ---------------------------------------------------------------------------
+
+export interface VoiceOptions {
+  /** Seconds from now. 0 plays immediately. */
+  delay?: number;
+  /** -1 hard left, 1 hard right. */
+  pan?: number;
+  gain?: number;
+}
+
+export interface NoiseBurstOptions extends VoiceOptions {
+  duration: number;
+  type?: BiquadFilterType;
+  frequency: number;
+  /** Filter resonance. Higher is more metallic and more pitched. */
+  q?: number;
+  /** Sweep the filter to this frequency over the burst — how an explosion is made. */
+  frequencyTo?: number;
+}
+
+/**
+ * Filtered noise with an exponential fall to silence. This is every impact in the game:
+ * clangs, thuds, grinds, explosions. What separates them is the filter and the length.
+ */
+export function noiseBurst(bus: AudioBus, options: NoiseBurstOptions): void {
+  const ctx = bus.ctx;
+  const target = output(bus, options.pan ?? 0);
+  if (!ctx || !target) return;
+
+  const at = ctx.currentTime + (options.delay ?? 0);
+  const source = ctx.createBufferSource();
+  source.buffer = noiseBuffer(ctx);
+  // A random window into the shared buffer, so repeated hits are not the same slice of
+  // noise over and over — the thing that makes a sample library sound like a sample library.
+  source.loop = true;
+  source.loopStart = Math.random() * (NOISE_SECONDS * 0.5);
+  source.loopEnd = NOISE_SECONDS;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = options.type ?? 'bandpass';
+  filter.frequency.setValueAtTime(options.frequency, at);
+  if (options.frequencyTo !== undefined) {
+    filter.frequency.exponentialRampToValueAtTime(Math.max(20, options.frequencyTo), at + options.duration);
+  }
+  filter.Q.value = options.q ?? 1;
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(Math.max(0.0001, options.gain ?? 0.5), at);
+  env.gain.exponentialRampToValueAtTime(0.0001, at + options.duration);
+
+  source.connect(filter);
+  filter.connect(env);
+  env.connect(target);
+  source.start(at);
+  source.stop(at + options.duration + 0.02);
+}
+
+export interface ToneOptions extends VoiceOptions {
+  frequency: number;
+  duration: number;
+  type?: OscillatorType;
+}
+
+/** A plain oscillator with an envelope. Bodies, hums and the low half of a thud. */
+export function tone(bus: AudioBus, options: ToneOptions): void {
+  const ctx = bus.ctx;
+  const target = output(bus, options.pan ?? 0);
+  if (!ctx || !target) return;
+
+  const at = ctx.currentTime + (options.delay ?? 0);
+  const osc = ctx.createOscillator();
+  osc.type = options.type ?? 'sine';
+  osc.frequency.setValueAtTime(options.frequency, at);
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, at);
+  env.gain.exponentialRampToValueAtTime(Math.max(0.0001, options.gain ?? 0.4), at + 0.004);
+  env.gain.exponentialRampToValueAtTime(0.0001, at + options.duration);
+
+  osc.connect(env);
+  env.connect(target);
+  osc.start(at);
+  osc.stop(at + options.duration + 0.02);
+}
+
+export interface SweepOptions extends VoiceOptions {
+  from: number;
+  to: number;
+  duration: number;
+  type?: OscillatorType;
+}
+
+/** An oscillator whose pitch slides. Down for booms and explosions, up for charges. */
+export function sweep(bus: AudioBus, options: SweepOptions): void {
+  const ctx = bus.ctx;
+  const target = output(bus, options.pan ?? 0);
+  if (!ctx || !target) return;
+
+  const at = ctx.currentTime + (options.delay ?? 0);
+  const osc = ctx.createOscillator();
+  osc.type = options.type ?? 'sine';
+  osc.frequency.setValueAtTime(Math.max(20, options.from), at);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(20, options.to), at + options.duration);
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(Math.max(0.0001, options.gain ?? 0.5), at);
+  env.gain.exponentialRampToValueAtTime(0.0001, at + options.duration);
+
+  osc.connect(env);
+  env.connect(target);
+  osc.start(at);
+  osc.stop(at + options.duration + 0.02);
+}
+
+export interface ChimeOptions extends VoiceOptions {
+  frequency: number;
+  duration: number;
+}
+
+/** A soft triangle with a gentle attack — the only thing here that is not an impact. Repair,
+ *  and anything the UI wants to say pleasantly. */
+export function chime(bus: AudioBus, options: ChimeOptions): void {
+  const ctx = bus.ctx;
+  const target = output(bus, options.pan ?? 0);
+  if (!ctx || !target) return;
+
+  const at = ctx.currentTime + (options.delay ?? 0);
+  const osc = ctx.createOscillator();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(options.frequency, at);
+
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, at);
+  env.gain.exponentialRampToValueAtTime(Math.max(0.0001, options.gain ?? 0.3), at + 0.03);
+  env.gain.exponentialRampToValueAtTime(0.0001, at + options.duration);
+
+  osc.connect(env);
+  env.connect(target);
+  osc.start(at);
+  osc.stop(at + options.duration + 0.02);
+}
