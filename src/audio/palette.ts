@@ -333,21 +333,184 @@ const discWhirr: Voice = (bus, o) => {
   });
 };
 
-/** Flamethrower. No impact at all — a breathy rush, which is why it is the one weapon whose
- *  hit is filtered noise with no resonance. */
-const flameWhoosh: Voice = (bus, o) => {
-  const { pan, delay, level } = opt(o);
-  noiseBurst(bus, {
-    duration: 0.3,
-    type: 'lowpass',
-    frequency: 1800,
-    frequencyTo: 700,
-    q: 0.7,
-    gain: level * 0.28,
-    pan,
-    delay,
-  });
+/**
+ * A jet of flame, described by its size.
+ *
+ * The Flamethrower weapon and the arena's flame hazard are one event at two scales, built by
+ * one function from two of these, the same way the saws are. It keeps them recognisably the
+ * same fire and stops them drifting apart.
+ *
+ * Every frequency in the hazard jet is about half the weapon's -- an octave down -- which is
+ * what reads as a bigger fire rather than merely a lower one.
+ */
+interface FlameJet {
+  minSeconds: number;
+  maxSeconds: number;
+  /** Where the airy body starts, and where it opens to as the flame flows outward. */
+  bodyHz: number;
+  bodyToHz: number;
+  /**
+   * Ceiling on the body.
+   *
+   * The single most important number here. Filtered noise is a whoosh below roughly 1.5kHz
+   * and a gas hiss above it, and the difference between the two is entirely this.
+   */
+  bodyCeiling: number;
+  /** Warmth underneath: enough to feel like heat, not enough to boom. */
+  warmthHz: number;
+  warmthCeiling: number;
+  warmthGain: number;
+  /** How fast the flame billows. Slow — this is flowing, not flickering. */
+  billowHz: number;
+  /** Crackle: where the pops sit, how far they scatter, and how loud. */
+  crackleHz: number;
+  crackleSpread: number;
+  crackleGain: number;
+  /** The soft catch of ignition. Never a burst. */
+  ignitionHz: number;
+}
+
+/** Bolted to a bot: a short controlled burst. */
+const WEAPON_JET: FlameJet = {
+  minSeconds: 0.3,
+  maxSeconds: 0.5,
+  bodyHz: 340,
+  bodyToHz: 520,
+  bodyCeiling: 1500,
+  warmthHz: 165,
+  warmthCeiling: 420,
+  warmthGain: 0.05,
+  billowHz: 8.5,
+  crackleHz: 900,
+  crackleSpread: 700,
+  crackleGain: 0.12,
+  ignitionHz: 700,
 };
+
+/** Set into the arena: a much larger fire, slower and longer. */
+const HAZARD_JET: FlameJet = {
+  minSeconds: 0.45,
+  maxSeconds: 0.85,
+  bodyHz: 175,
+  bodyToHz: 265,
+  bodyCeiling: 780,
+  warmthHz: 88,
+  warmthCeiling: 230,
+  warmthGain: 0.11,
+  billowHz: 5,
+  crackleHz: 470,
+  crackleSpread: 350,
+  crackleGain: 0.14,
+  ignitionHz: 370,
+};
+
+/**
+ * Flame. The one sound in the palette that is meant to be pleasant.
+ *
+ *     soft ignition -> warm airy whoosh -> crackle and pop -> gentle fade
+ *
+ * Everything else here is an impact or an abrasion; a flame jet is a continuous, flowing
+ * thing, and it fires often enough that being merely correct is not good enough. It has to be
+ * nice to hear a hundred times.
+ *
+ * That rules out most of how fire is usually synthesised. The obvious approach — bright noise
+ * sweeping upward — is a gas hiss, and it is what both flame voices were before this: the
+ * hazard swept 1500Hz to 2600Hz, straight through the band that makes a sound tiring. Warmth
+ * is not a quiet hiss. It is a fire built an octave and a half lower than instinct suggests.
+ *
+ * Four layers:
+ *
+ * 1. **Ignition** — a soft catch, with a 30ms attack rather than an instant one. The
+ *    difference between a flame taking hold and a small explosion is entirely in the attack.
+ * 2. **The body** — broad, low noise that opens outward as the flame flows, billowing slowly
+ *    rather than flickering. Q below 1 so it is airy rather than pitched, and capped well
+ *    below the hiss band.
+ * 3. **Warmth** — a triangle underneath. Triangle rather than sawtooth because it carries
+ *    almost no harmonics: this layer is heat, and it must not turn into a drone or a boom.
+ * 4. **Crackle** — a handful of small soft pops at genuinely random times, low and quiet
+ *    enough to read as texture. Regular spacing would sound like a machine; loud ones would
+ *    be the "aggressive crackling" this is meant to avoid.
+ *
+ * The fade is the body's release, which runs a third of the sound's length, so it thins out
+ * rather than stopping.
+ */
+function flameJet(bus: AudioBus, o: PlayOptions | undefined, jet: FlameJet): void {
+  const { intensity, pan, delay, level } = opt(o);
+  const heat = clamp01(intensity);
+  const duration = jet.minSeconds + (jet.maxSeconds - jet.minSeconds) * heat;
+
+  const IGNITION = 0.09;
+
+  // 1. Ignition. A catch, not a bang -- the slow attack is the whole difference.
+  grind(bus, {
+    duration: IGNITION,
+    delay,
+    source: 'noise',
+    frequency: jet.ignitionHz,
+    frequencyTo: jet.ignitionHz * 0.6,
+    q: 0.7,
+    lowpass: jet.bodyCeiling,
+    attack: 0.03,
+    release: 0.04,
+    gain: level * 0.16,
+    pan,
+  });
+
+  // 2. The body. The whoosh itself, opening outward as the flame flows.
+  grind(bus, {
+    duration,
+    delay,
+    source: 'noise',
+    frequency: jet.bodyHz,
+    frequencyTo: jet.bodyToHz,
+    q: 0.7,
+    lowpass: jet.bodyCeiling,
+    attack: 0.05,
+    release: duration * 0.34,
+    // Gentle and slow. A deep chop would pulse; this is a fire breathing.
+    chopHz: jet.billowHz * 0.7,
+    chopDepth: 0.1,
+    wobbleHz: jet.billowHz,
+    wobbleDepth: 0.25,
+    gain: level * 0.34,
+    pan,
+  });
+
+  // 3. Warmth.
+  grind(bus, {
+    duration,
+    delay,
+    source: 'triangle',
+    frequency: jet.warmthHz,
+    lowpass: jet.warmthCeiling,
+    attack: 0.07,
+    release: duration * 0.4,
+    chopHz: jet.billowHz,
+    chopDepth: 0.14,
+    gain: level * jet.warmthGain,
+    pan,
+  });
+
+  // 4. Crackle.
+  const pops = 4 + Math.round(heat * 6);
+  const window = duration - IGNITION * 0.5;
+  for (let n = 0; n < pops && window > 0; n++) {
+    noiseBurst(bus, {
+      duration: 0.014 + Math.random() * 0.012,
+      frequency: jet.crackleHz + (Math.random() - 0.5) * jet.crackleSpread,
+      q: 2.5,
+      gain: level * jet.crackleGain * (0.5 + Math.random() * 0.5),
+      pan,
+      delay: delay + IGNITION * 0.5 + Math.random() * window,
+    });
+  }
+}
+
+export const FLAME_WHOOSH_MAX_SECONDS = WEAPON_JET.maxSeconds;
+export const FLAME_BILLOW_MAX_SECONDS = HAZARD_JET.maxSeconds;
+
+/** Flamethrower, the weapon. */
+const flameWhoosh: Voice = (bus, o) => flameJet(bus, o, WEAPON_JET);
 
 /** Ram Plate. A flat shove: all body, no ring. */
 const bluntImpact: Voice = (bus, o) => {
@@ -529,21 +692,15 @@ const smokeHiss: Voice = (bus, o) => {
 
 // --- hazards -------------------------------------------------------------------------------
 
-/** Standing in a flame jet. Hotter and shorter than the smoke hiss it could be confused
- *  with, because one is a bot hiding and the other is a bot burning. */
-const flameHiss: Voice = (bus, o) => {
-  const { pan, delay, level } = opt(o);
-  noiseBurst(bus, {
-    duration: 0.22,
-    type: 'bandpass',
-    frequency: 1500,
-    frequencyTo: 2600,
-    q: 0.9,
-    gain: level * 0.3,
-    pan,
-    delay,
-  });
-};
+/**
+ * Standing in the arena's flame jet: the same fire as the weapon, much larger.
+ *
+ * Named for what it is rather than what it was. It used to be `flameBillow`, and it used to
+ * sweep 1500Hz to 2600Hz -- a name and a sound that agreed with each other and were both
+ * wrong. Leaving the name would have quietly invited the hiss back the next time anyone
+ * touched it.
+ */
+const flameBillow: Voice = (bus, o) => flameJet(bus, o, HAZARD_JET);
 
 /**
  * The arena's saw hazard: the same blade as the weapon, much larger.
@@ -670,7 +827,7 @@ export const TARGET_PEAK: Record<SoundId, number> = {
   adrenalineRise: WEAPON_PEAK * 0.75,
 
   smokeHiss: WEAPON_PEAK * 0.6,
-  flameHiss: WEAPON_PEAK * 0.6,
+  flameBillow: WEAPON_PEAK * 0.6,
   sawGrind: WEAPON_PEAK * 0.6,
 
   dullThud: WEAPON_PEAK * 0.45,
@@ -679,38 +836,38 @@ export const TARGET_PEAK: Record<SoundId, number> = {
 
 export const VOICE_TRIM: Record<SoundId, number> = {
   // moments
-  explosion: 1.16,
+  explosion: 1.1,
   shockwaveBoom: 0.39,
-  crusherSlam: 1.26,
-  deepBoom: 1.25,
+  crusherSlam: 1.25,
+  deepBoom: 1.27,
   mechanicalClunk: 0.61,
-  shellImpact: 1.57,
+  shellImpact: 1.56,
 
   // weapons — the reference tier
-  metallicTick: 13.39,
-  heavyClang: 1.29,
-  sawBuzz: 0.8,
-  spinnerWhine: 3.24,
-  discWhirr: 3.73,
-  flameWhoosh: 4.77,
-  bluntImpact: 1.64,
+  metallicTick: 14.04,
+  heavyClang: 1.3,
+  sawBuzz: 0.71,
+  spinnerWhine: 3.33,
+  discWhirr: 3.61,
+  flameWhoosh: 0.82,
+  bluntImpact: 1.54,
 
   // abilities
-  electricZap: 2.61,
-  nitroWhoosh: 3.77,
-  oilSplat: 4.54,
+  electricZap: 2.64,
+  nitroWhoosh: 4.49,
+  oilSplat: 4.16,
   repairChime: 0.62,
-  adrenalineRise: 1.59,
-  smokeHiss: 3.4,
+  adrenalineRise: 1.6,
+  smokeHiss: 3.34,
 
   // sustained textures, which sit under everything
-  flameHiss: 4.51,
+  flameBillow: 0.43,
   // 23x. Not a typo, and not really a fix: this voice renders at a peak of 0.003 and is
   // effectively inaudible as written. The trim makes it present; it still wants rebuilding.
-  sawGrind: 0.29,
+  sawGrind: 0.3,
 
   // the two most frequent sounds in the show
-  dullThud: 1.36,
+  dullThud: 1.4,
   pegPing: 1.82,
 };
 
@@ -736,7 +893,7 @@ export const PALETTE = {
   repairChime,
   adrenalineRise,
   smokeHiss,
-  flameHiss,
+  flameBillow,
   sawGrind,
   crusherSlam,
   pegPing,

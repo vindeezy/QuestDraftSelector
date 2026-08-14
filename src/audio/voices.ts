@@ -1,4 +1,7 @@
-import { PEG_PING_SECONDS, SAW_BUZZ_MAX_SECONDS, SAW_GRIND_MAX_SECONDS, type SoundId } from './palette';
+import {
+  FLAME_BILLOW_MAX_SECONDS, FLAME_WHOOSH_MAX_SECONDS, PEG_PING_SECONDS,
+  SAW_BUZZ_MAX_SECONDS, SAW_GRIND_MAX_SECONDS, type SoundId,
+} from './palette';
 import { MAX_DECAY_S } from './synth';
 
 /**
@@ -93,9 +96,10 @@ export const EXEMPT: ReadonlySet<SoundId> = new Set<SoundId>(['explosion', 'mech
  * silently change how dense the mix is allowed to get.
  *
  * `MAX_DECAY_S` covers every voice built out of the standard intensity curves. The exceptions
- * declare their own length: a peg note is a tenth as long as a hit, and both saws are
- * sustained cuts rather than impacts and outlast the decay curve entirely -- the arena's saw
- * by nearly double, because a bot is dragged across it rather than struck by it. Getting any
+ * declare their own length, and there are now five of them: a peg note is a tenth as long as
+ * a hit, while the saws and the flames are sustained events rather than impacts and outlast
+ * the decay curve entirely. The arena versions run longest of all -- a bot is dragged across
+ * a floor saw and stands in a flame jet, rather than being struck by either. Getting any
  * of them wrong means the cap counts a voice as finished while it is still audible, which is
  * the failure that produces mush.
  *
@@ -112,6 +116,10 @@ export function lifetimeMs(id: SoundId): number {
       return SAW_BUZZ_MAX_SECONDS * 1000;
     case 'sawGrind':
       return SAW_GRIND_MAX_SECONDS * 1000;
+    case 'flameWhoosh':
+      return FLAME_WHOOSH_MAX_SECONDS * 1000;
+    case 'flameBillow':
+      return FLAME_BILLOW_MAX_SECONDS * 1000;
     default:
       return MAX_DECAY_S * 1000;
   }

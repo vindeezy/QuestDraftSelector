@@ -65,7 +65,7 @@ export const ABILITY_SOUNDS = new Map<string, SoundId>([
  * than the whole id means adding a fourteenth flame jet needs no audio change at all.
  */
 export const HAZARD_SOUNDS = new Map<string, SoundId>([
-  ['flame', 'flameHiss'],
+  ['flame', 'flameBillow'],
   ['saw', 'sawGrind'],
   ['cannon', 'shellImpact'],
   ['crusher', 'crusherSlam'],

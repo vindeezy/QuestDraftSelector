@@ -22,7 +22,7 @@ import { DEFAULT_BOARD } from '../src/sim/plinko/board';
 import { DEFAULT_PLINKO, createPlinkoRun, advance } from '../src/sim/plinko/plinko';
 import { toEventMembers } from '../src/config/roster';
 import { soundFor } from '../src/audio/classify';
-import { GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../src/audio/voices';
+import { EXEMPT, GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../src/audio/voices';
 // The shipped record, so this measures the fight the league will actually watch rather than
 // whichever seed happened to be typed here.
 import officialRecord from '../data/official-event.json';
@@ -33,14 +33,20 @@ const MS_PER_TICK = 1000 / 60;
 interface Mix {
   raw: number;
   played: number;
+  /** Every voice ringing at once, exempt sounds included. */
   peak: number;
+  /** Only the voices the global cap governs. */
+  peakCapped: number;
   worstRawSecond: number;
   requested: Map<string, number>;
   kept: Map<string, number>;
 }
 
 function newMix(): Mix {
-  return { raw: 0, played: 0, peak: 0, worstRawSecond: 0, requested: new Map(), kept: new Map() };
+  return {
+    raw: 0, played: 0, peak: 0, peakCapped: 0, worstRawSecond: 0,
+    requested: new Map(), kept: new Map(),
+  };
 }
 
 function bump(counts: Map<string, number>, id: string): void {
@@ -56,19 +62,31 @@ function tally(mix: Mix, state: VoiceState, requests: VoiceRequest[], now: numbe
   mix.played += out.kept.length;
   for (const k of out.kept) bump(mix.kept, k.id);
 
-  const ringing = [...out.state.live.values()].reduce((n, times) => n + times.length, 0);
+  // Counted WITHOUT the exempt sounds, because the global cap deliberately does not govern
+  // them: an elimination always plays. Counting them here reported a cap breach that was not
+  // one, which is worse than reporting nothing -- a metric that cries wolf gets ignored.
+  let capped = 0;
+  let ringing = 0;
+  for (const [id, times] of out.state.live) {
+    ringing += times.length;
+    if (!EXEMPT.has(id)) capped += times.length;
+  }
   mix.peak = Math.max(mix.peak, ringing);
+  mix.peakCapped = Math.max(mix.peakCapped, capped);
   return out.state;
 }
 
 function report(label: string, mix: Mix, ticks: number): void {
   const seconds = ticks / 60;
-  const over = mix.peak > GLOBAL_CAP ? '  <-- ABOVE THE GLOBAL CAP' : '';
+  const over = mix.peakCapped > GLOBAL_CAP ? '  <-- ABOVE THE GLOBAL CAP' : '';
   console.log(`\n=== ${label}  (${seconds.toFixed(1)}s) ===`);
   console.log(`requested     ${mix.raw}  (${(mix.raw / seconds).toFixed(1)}/s, worst second ${mix.worstRawSecond})`);
   console.log(`played        ${mix.played}  (${(mix.played / seconds).toFixed(1)}/s)`);
   console.log(`thinned to    ${((mix.played / mix.raw) * 100).toFixed(1)}%`);
-  console.log(`peak overlap  ${mix.peak} voices ringing at once${over}`);
+  console.log(
+    `peak overlap  ${mix.peak} voices ringing at once ` +
+    `(${mix.peakCapped} of them capped, limit ${GLOBAL_CAP})${over}`,
+  );
 
   const top = [...mix.requested.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (top.length > 0) {

@@ -83,7 +83,7 @@ describe('soundFor — abilities', () => {
 describe('soundFor — hazards', () => {
   it('picks the sound from the hazard id prefix', () => {
     const builds = roster(0, buildWith());
-    expect(soundFor(effect('hazardHit', 'bot-1', 'flame-12'), builds)).toBe('flameHiss');
+    expect(soundFor(effect('hazardHit', 'bot-1', 'flame-12'), builds)).toBe('flameBillow');
     expect(soundFor(effect('hazardHit', 'bot-1', 'saw-3'), builds)).toBe('sawGrind');
     expect(soundFor(effect('hazardHit', 'bot-1', 'cannon-25'), builds)).toBe('shellImpact');
     expect(soundFor(effect('hazardHit', 'bot-1', 'crusher'), builds)).toBe('crusherSlam');

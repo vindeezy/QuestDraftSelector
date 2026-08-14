@@ -44,7 +44,7 @@ describe('the palette registry', () => {
       'electricZap', 'nitroWhoosh', 'oilSplat', 'shockwaveBoom', 'repairChime',
       'adrenalineRise', 'smokeHiss',
       // one per hazard family
-      'flameHiss', 'sawGrind', 'crusherSlam', 'shellImpact',
+      'flameBillow', 'sawGrind', 'crusherSlam', 'shellImpact',
       // general
       'metallicTick', 'dullThud', 'explosion', 'deepBoom', 'mechanicalClunk', 'pegPing',
     ];
