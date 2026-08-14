@@ -15,7 +15,8 @@
     "draft": "vite-node tools/draft-metrics.ts",
     "record": "vite-node tools/record-event.ts",
     "seeds": "vite-node tools/seed-lab.ts",
-    "search": "vite-node tools/seed-search.ts"
+    "search": "vite-node tools/seed-search.ts",
+    "mix": "vite-node tools/mix-metrics.ts"
   },
   "dependencies": {
     "pixi.js": "^8.19.0"

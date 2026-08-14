@@ -389,12 +389,21 @@ const crusherSlam: Voice = (bus, o) => {
  */
 const PENTATONIC = [523.25, 587.33, 698.46, 783.99, 880.0, 1046.5, 1174.66, 1396.91];
 
+/**
+ * How long a peg note rings.
+ *
+ * Exported because `voices.ts` sizes the peg cap from it. Peg strikes are by far the densest
+ * events in the show, so the note length and how many may overlap are one decision, and
+ * writing the number down twice is how they drift apart.
+ */
+export const PEG_PING_SECONDS = 0.09;
+
 const pegPing: Voice = (bus, o) => {
   const { intensity, pan, delay, pitch } = opt(o);
   const step = Math.min(PENTATONIC.length - 1, Math.max(0, Math.round(pitch * (PENTATONIC.length - 1))));
   tone(bus, {
     frequency: PENTATONIC[step]!,
-    duration: 0.09,
+    duration: PEG_PING_SECONDS,
     type: 'triangle',
     // Quiet. Ten balls across dozens of peg rows is a lot of events, and the cascade should
     // sit under the room rather than over it.
