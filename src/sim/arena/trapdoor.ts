@@ -61,7 +61,15 @@ export function updateTrapdoors(
         sumY += row * grid.tileSize + grid.tileSize / 2;
       }
       const count = trapdoor.tiles.length;
-      pushEffect(effects, 'trapdoor', count > 0 ? sumX / count : 0, count > 0 ? sumY / count : 0, 1, null);
+      pushEffect(
+        effects,
+        'trapdoor',
+        count > 0 ? sumX / count : 0,
+        count > 0 ? sumY / count : 0,
+        1,
+        null,
+        trapdoor.id,
+      );
     }
   }
 }

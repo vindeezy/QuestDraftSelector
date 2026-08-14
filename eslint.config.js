@@ -45,8 +45,11 @@ export default tseslint.config(
           message: 'src/sim/ must never touch the DOM.',
         },
         {
-          selector: "ImportDeclaration[source.value=/^\\.\\.\\/(render|shell)/]",
-          message: 'src/sim/ must not import from the render or shell layers.',
+          selector: "ImportDeclaration[source.value=/^\\.\\.\\/(render|shell|audio)/]",
+          // `audio` joins render and shell: the effect bus flows one way, OUT of the
+          // simulation. A src/sim/ file importing the audio layer would mean sound had
+          // become an input to the event rather than a reaction to it.
+          message: 'src/sim/ must not import from the render, shell or audio layers.',
         },
         {
           selector: 'BinaryExpression[operator="**"]',

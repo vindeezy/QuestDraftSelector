@@ -23,6 +23,20 @@ describe('pushEffect', () => {
     pushEffect(effects, 'collision', 0, 0, 0.2, null);
     expect(effects[0]!.botId).toBeNull();
   });
+
+  it('carries the hazard that caused a hazardHit, so audio can tell a flame from a saw', () => {
+    const effects: Effect[] = [];
+    pushEffect(effects, 'hazardHit', 10, 20, 0.5, 'bot-3', 'flame-12');
+    expect(effects[0]!.source).toBe('flame-12');
+  });
+
+  it('leaves source undefined where there is nothing to name', () => {
+    // A weaponHit already carries `botId`, and a consumer holds every member's build, so
+    // the weapon is knowable without duplicating it here.
+    const effects: Effect[] = [];
+    pushEffect(effects, 'weaponHit', 10, 20, 0.5, 'bot-3');
+    expect(effects[0]!.source).toBeUndefined();
+  });
 });
 
 describe('weaponHitIntensity', () => {

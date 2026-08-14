@@ -49,6 +49,42 @@ export interface PlinkoResult {
   checksum: string;
 }
 
+/**
+ * The Forge's effect bus — the same idea, and the same four rules, as the arena's
+ * (`src/sim/arena/effects.ts`), restated here so a reader of this file never has to go and
+ * find them:
+ *
+ * 1. Derived, never causal. Nothing in `src/sim/` reads this to decide anything; the push
+ *    below sits alongside behaviour that already existed.
+ * 2. Never checksummed. `runPlinko`'s checksum is built from ball state; it never touches
+ *    this. Emitting here must not move the pinned Forge checksums.
+ * 3. Cleared at the START of each `advance`, so a tick's list describes only that tick.
+ * 4. Deterministic: every value is a pure function of state already computed for physics.
+ */
+export interface PlinkoEffect {
+  kind: 'pegHit';
+  x: number;
+  y: number;
+  /** 0-1, from impact speed — see `PEG_HIT_REFERENCE_SPEED`. */
+  intensity: number;
+  /** Which ball struck, so a consumer can pan or vary per member. */
+  ballIndex: number;
+}
+
+/**
+ * The impact speed treated as a full-strength peg strike.
+ *
+ * `maxSpeed` is 5.5 and a ball spends most of its fall well under that, so normalising
+ * against the cap would make almost every ping inaudible. 2.2 is roughly a ball at terminal
+ * speed clipping a peg squarely — the strike you actually want to hear. Faster hits clamp.
+ */
+export const PEG_HIT_REFERENCE_SPEED = 2.2;
+
+export function pegHitIntensity(speed: number): number {
+  const n = speed / PEG_HIT_REFERENCE_SPEED;
+  return n < 0 ? 0 : n > 1 ? 1 : n;
+}
+
 export interface PlinkoRun {
   config: PlinkoConfig;
   board: Board;
@@ -58,6 +94,11 @@ export interface PlinkoRun {
   done: boolean;
   settledFor: number;
   inSlotsFor: number;
+  /**
+   * Ball-on-peg strikes from this tick only, for the audio layer. See `PlinkoEffect` above
+   * for the contract this keeps.
+   */
+  effects: PlinkoEffect[];
 }
 
 /**
@@ -161,14 +202,34 @@ export function createPlinkoRun(config: PlinkoConfig): PlinkoRun {
     world.bodies.push(body);
   }
 
-  return { config, board, world, balls, landings: [], done: false, settledFor: 0, inSlotsFor: 0 };
+  return { config, board, world, balls, landings: [], done: false, settledFor: 0, inSlotsFor: 0, effects: [] };
 }
 
 /** Advances the run by one tick. Safe to call after `done` — it becomes a no-op. */
 export function advance(run: PlinkoRun): void {
   if (run.done) return;
 
+  // Cleared before anything else runs, so this list describes exactly the tick below.
+  run.effects.length = 0;
+
   step(run.world);
+
+  // A ball-peg contact is one body id starting `ball-` and one starting `peg-` (see
+  // `board.ts` and the ball creation below). Ball-on-ball and ball-on-divider contacts are
+  // deliberately not emitted: the pegs are what make the cascade sound like a cascade, and
+  // adding the rest would triple the event count for no extra character.
+  for (const contact of run.world.contacts) {
+    const ballId = contact.a.startsWith('ball-') ? contact.a : contact.b.startsWith('ball-') ? contact.b : null;
+    const isPeg = contact.a.startsWith('peg-') || contact.b.startsWith('peg-');
+    if (ballId === null || !isPeg) continue;
+    run.effects.push({
+      kind: 'pegHit',
+      x: contact.x,
+      y: contact.y,
+      intensity: pegHitIntensity(contact.speed),
+      ballIndex: Number(ballId.slice('ball-'.length)),
+    });
+  }
 
   if (isSettled(run.world, run.config.settleThreshold)) {
     run.settledFor++;

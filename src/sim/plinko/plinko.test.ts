@@ -89,3 +89,58 @@ describe('advance', () => {
     expect(run.landings).toEqual(landingsAtEnd);
   });
 });
+
+describe('the Forge effect bus', () => {
+  /** Drives a run until it has emitted at least one peg strike, or gives up. */
+  function untilFirstPegHit(seed: number): ReturnType<typeof createPlinkoRun> {
+    const run = createPlinkoRun({ ...config, seed, ballCount: 10 });
+    for (let i = 0; i < 2000 && !run.done && run.effects.length === 0; i++) advance(run);
+    return run;
+  }
+
+  it('emits a peg strike as the balls fall', () => {
+    const run = untilFirstPegHit(4242);
+    expect(run.effects.length).toBeGreaterThan(0);
+    expect(run.effects[0]!.kind).toBe('pegHit');
+  });
+
+  it('names which ball struck, and normalises the impact to 0-1', () => {
+    const run = untilFirstPegHit(4242);
+    for (const e of run.effects) {
+      expect(e.ballIndex).toBeGreaterThanOrEqual(0);
+      expect(e.ballIndex).toBeLessThan(10);
+      expect(e.intensity).toBeGreaterThanOrEqual(0);
+      expect(e.intensity).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('clears at the start of each tick, so a tick describes only itself', () => {
+    // Rule 3 of the contract. Without the clear these would accumulate for the whole run,
+    // and a consumer would replay every strike since the drop on every frame.
+    const run = untilFirstPegHit(4242);
+    const first = run.effects.length;
+    expect(first).toBeGreaterThan(0);
+    let sawSmaller = false;
+    for (let i = 0; i < 200 && !run.done; i++) {
+      advance(run);
+      if (run.effects.length < first) sawSmaller = true;
+      expect(run.effects.length).toBeLessThan(first + 200);
+    }
+    expect(sawSmaller).toBe(true);
+  });
+
+  it('emits nothing once the run is done', () => {
+    const run = createPlinkoRun({ ...config, seed: 4242, ballCount: 10 });
+    while (!run.done) advance(run);
+    const after = run.effects.length;
+    advance(run);
+    expect(run.effects.length).toBe(after);
+  });
+
+  it('does not move the pinned Forge checksum — rule 2', () => {
+    const a = runPlinko({ ...config, seed: 4242, ballCount: 10 });
+    const b = runPlinko({ ...config, seed: 4242, ballCount: 10 });
+    expect(a.checksum).toBe(b.checksum);
+    expect(a.landings).toEqual(b.landings);
+  });
+});

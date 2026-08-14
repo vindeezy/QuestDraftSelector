@@ -491,8 +491,17 @@ styles, exactly as the seed preview was removed.
 - [ ] **Step 2: Confirm `?sounds` falls through** to the normal walkthrough.
 - [ ] **Step 3: Full verification** — `npx vitest run && npm run lint && npx tsc --noEmit &&
 npm run build`.
-- [ ] **Step 4: Confirm the recorded event is untouched** — `npm run record -- --save
-43000236` prints `verifies: yes` and `data/official-event.json` is unchanged in git.
+- [ ] **Step 4: Confirm the recorded event is untouched**
+
+```bash
+npm run record -- --seed 43000236   # previews; must print checksum 2e92efe2
+git status --short data/            # must be empty
+```
+
+**Not `--save`.** Saving rewrites `recordedAt`, so the command dirties the very file it is
+meant to prove unchanged — found the hard way in SND 1. And **not** a bare
+`npm run record -- 43000236`: the positional argument is a COUNT of seeds to suggest, so that
+asks for forty-three million events and never returns.
 - [ ] **Step 5: Push and watch CI.** Walk the deployed site end to end.
 - [ ] **Step 6: Commit** — `chore: remove the sound lab`
 

@@ -34,6 +34,22 @@ export interface Effect {
   intensity: number;
   /** The bot this is about, where there is one. */
   botId: string | null;
+  /**
+   * What caused this, where the position alone cannot say — the `id` of the zone, emitter or
+   * trapdoor responsible. The arena configs name these by type (`flame-12`, `cannon-25`,
+   * `saw-3`, `crusher`), so a consumer classifies on the prefix before the first `-`.
+   *
+   * Populated ONLY where it cannot be derived downstream, which is why a `weaponHit` and an
+   * `abilityFire` do not carry it: both already carry `botId`, and any consumer holds every
+   * member's build, so the weapon and the ability are knowable already. Repeating them here
+   * would be a second source of truth for something the builds already answer.
+   *
+   * A `hazardHit` is the case that forced this. It lands at the BOT's position, not the
+   * hazard's, so nothing about the event says what hit it — and inferring it by asking which
+   * zone contains that point is wrong where zones overlap and impossible for a projectile,
+   * which strikes far from the emitter that fired it.
+   */
+  source?: string;
 }
 
 function clamp01(n: number): number {
@@ -51,8 +67,11 @@ export function pushEffect(
   y: number,
   intensity: number,
   botId: string | null,
+  source?: string,
 ): void {
-  effects.push({ kind, x, y, intensity, botId });
+  // `source` is omitted rather than written as `undefined` when absent, so an effect only
+  // carries the key when it means something.
+  effects.push(source === undefined ? { kind, x, y, intensity, botId } : { kind, x, y, intensity, botId, source });
 }
 
 // --- weaponHit --------------------------------------------------------------------------

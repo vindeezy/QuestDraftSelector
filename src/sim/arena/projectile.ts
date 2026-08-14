@@ -11,6 +11,16 @@ export interface Projectile {
   damage: number;
   radius: number;
   alive: boolean;
+  /**
+   * The `id` of the emitter that fired this, carried so a hit can name what struck the bot
+   * — a shot lands far from its gun, so its position cannot say. Informational only: nothing
+   * in `src/sim/` reads it, and it is not part of the checksum (see `runMatch`, which hashes
+   * bot state and the tick).
+   *
+   * Optional because a shot can be constructed directly in a test with no emitter behind it;
+   * a hit from one of those simply names no source, which consumers already handle.
+   */
+  source?: string;
 }
 
 /** A wall-mounted gun. Fires one shot per activation, not one per active tick. */
@@ -55,10 +65,11 @@ export function fireEmitters(
         damage: emitter.damage,
         radius: emitter.radius,
         alive: true,
+        source: emitter.id,
       });
       // cannonFire: 1.0 always. This marks the muzzle flash moment, not a hit -- there
       // is no damage yet to normalise against, the shot has not travelled anywhere.
-      if (effects) pushEffect(effects, 'cannonFire', emitter.x, emitter.y, 1, null);
+      if (effects) pushEffect(effects, 'cannonFire', emitter.x, emitter.y, 1, null, emitter.id);
     }
     emitter.wasActive = active;
   }
@@ -142,7 +153,7 @@ export function stepProjectiles(
       if (hit.health < 0) hit.health = 0;
       hit.damageTaken += dealt;
       if (effects) {
-        pushEffect(effects, 'hazardHit', hit.body.x, hit.body.y, hazardHitIntensity(dealt), hit.body.id);
+        pushEffect(effects, 'hazardHit', hit.body.x, hit.body.y, hazardHitIntensity(dealt), hit.body.id, shot.source);
       }
       shot.alive = false;
       continue;

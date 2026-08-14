@@ -86,7 +86,7 @@ export function applyZone(
     if (bot.health < 0) bot.health = 0;
     bot.damageTaken += dealt;
     if (effects) {
-      pushEffect(effects, 'hazardHit', bot.body.x, bot.body.y, hazardHitIntensity(dealt), bot.body.id);
+      pushEffect(effects, 'hazardHit', bot.body.x, bot.body.y, hazardHitIntensity(dealt), bot.body.id, zone.id);
     }
   }
 
