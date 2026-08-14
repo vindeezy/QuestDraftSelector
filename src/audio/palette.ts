@@ -27,16 +27,29 @@ export interface PlayOptions {
    * note and make a drop sound like a cascade rather than a rattle.
    */
   pitch?: number;
+  /**
+   * Per-voice level correction, applied by `playSound`. Not for callers to set.
+   *
+   * See `VOICE_TRIM`: a `gain` of 0.5 means wildly different things through different
+   * primitives, so the numbers inside each voice describe the BALANCE BETWEEN ITS LAYERS and
+   * this describes how loud the finished voice sits against the rest of the palette.
+   */
+  trim?: number;
 }
 
 export type Voice = (bus: AudioBus, options?: PlayOptions) => void;
 
-const opt = (o?: PlayOptions) => ({
-  intensity: o?.intensity ?? 1,
-  pan: o?.pan ?? 0,
-  delay: o?.delay ?? 0,
-  pitch: o?.pitch ?? 0.5,
-});
+const opt = (o?: PlayOptions) => {
+  const intensity = o?.intensity ?? 1;
+  return {
+    intensity,
+    pan: o?.pan ?? 0,
+    delay: o?.delay ?? 0,
+    pitch: o?.pitch ?? 0.5,
+    /** What every layer in a voice scales by: the intensity curve times the voice's trim. */
+    level: gainFor(intensity) * (o?.trim ?? 1),
+  };
+};
 
 // --- weapons -----------------------------------------------------------------------------
 
@@ -44,12 +57,12 @@ const opt = (o?: PlayOptions) => ({
  *  bright metallic tick. This is the most frequent sound in the game by a wide margin, so it
  *  is the one most carefully kept short. */
 const metallicTick: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: decayFor(intensity),
     frequency: pitchFor(intensity, 2800),
     q: 7,
-    gain: gainFor(intensity) * 0.5,
+    gain: level * 0.5,
     pan,
     delay,
   });
@@ -58,19 +71,19 @@ const metallicTick: Voice = (bus, o) => {
 /** Hammer. A lower, heavier version of the tick with a body under it, so a hammer blow
  *  lands rather than pings. */
 const heavyClang: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: decayFor(intensity) * 1.5,
     frequency: pitchFor(intensity, 1100),
     q: 4,
-    gain: gainFor(intensity) * 0.55,
+    gain: level * 0.55,
     pan,
     delay,
   });
   tone(bus, {
     frequency: pitchFor(intensity, 150),
     duration: decayFor(intensity) * 2,
-    gain: gainFor(intensity) * 0.35,
+    gain: level * 0.35,
     pan,
     delay,
   });
@@ -121,10 +134,9 @@ export const SAW_BUZZ_MAX_SECONDS = 0.25;
  *   unrelated noises stacked up.
  */
 const sawBuzz: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   const bite = clamp01(intensity);
   const duration = SAW_BUZZ_MIN_SECONDS + (SAW_BUZZ_MAX_SECONDS - SAW_BUZZ_MIN_SECONDS) * bite;
-  const level = gainFor(intensity);
 
   // The buzz pitch: 780Hz at a graze down to 310Hz at a heavy bite. Low on purpose. This is
   // the difference between "VRRRT" and "SKREEE" -- the character of a cut has to come from
@@ -148,13 +160,16 @@ const sawBuzz: Voice = (bus, o) => {
     frequency: 1500,
     frequencyTo: 800,
     q: 0.5,
-    gain: level * 0.16,
+    gain: level * 0.30,
     pan,
     delay,
   });
 
-  // 2. The rumble. Mechanical weight under the cut, so the contact has body instead of being
-  //    all texture. Capped hard: this layer should be felt more than heard.
+  // 2. The rumble. Mechanical weight under the cut. Its gain looks tiny beside the others
+  //    because a sawtooth is roughly seventeen times louder than band-passed noise at the same
+  //    `gain` -- the numbers in this voice are balance ratios measured against each primitive,
+  //    not comparable volumes. A 96Hz sawtooth also barely reproduces on a laptop speaker, so
+  //    leaning on it for weight would make the saw vanish in the room this is watched in.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
@@ -165,7 +180,7 @@ const sawBuzz: Voice = (bus, o) => {
     release: 0.05,
     chopHz: SPIN_HZ,
     chopDepth: 0.16,
-    gain: level * 0.16,
+    gain: level * 0.05,
     pan,
   });
 
@@ -176,17 +191,17 @@ const sawBuzz: Voice = (bus, o) => {
     duration: body,
     delay: bodyDelay,
     source: 'noise',
-    frequency: 720,
-    frequencyTo: 600,
+    frequency: 900,
+    frequencyTo: 720,
     q: 0.8,
-    lowpass: 1600,
+    lowpass: 2000,
     attack: 0.014,
     release: 0.05,
     chopHz: SPIN_HZ,
     chopDepth: 0.3,
     wobbleHz: 26,
     wobbleDepth: 0.14,
-    gain: level * 0.22,
+    gain: level * 0.30,
     pan,
   });
 
@@ -199,14 +214,14 @@ const sawBuzz: Voice = (bus, o) => {
     source: 'sawtooth',
     frequency: toothHz,
     frequencyTo: toothHz * 0.88,
-    lowpass: 1250,
+    lowpass: 1500,
     attack: 0.018,
     release: 0.055,
     chopHz: SPIN_HZ,
     chopDepth: 0.22,
     wobbleHz: 19,
     wobbleDepth: 0.07,
-    gain: level * 0.13,
+    gain: level * 0.09,
     pan,
   });
 
@@ -226,13 +241,13 @@ const sawBuzz: Voice = (bus, o) => {
 
 /** Spinning Bar. A whine that falls as the bar sheds energy into the target. */
 const spinnerWhine: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   sweep(bus, {
     from: pitchFor(intensity, 1500),
     to: pitchFor(intensity, 520),
     duration: decayFor(intensity) * 1.3,
     type: 'sawtooth',
-    gain: gainFor(intensity) * 0.22,
+    gain: level * 0.22,
     pan,
     delay,
   });
@@ -240,7 +255,7 @@ const spinnerWhine: Voice = (bus, o) => {
     duration: decayFor(intensity),
     frequency: pitchFor(intensity, 2400),
     q: 5,
-    gain: gainFor(intensity) * 0.3,
+    gain: level * 0.3,
     pan,
     delay,
   });
@@ -249,13 +264,13 @@ const spinnerWhine: Voice = (bus, o) => {
 /** Vertical Spinner. Same family as the bar but higher and thinner, so the two are
  *  distinguishable without being unrelated — they are both spinning metal. */
 const discWhirr: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   sweep(bus, {
     from: pitchFor(intensity, 2600),
     to: pitchFor(intensity, 1100),
     duration: decayFor(intensity),
     type: 'square',
-    gain: gainFor(intensity) * 0.16,
+    gain: level * 0.16,
     pan,
     delay,
   });
@@ -263,7 +278,7 @@ const discWhirr: Voice = (bus, o) => {
     duration: decayFor(intensity) * 0.8,
     frequency: pitchFor(intensity, 3400),
     q: 9,
-    gain: gainFor(intensity) * 0.3,
+    gain: level * 0.3,
     pan,
     delay,
   });
@@ -272,14 +287,14 @@ const discWhirr: Voice = (bus, o) => {
 /** Flamethrower. No impact at all — a breathy rush, which is why it is the one weapon whose
  *  hit is filtered noise with no resonance. */
 const flameWhoosh: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.3,
     type: 'lowpass',
     frequency: 1800,
     frequencyTo: 700,
     q: 0.7,
-    gain: gainFor(intensity) * 0.28,
+    gain: level * 0.28,
     pan,
     delay,
   });
@@ -287,20 +302,20 @@ const flameWhoosh: Voice = (bus, o) => {
 
 /** Ram Plate. A flat shove: all body, no ring. */
 const bluntImpact: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: decayFor(intensity),
     type: 'lowpass',
     frequency: pitchFor(intensity, 700),
     q: 1,
-    gain: gainFor(intensity) * 0.5,
+    gain: level * 0.5,
     pan,
     delay,
   });
   tone(bus, {
     frequency: pitchFor(intensity, 110),
     duration: decayFor(intensity) * 1.5,
-    gain: gainFor(intensity) * 0.3,
+    gain: level * 0.3,
     pan,
     delay,
   });
@@ -311,11 +326,11 @@ const bluntImpact: Voice = (bus, o) => {
 /** Bots bumping. Kept quiet and very short on purpose: this fires constantly in a scrum and
  *  its job is to sit underneath everything else, not to be noticed. */
 const dullThud: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   tone(bus, {
     frequency: pitchFor(intensity, 130),
     duration: 0.07,
-    gain: gainFor(intensity) * 0.18,
+    gain: level * 0.18,
     pan,
     delay,
   });
@@ -323,7 +338,7 @@ const dullThud: Voice = (bus, o) => {
     duration: 0.045,
     type: 'lowpass',
     frequency: 420,
-    gain: gainFor(intensity) * 0.14,
+    gain: level * 0.14,
     pan,
     delay,
   });
@@ -332,31 +347,31 @@ const dullThud: Voice = (bus, o) => {
 /** A bot dies. The loudest thing in the mix, and the only voice allowed to run long — a
  *  lowpass falling from bright to rubble is what an explosion is. */
 const explosion: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.75,
     type: 'lowpass',
     frequency: 1600,
     frequencyTo: 70,
     q: 0.8,
-    gain: 0.85,
+    gain: level * 0.85,
     pan,
     delay,
   });
-  sweep(bus, { from: 180, to: 35, duration: 0.6, gain: 0.5, pan, delay });
+  sweep(bus, { from: 180, to: 35, duration: 0.6, gain: level * 0.5, pan, delay });
 };
 
 /** A cannon firing. Distinct from an elimination so the room can tell "a hazard went off"
  *  from "somebody just died" without looking. */
 const deepBoom: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  sweep(bus, { from: 240, to: 55, duration: 0.35, gain: 0.55, pan, delay });
+  const { pan, delay, level } = opt(o);
+  sweep(bus, { from: 240, to: 55, duration: 0.35, gain: level * 0.55, pan, delay });
   noiseBurst(bus, {
     duration: 0.18,
     type: 'lowpass',
     frequency: 900,
     frequencyTo: 200,
-    gain: 0.4,
+    gain: level * 0.4,
     pan,
     delay,
   });
@@ -365,47 +380,47 @@ const deepBoom: Voice = (bus, o) => {
 /** A cannonball landing on a bot — the other half of `deepBoom`, heard from the receiving
  *  end. Sharper and shorter than the muzzle. */
 const shellImpact: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: decayFor(intensity) * 1.6,
     type: 'lowpass',
     frequency: pitchFor(intensity, 1300),
     frequencyTo: 180,
-    gain: gainFor(intensity) * 0.6,
+    gain: level * 0.6,
     pan,
     delay,
   });
-  tone(bus, { frequency: 95, duration: 0.16, gain: gainFor(intensity) * 0.35, pan, delay });
+  tone(bus, { frequency: 95, duration: 0.16, gain: level * 0.35, pan, delay });
 };
 
 /** A trapdoor opening. Two knocks and a rumble, because a floor giving way is a mechanism
  *  followed by a hole. */
 const mechanicalClunk: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  noiseBurst(bus, { duration: 0.05, frequency: 1400, q: 3, gain: 0.4, pan, delay });
-  noiseBurst(bus, { duration: 0.09, frequency: 700, q: 3, gain: 0.45, pan, delay: delay + 0.07 });
-  sweep(bus, { from: 120, to: 45, duration: 0.4, gain: 0.3, pan, delay: delay + 0.07 });
+  const { pan, delay, level } = opt(o);
+  noiseBurst(bus, { duration: 0.05, frequency: 1400, q: 3, gain: level * 0.4, pan, delay });
+  noiseBurst(bus, { duration: 0.09, frequency: 700, q: 3, gain: level * 0.45, pan, delay: delay + 0.07 });
+  sweep(bus, { from: 120, to: 45, duration: 0.4, gain: level * 0.3, pan, delay: delay + 0.07 });
 };
 
 // --- abilities ----------------------------------------------------------------------------
 
 /** EMP Pulse. */
 const electricZap: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  sweep(bus, { from: 2400, to: 320, duration: 0.22, type: 'sawtooth', gain: 0.3, pan, delay });
-  noiseBurst(bus, { duration: 0.2, type: 'highpass', frequency: 2600, q: 2, gain: 0.3, pan, delay });
+  const { pan, delay, level } = opt(o);
+  sweep(bus, { from: 2400, to: 320, duration: 0.22, type: 'sawtooth', gain: level * 0.3, pan, delay });
+  noiseBurst(bus, { duration: 0.2, type: 'highpass', frequency: 2600, q: 2, gain: level * 0.3, pan, delay });
 };
 
 /** Nitro Boost. */
 const nitroWhoosh: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.42,
     type: 'bandpass',
     frequency: 500,
     frequencyTo: 2600,
     q: 1.2,
-    gain: 0.36,
+    gain: level * 0.36,
     pan,
     delay,
   });
@@ -414,13 +429,13 @@ const nitroWhoosh: Voice = (bus, o) => {
 /** Oil Slick. Wet and flat — the ice patch it leaves is visible, so the sound only has to
  *  say "something was dropped". */
 const oilSplat: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.16,
     type: 'lowpass',
     frequency: 900,
     frequencyTo: 260,
-    gain: 0.35,
+    gain: level * 0.35,
     pan,
     delay,
   });
@@ -429,35 +444,35 @@ const oilSplat: Voice = (bus, o) => {
 /** Shockwave. A push outward, so it swells before it falls rather than starting at its
  *  loudest like the cannon does. */
 const shockwaveBoom: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  sweep(bus, { from: 70, to: 190, duration: 0.12, gain: 0.45, pan, delay });
-  sweep(bus, { from: 190, to: 48, duration: 0.45, gain: 0.5, pan, delay: delay + 0.1 });
-  noiseBurst(bus, { duration: 0.3, type: 'lowpass', frequency: 1400, frequencyTo: 200, gain: 0.3, pan, delay });
+  const { pan, delay, level } = opt(o);
+  sweep(bus, { from: 70, to: 190, duration: 0.12, gain: level * 0.45, pan, delay });
+  sweep(bus, { from: 190, to: 48, duration: 0.45, gain: level * 0.5, pan, delay: delay + 0.1 });
+  noiseBurst(bus, { duration: 0.3, type: 'lowpass', frequency: 1400, frequencyTo: 200, gain: level * 0.3, pan, delay });
 };
 
 /** Repair System. The one genuinely pleasant sound in the game — two rising notes. */
 const repairChime: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  chime(bus, { frequency: 660, duration: 0.3, gain: 0.22, pan, delay });
-  chime(bus, { frequency: 880, duration: 0.35, gain: 0.2, pan, delay: delay + 0.09 });
+  const { pan, delay, level } = opt(o);
+  chime(bus, { frequency: 660, duration: 0.3, gain: level * 0.22, pan, delay });
+  chime(bus, { frequency: 880, duration: 0.35, gain: level * 0.2, pan, delay: delay + 0.09 });
 };
 
 /** Adrenaline. A rising tone under the bot, for the moment it gets faster. */
 const adrenalineRise: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
-  sweep(bus, { from: 260, to: 900, duration: 0.4, type: 'triangle', gain: 0.28, pan, delay });
+  const { pan, delay, level } = opt(o);
+  sweep(bus, { from: 260, to: 900, duration: 0.4, type: 'triangle', gain: level * 0.28, pan, delay });
 };
 
 /** Smoke Screen. Breathy and untargetable-sounding; deliberately the quietest ability. */
 const smokeHiss: Voice = (bus, o) => {
-  const { pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.5,
     type: 'highpass',
     frequency: 1800,
     frequencyTo: 3600,
     q: 0.6,
-    gain: 0.24,
+    gain: level * 0.24,
     pan,
     delay,
   });
@@ -468,14 +483,14 @@ const smokeHiss: Voice = (bus, o) => {
 /** Standing in a flame jet. Hotter and shorter than the smoke hiss it could be confused
  *  with, because one is a bot hiding and the other is a bot burning. */
 const flameHiss: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.22,
     type: 'bandpass',
     frequency: 1500,
     frequencyTo: 2600,
     q: 0.9,
-    gain: gainFor(intensity) * 0.3,
+    gain: level * 0.3,
     pan,
     delay,
   });
@@ -484,12 +499,12 @@ const flameHiss: Voice = (bus, o) => {
 /** A saw hazard chewing on a bot. Same family as the Saw Blade weapon, lower and rougher —
  *  a floor saw is bigger than one bolted to a bot. */
 const sawGrind: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.2,
     frequency: pitchFor(intensity, 1200),
     q: 22,
-    gain: gainFor(intensity) * 0.4,
+    gain: level * 0.4,
     pan,
     delay,
   });
@@ -497,17 +512,17 @@ const sawGrind: Voice = (bus, o) => {
 
 /** The crusher. The heaviest single impact in the game. */
 const crusherSlam: Voice = (bus, o) => {
-  const { intensity, pan, delay } = opt(o);
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
     duration: 0.3,
     type: 'lowpass',
     frequency: 800,
     frequencyTo: 90,
-    gain: gainFor(intensity) * 0.7,
+    gain: level * 0.7,
     pan,
     delay,
   });
-  tone(bus, { frequency: 70, duration: 0.3, gain: gainFor(intensity) * 0.45, pan, delay });
+  tone(bus, { frequency: 70, duration: 0.3, gain: level * 0.45, pan, delay });
 };
 
 // --- the Forge -----------------------------------------------------------------------------
@@ -533,7 +548,7 @@ const PENTATONIC = [523.25, 587.33, 698.46, 783.99, 880.0, 1046.5, 1174.66, 1396
 export const PEG_PING_SECONDS = 0.09;
 
 const pegPing: Voice = (bus, o) => {
-  const { intensity, pan, delay, pitch } = opt(o);
+  const { pan, delay, pitch, level } = opt(o);
   const step = Math.min(PENTATONIC.length - 1, Math.max(0, Math.round(pitch * (PENTATONIC.length - 1))));
   tone(bus, {
     frequency: PENTATONIC[step]!,
@@ -541,10 +556,118 @@ const pegPing: Voice = (bus, o) => {
     type: 'triangle',
     // Quiet. Ten balls across dozens of peg rows is a lot of events, and the cascade should
     // sit under the room rather than over it.
-    gain: 0.06 + gainFor(intensity) * 0.09,
+    gain: level * 0.06 + level * 0.09,
     pan,
     delay,
   });
+};
+
+// --- levels ----------------------------------------------------------------------------------
+
+/**
+ * How loud each voice sits against the others. MEASURED, not chosen.
+ *
+ * This table exists because of a bug that survived three rounds of tuning. A `gain` of 0.5
+ * produces a peak of 0.027 through a band-passed noise burst and 0.471 through a sawtooth —
+ * seventeen times louder for the same number. Every voice above is built from a different mix
+ * of primitives, so the gains inside them were never comparable, and tuning them against each
+ * other by eye was tuning against nothing.
+ *
+ * What that produced: a palette spanning 46dB, with `metallicTick` — the most frequent sound
+ * in the entire show — near the BOTTOM, and the Saw Blade 25dB above it. The saw was reported
+ * as harsh three times running. It was not mainly too bright; it was enormously too loud, and
+ * loud enough to drive the master limiter into distortion on every hit, which added grit
+ * downstream of any softening done to the synthesis itself.
+ *
+ * So the numbers inside each voice describe THE BALANCE BETWEEN ITS OWN LAYERS, and these
+ * describe how loud the finished voice sits in the show. The two questions are separate and
+ * were previously tangled.
+ *
+ * Derived by rendering every voice at intensity 1 through an `OfflineAudioContext` and
+ * dividing a target peak by the measured one. Targets are relative to a weapon hit at 0.12:
+ * eliminations above it, abilities and textures below, and the two most frequent sounds of all
+ * — collision thuds and peg strikes — lowest, because anything heard eight hundred times in a
+ * battle must sit under the things heard nine times.
+ *
+ * RE-MEASURE AFTER CHANGING ANY VOICE. The lab's LEVELS button prints the current table; a
+ * voice that has been retuned without updating its trim is silently the wrong size.
+ */
+export const WEAPON_PEAK = 0.12;
+
+/**
+ * How loud each voice is MEANT to be, as a peak at intensity 1. The intent; `VOICE_TRIM` is
+ * the measured correction that achieves it.
+ *
+ * A weapon hit is the reference. Eliminations sit above it because the room reacts to them;
+ * abilities and sustained textures below; and the two most frequent sounds in the show lowest
+ * of all, because something heard eight hundred times in a battle has to sit under something
+ * heard nine times or it becomes the battle.
+ */
+export const TARGET_PEAK: Record<SoundId, number> = {
+  explosion: WEAPON_PEAK * 2.2,
+  shockwaveBoom: WEAPON_PEAK * 1.35,
+  crusherSlam: WEAPON_PEAK * 1.35,
+  deepBoom: WEAPON_PEAK * 1.3,
+  mechanicalClunk: WEAPON_PEAK * 1.15,
+  shellImpact: WEAPON_PEAK * 1.05,
+
+  metallicTick: WEAPON_PEAK,
+  heavyClang: WEAPON_PEAK,
+  sawBuzz: WEAPON_PEAK,
+  spinnerWhine: WEAPON_PEAK,
+  discWhirr: WEAPON_PEAK,
+  flameWhoosh: WEAPON_PEAK,
+  bluntImpact: WEAPON_PEAK,
+
+  electricZap: WEAPON_PEAK * 0.75,
+  nitroWhoosh: WEAPON_PEAK * 0.75,
+  oilSplat: WEAPON_PEAK * 0.75,
+  repairChime: WEAPON_PEAK * 0.75,
+  adrenalineRise: WEAPON_PEAK * 0.75,
+
+  smokeHiss: WEAPON_PEAK * 0.6,
+  flameHiss: WEAPON_PEAK * 0.6,
+  sawGrind: WEAPON_PEAK * 0.6,
+
+  dullThud: WEAPON_PEAK * 0.45,
+  pegPing: WEAPON_PEAK * 0.38,
+};
+
+export const VOICE_TRIM: Record<SoundId, number> = {
+  // moments
+  explosion: 1.03,
+  shockwaveBoom: 0.39,
+  crusherSlam: 1.32,
+  deepBoom: 1.24,
+  mechanicalClunk: 0.6,
+  shellImpact: 1.53,
+
+  // weapons — the reference tier
+  metallicTick: 7.56,
+  heavyClang: 1.28,
+  sawBuzz: 0.71,
+  spinnerWhine: 2.68,
+  discWhirr: 3.42,
+  flameWhoosh: 4.05,
+  bluntImpact: 1.6,
+
+  // abilities
+  electricZap: 0.76,
+  nitroWhoosh: 3.62,
+  oilSplat: 3.57,
+  repairChime: 0.51,
+  adrenalineRise: 1.49,
+  smokeHiss: 0.71,
+
+  // sustained textures, which sit under everything
+  flameHiss: 2.37,
+  // 23x. Not a typo, and not really a fix: this voice renders at a peak of 0.003 and is
+  // effectively inaudible as written. The trim makes it present; it still wants rebuilding.
+  sawGrind: 28.15,
+
+  // the two most frequent sounds in the show
+  dullThud: 1.42,
+  pegPing: 1.44,
 };
 
 // --- registry --------------------------------------------------------------------------------
@@ -582,5 +705,5 @@ export const SOUND_IDS = Object.keys(PALETTE) as SoundId[];
 /** Plays a sound by id. The single entry point every consumer uses, so an unknown id is
  *  impossible rather than merely unlikely. */
 export function playSound(bus: AudioBus, id: SoundId, options?: PlayOptions): void {
-  PALETTE[id](bus, options);
+  PALETTE[id](bus, { ...options, trim: VOICE_TRIM[id] });
 }

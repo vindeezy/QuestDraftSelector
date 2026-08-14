@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createAudioBus } from './context';
-import { PALETTE, SOUND_IDS, playSound, type SoundId } from './palette';
+import { PALETTE, SOUND_IDS, TARGET_PEAK, VOICE_TRIM, playSound, type SoundId } from './palette';
 
 /**
  * What a sound SOUNDS like cannot be tested here — that is the sound lab's job, and the
@@ -77,5 +77,37 @@ describe('playing on a bus with no context', () => {
     const bus = silentBus();
     expect(() => playSound(bus, 'metallicTick', { intensity: 9, pan: -12, pitch: 4 })).not.toThrow();
     expect(() => playSound(bus, 'pegPing', { pitch: -1 })).not.toThrow();
+  });
+});
+
+describe('levels', () => {
+  it('has a target and a trim for every voice', () => {
+    // A voice with no entry falls back to nothing and plays at whatever its internal gains
+    // happen to produce, which is exactly how the palette came to span 46dB.
+    for (const id of SOUND_IDS) {
+      expect(TARGET_PEAK[id], `${id} has no target`).toBeGreaterThan(0);
+      expect(VOICE_TRIM[id], `${id} has no trim`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the sounds heard most often below the sounds heard rarely', () => {
+    // dullThud fires ~800 times a battle and explosion nine times. If that ordering ever
+    // inverts, the collisions become the battle.
+    expect(TARGET_PEAK.dullThud).toBeLessThan(TARGET_PEAK.metallicTick);
+    expect(TARGET_PEAK.pegPing).toBeLessThan(TARGET_PEAK.metallicTick);
+    expect(TARGET_PEAK.explosion).toBeGreaterThan(TARGET_PEAK.metallicTick);
+  });
+
+  it('applies the trim, so a voice cannot be played at its raw level by accident', () => {
+    const played: Array<{ trim?: number }> = [];
+    const bus = createAudioBus({ factory: () => { throw new Error('silent'); } });
+    const original = PALETTE.metallicTick;
+    try {
+      (PALETTE as Record<string, unknown>)['metallicTick'] = (_b: unknown, o: { trim?: number }) => played.push(o);
+      playSound(bus, 'metallicTick', { intensity: 1 });
+    } finally {
+      (PALETTE as Record<string, unknown>)['metallicTick'] = original;
+    }
+    expect(played[0]?.trim).toBe(VOICE_TRIM.metallicTick);
   });
 });

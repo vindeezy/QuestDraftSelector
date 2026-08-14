@@ -2066,3 +2066,17 @@ button {
   border-color: var(--neon-amber);
   color: var(--neon-amber);
 }
+
+.lab__levels {
+  margin: 0 0 24px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+}

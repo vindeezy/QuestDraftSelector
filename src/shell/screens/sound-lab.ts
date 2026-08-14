@@ -1,6 +1,7 @@
 import { ABILITY_SOUNDS, HAZARD_SOUNDS, WEAPON_SOUNDS, soundFor } from '../../audio/classify';
 import { MAX_TONE_CUT, TONE_SHELF_HZ, createAudioBus, type AudioBus } from '../../audio/context';
 import { playSound, type SoundId } from '../../audio/palette';
+import { formatLevels, measureVoiceLevels } from '../../audio/levels';
 import { GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../../audio/voices';
 import { ARENA_VARIANTS } from '../../sim/event/arenas';
 import { advanceMatch, createMatch, DEFAULT_MATCH } from '../../sim/arena/match';
@@ -227,7 +228,30 @@ export function mountSoundLab(options: SoundLabOptions): () => void {
   const readout = el('p', 'lab__readout', 'A real ten-bot fight, 20 seconds, through the real mixer.');
   brawlRow.appendChild(brawl);
   brawlRow.appendChild(readout);
+  // LEVELS. Renders every voice offline and reports how far each sits from its target, so a
+  // voice that was retuned without updating its trim is caught here rather than by someone
+  // wincing three rounds later. Costs nothing to run and needs no speakers.
+  const levels = el('button', 'lab__button', 'LEVELS');
+  levels.type = 'button';
+  const levelsOut = el('pre', 'lab__levels');
+  levelsOut.hidden = true;
+  levels.addEventListener('click', () => {
+    levelsOut.hidden = false;
+    levelsOut.textContent = 'measuring…';
+    void measureVoiceLevels(
+      (seconds, sampleRate) => new OfflineAudioContext(1, Math.ceil(seconds * sampleRate), sampleRate),
+    )
+      .then((measured) => {
+        levelsOut.textContent = formatLevels(measured);
+      })
+      .catch((error: unknown) => {
+        levelsOut.textContent = `could not measure: ${String(error)}`;
+      });
+  });
+  brawlRow.appendChild(levels);
+
   root.appendChild(brawlRow);
+  root.appendChild(levelsOut);
 
   let frame: number | null = null;
 
