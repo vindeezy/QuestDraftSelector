@@ -340,8 +340,9 @@ const discWhirr: Voice = (bus, o) => {
  * one function from two of these, the same way the saws are. It keeps them recognisably the
  * same fire and stops them drifting apart.
  *
- * Every frequency in the hazard jet is about half the weapon's -- an octave down -- which is
- * what reads as a bigger fire rather than merely a lower one.
+ * The hazard jet is lower, slower and longer than the weapon. Unlike the saws, size is spread
+ * across all three rather than loaded onto pitch: these fires already sit low enough that
+ * another octave down would fall off the bottom of a laptop speaker.
  */
 interface FlameJet {
   minSeconds: number;
@@ -370,25 +371,14 @@ interface FlameJet {
   ignitionHz: number;
 }
 
-/** Bolted to a bot: a short controlled burst. */
+/**
+ * Bolted to a bot.
+ *
+ * These were the arena's numbers until they were auditioned side by side and the larger fire
+ * turned out to be the better weapon. Kept exactly, length included: a flamethrower that
+ * sounds like a big soft fire beats one that sounds like the right size.
+ */
 const WEAPON_JET: FlameJet = {
-  minSeconds: 0.3,
-  maxSeconds: 0.5,
-  bodyHz: 340,
-  bodyToHz: 520,
-  bodyCeiling: 1500,
-  warmthHz: 165,
-  warmthCeiling: 420,
-  warmthGain: 0.05,
-  billowHz: 8.5,
-  crackleHz: 900,
-  crackleSpread: 700,
-  crackleGain: 0.12,
-  ignitionHz: 700,
-};
-
-/** Set into the arena: a much larger fire, slower and longer. */
-const HAZARD_JET: FlameJet = {
   minSeconds: 0.45,
   maxSeconds: 0.85,
   bodyHz: 175,
@@ -402,6 +392,31 @@ const HAZARD_JET: FlameJet = {
   crackleSpread: 350,
   crackleGain: 0.14,
   ignitionHz: 370,
+};
+
+/**
+ * Set into the arena: larger again, and deeper than the weapon that used to be this size.
+ *
+ * Size is not carried by pitch alone here, and deliberately so. Another full octave down
+ * would put the warmth layer around 44Hz, which a laptop speaker barely reproduces — the
+ * fire would measure bigger and sound smaller in the room this is actually watched in. So
+ * roughly two thirds of the weapon's frequencies, and the rest of the size comes from
+ * billowing a third slower, running a third longer, and crackling more.
+ */
+const HAZARD_JET: FlameJet = {
+  minSeconds: 0.65,
+  maxSeconds: 1.15,
+  bodyHz: 108,
+  bodyToHz: 165,
+  bodyCeiling: 490,
+  warmthHz: 62,
+  warmthCeiling: 170,
+  warmthGain: 0.15,
+  billowHz: 3.2,
+  crackleHz: 290,
+  crackleSpread: 240,
+  crackleGain: 0.16,
+  ignitionHz: 230,
 };
 
 /**
@@ -836,38 +851,38 @@ export const TARGET_PEAK: Record<SoundId, number> = {
 
 export const VOICE_TRIM: Record<SoundId, number> = {
   // moments
-  explosion: 1.1,
+  explosion: 1.09,
   shockwaveBoom: 0.39,
-  crusherSlam: 1.25,
-  deepBoom: 1.27,
-  mechanicalClunk: 0.61,
-  shellImpact: 1.56,
+  crusherSlam: 1.26,
+  deepBoom: 1.22,
+  mechanicalClunk: 0.62,
+  shellImpact: 1.54,
 
   // weapons — the reference tier
-  metallicTick: 14.04,
-  heavyClang: 1.3,
-  sawBuzz: 0.71,
-  spinnerWhine: 3.33,
+  metallicTick: 10.68,
+  heavyClang: 1.29,
+  sawBuzz: 0.79,
+  spinnerWhine: 3.36,
   discWhirr: 3.61,
-  flameWhoosh: 0.82,
-  bluntImpact: 1.54,
+  flameWhoosh: 0.7,
+  bluntImpact: 1.52,
 
   // abilities
-  electricZap: 2.64,
-  nitroWhoosh: 4.49,
-  oilSplat: 4.16,
+  electricZap: 2.73,
+  nitroWhoosh: 4.69,
+  oilSplat: 4.75,
   repairChime: 0.62,
   adrenalineRise: 1.6,
-  smokeHiss: 3.34,
+  smokeHiss: 3.26,
 
   // sustained textures, which sit under everything
-  flameBillow: 0.43,
+  flameBillow: 0.36,
   // 23x. Not a typo, and not really a fix: this voice renders at a peak of 0.003 and is
   // effectively inaudible as written. The trim makes it present; it still wants rebuilding.
-  sawGrind: 0.3,
+  sawGrind: 0.29,
 
   // the two most frequent sounds in the show
-  dullThud: 1.4,
+  dullThud: 1.39,
   pegPing: 1.82,
 };
 
