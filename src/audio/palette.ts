@@ -159,7 +159,6 @@ const HAZARD_BLADE: SawBlade = {
 
 export const SAW_BUZZ_MIN_SECONDS = WEAPON_BLADE.minSeconds;
 export const SAW_BUZZ_MAX_SECONDS = WEAPON_BLADE.maxSeconds;
-export const SAW_GRIND_MAX_SECONDS = HAZARD_BLADE.maxSeconds;
 
 /**
  * A blade biting metal. The one weapon that must not sound like a hit -- and must not hurt to
@@ -521,9 +520,6 @@ function flameJet(bus: AudioBus, o: PlayOptions | undefined, jet: FlameJet): voi
   }
 }
 
-export const FLAME_WHOOSH_MAX_SECONDS = WEAPON_JET.maxSeconds;
-export const FLAME_BILLOW_MAX_SECONDS = HAZARD_JET.maxSeconds;
-
 /** Flamethrower, the weapon. */
 const flameWhoosh: Voice = (bus, o) => flameJet(bus, o, WEAPON_JET);
 
@@ -638,33 +634,123 @@ const electricZap: Voice = (bus, o) => {
   noiseBurst(bus, { duration: 0.2, type: 'highpass', frequency: 2600, q: 2, gain: level * 0.3, pan, delay });
 };
 
-/** Nitro Boost. */
+/**
+ * Nitro Boost. Compressed gas releasing, then the bot surging forward.
+ *
+ *     pressurised release -> rapid propulsion whoosh -> very quick fade
+ *
+ * The PSHH and the FWOOOSH are both filtered noise and are told apart entirely by direction.
+ * The release is bright and falling -- pressure escaping and dropping away. The propulsion is
+ * lower and RISING, opening outward, because a filter opening upward is what the ear reads as
+ * something accelerating. A rising low sweep underneath gives it the body to feel like thrust
+ * rather than air.
+ *
+ * Deliberately not a rocket: it fades in well under half a second, and nothing here sustains.
+ * A long tail is what turns a boost into a launch.
+ */
+const NITRO_SECONDS = 0.42;
+
 const nitroWhoosh: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
+
+  // 1. PSHH. Short, and falling -- escaping pressure loses energy immediately.
   noiseBurst(bus, {
-    duration: 0.42,
+    duration: 0.07,
     type: 'bandpass',
-    frequency: 500,
-    frequencyTo: 2600,
-    q: 1.2,
-    gain: level * 0.36,
+    frequency: 2100,
+    frequencyTo: 1100,
+    q: 0.8,
+    gain: level * 0.3,
     pan,
     delay,
   });
+
+  // 2. FWOOOSH. Opening upward and outward: the sound of getting faster.
+  grind(bus, {
+    duration: NITRO_SECONDS - 0.05,
+    delay: delay + 0.04,
+    source: 'noise',
+    frequency: 320,
+    frequencyTo: 980,
+    q: 0.7,
+    lowpass: 2200,
+    attack: 0.02,
+    release: 0.16,
+    gain: level * 0.36,
+    pan,
+  });
+
+  // 3. Body. Low-mid thrust under the whoosh, rising with it. Triangle, so it stays smooth
+  //    rather than becoming an engine.
+  sweep(bus, {
+    from: 115,
+    to: 265,
+    duration: NITRO_SECONDS - 0.1,
+    type: 'triangle',
+    gain: level * 0.16,
+    pan,
+    delay: delay + 0.04,
+  });
 };
 
-/** Oil Slick. Wet and flat — the ice patch it leaves is visible, so the sound only has to
- *  say "something was dropped". */
+/**
+ * Oil Slick. A thick blob of motor oil dumped on a metal floor.
+ *
+ *     thick liquid releases -> satisfying wet splat -> quick oily spread
+ *
+ * What makes a liquid read as THICK rather than as water is the falling pitch of the impact.
+ * A blob deforms as it lands, its resonant cavity collapses, and the note drops -- fast for
+ * water, slower and lower for oil. That drop is layer one, and it is a sine because a blob of
+ * oil has no edge and no harmonics; anything brighter here would be a metallic clang, which
+ * is the one thing an oil slick must not sound like.
+ *
+ * The spread is a short noise band sliding downward, not a hiss: it thins and settles rather
+ * than escaping. Kept brief and clean, on the polished side of realistic, because "wet" is a
+ * short walk from unpleasant.
+ */
+const OIL_SPLAT_SECONDS = 0.46;
+
 const oilSplat: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
-  noiseBurst(bus, {
-    duration: 0.16,
-    type: 'lowpass',
-    frequency: 900,
-    frequencyTo: 260,
-    gain: level * 0.35,
+
+  // 1. SPLOP. The falling note of a heavy blob losing its shape.
+  sweep(bus, {
+    from: 340,
+    to: 95,
+    duration: 0.075,
+    type: 'sine',
+    gain: level * 0.5,
     pan,
     delay,
+  });
+
+  // 2. The wet of the impact. Lowpass rather than bandpass: no peak, so no ring.
+  noiseBurst(bus, {
+    duration: 0.1,
+    type: 'lowpass',
+    frequency: 1250,
+    frequencyTo: 420,
+    q: 0.6,
+    gain: level * 0.34,
+    pan,
+    delay,
+  });
+
+  // 3. The spread. Slides down and thins out as the puddle settles.
+  grind(bus, {
+    duration: OIL_SPLAT_SECONDS - 0.08,
+    delay: delay + 0.06,
+    source: 'noise',
+    frequency: 880,
+    frequencyTo: 360,
+    q: 0.7,
+    lowpass: 1700,
+    attack: 0.012,
+    release: 0.2,
+    wobbleHz: 14,
+    wobbleDepth: 0.16,
+    gain: level * 0.26,
+    pan,
   });
 };
 
@@ -684,24 +770,154 @@ const repairChime: Voice = (bus, o) => {
   chime(bus, { frequency: 880, duration: 0.35, gain: level * 0.2, pan, delay: delay + 0.09 });
 };
 
-/** Adrenaline. A rising tone under the bot, for the moment it gets faster. */
+/**
+ * Adrenaline. Not the bot moving — the bot switching on.
+ *
+ *     heartbeat -> internal energy rush -> systems surge -> READY
+ *
+ * The distinction from Nitro Boost is the whole design problem, because both are "a rising
+ * exciting thing" and the obvious build for either is a rising whoosh. So this one contains
+ * no noise sweep at all:
+ *
+ * - Nitro is AIR. Broadband noise, opening outward, something leaving the machine.
+ * - Adrenaline is PITCHED. A heartbeat, a motor spinning up, and a hard accent when it
+ *   arrives. Nothing escapes; something engages.
+ *
+ * The heartbeat is what makes it visceral rather than merely electronic, and it is felt more
+ * than heard. The rise is a sawtooth with a slow chop, so it reads as motors rather than as a
+ * magic charge — the accent lands on the beat the rise stops, which is what makes it feel
+ * like arriving somewhere instead of merely stopping.
+ */
+const ADRENALINE_SECONDS = 0.44;
+
 const adrenalineRise: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
-  sweep(bus, { from: 260, to: 900, duration: 0.4, type: 'triangle', gain: level * 0.28, pan, delay });
-};
+  const PEAK = 0.27;
 
-/** Smoke Screen. Breathy and untargetable-sounding; deliberately the quietest ability. */
-const smokeHiss: Voice = (bus, o) => {
-  const { pan, delay, level } = opt(o);
-  noiseBurst(bus, {
-    duration: 0.5,
-    type: 'highpass',
-    frequency: 1800,
-    frequencyTo: 3600,
-    q: 0.6,
-    gain: level * 0.24,
+  // 1. THUM. The pulse underneath. Low, brief, and mostly felt.
+  sweep(bus, {
+    from: 88,
+    to: 52,
+    duration: 0.11,
+    type: 'sine',
+    gain: level * 0.42,
     pan,
     delay,
+  });
+
+  // 2. The surge. Sawtooth for motors; the chop is mechanical texture, not tremolo.
+  grind(bus, {
+    duration: PEAK,
+    delay: delay + 0.04,
+    source: 'sawtooth',
+    frequency: 105,
+    frequencyTo: 295,
+    lowpass: 950,
+    attack: 0.03,
+    release: 0.04,
+    chopHz: 26,
+    chopDepth: 0.16,
+    gain: level * 0.13,
+    pan,
+  });
+
+  // 3. Systems coming up: a filter opening, quiet, under the surge.
+  grind(bus, {
+    duration: PEAK,
+    delay: delay + 0.04,
+    source: 'noise',
+    frequency: 360,
+    frequencyTo: 1250,
+    q: 0.8,
+    lowpass: 2000,
+    attack: 0.04,
+    release: 0.05,
+    gain: level * 0.12,
+    pan,
+  });
+
+  // 4. WHUM. The accent, landing exactly where the rise ends.
+  tone(bus, {
+    frequency: 205,
+    duration: 0.15,
+    type: 'triangle',
+    gain: level * 0.3,
+    pan,
+    delay: delay + PEAK,
+  });
+  noiseBurst(bus, {
+    duration: 0.045,
+    type: 'lowpass',
+    frequency: 1600,
+    frequencyTo: 700,
+    q: 0.7,
+    gain: level * 0.2,
+    pan,
+    delay: delay + PEAK,
+  });
+};
+
+/**
+ * Smoke Screen. A grenade venting a cloud.
+ *
+ *     tactical device activates -> PFFT -> dense cloud vents outward -> fade
+ *
+ * Two things keep this from being either a gunshot or a steam whistle. The pop is low-passed
+ * with no resonant peak, so it is a mechanism working rather than something detonating. And
+ * the vent is DENSE rather than sharp: a broad band with its ceiling low enough to sound
+ * muffled, which is what a lot of smoke in the way actually does to a sound.
+ *
+ * It has to stay clear of the flame jet, which is also sustained filtered noise. Flame is warm
+ * and low with crackle; smoke sits an octave above it, has no warmth layer at all, and
+ * decays steadily instead of billowing. Nothing in it is meant to sound hot.
+ */
+const SMOKE_SECONDS = 0.62;
+
+const smokeHiss: Voice = (bus, o) => {
+  const { pan, delay, level } = opt(o);
+
+  // 1. PFFT. The device working. Lowpassed so it has no crack to it.
+  noiseBurst(bus, {
+    duration: 0.04,
+    type: 'lowpass',
+    frequency: 1100,
+    frequencyTo: 520,
+    q: 0.7,
+    gain: level * 0.34,
+    pan,
+    delay,
+  });
+
+  // 2. The vent. Sudden onset, then a long steady thinning as the cloud spreads.
+  grind(bus, {
+    duration: SMOKE_SECONDS - 0.03,
+    delay: delay + 0.025,
+    source: 'noise',
+    frequency: 1450,
+    frequencyTo: 880,
+    q: 0.7,
+    lowpass: 2500,
+    attack: 0.008,
+    release: SMOKE_SECONDS * 0.55,
+    wobbleHz: 11,
+    wobbleDepth: 0.12,
+    gain: level * 0.32,
+    pan,
+  });
+
+  // 3. The density underneath. What stops it being a whistle and starts it being a cloud.
+  grind(bus, {
+    duration: SMOKE_SECONDS - 0.1,
+    delay: delay + 0.08,
+    source: 'noise',
+    frequency: 640,
+    frequencyTo: 430,
+    q: 0.6,
+    lowpass: 1300,
+    attack: 0.05,
+    release: SMOKE_SECONDS * 0.5,
+    gain: level * 0.2,
+    pan,
   });
 };
 
@@ -778,6 +994,46 @@ const pegPing: Voice = (bus, o) => {
   });
 };
 
+// --- lengths ---------------------------------------------------------------------------------
+
+/**
+ * Voices that outlast `MAX_DECAY_S`, and how long they really run.
+ *
+ * `voices.ts` sizes its mixer slots from this. A voice missing an entry is assumed to be a
+ * plain impact, and if it is not, the mixer frees its slot while it is still audible — which
+ * is the accounting error that lets a battle turn to mush.
+ *
+ * This started as a two-case switch. It is a table now because nine of the twenty-three
+ * voices are sustained events rather than impacts, and a switch that long stops being read.
+ * A plain literal, deliberately: the computed version of this table cost a
+ * module-initialisation failure that took down the whole audio layer.
+ */
+export const VOICE_SECONDS: Partial<Record<SoundId, number>> = {
+  pegPing: PEG_PING_SECONDS,
+
+  // Measured, not intended. These seven were written with their own hardcoded durations long
+  // before this table existed, so the mixer sized them as ordinary impacts and freed their
+  // slots while they were still sounding -- letting more through than the cap allowed, which
+  // is the mush this whole module exists to prevent. Nothing caught it until the levels tool
+  // learned to compare a voice's real length against its reserved one.
+  explosion: 0.5,
+  shockwaveBoom: 0.45,
+  mechanicalClunk: 0.38,
+  repairChime: 0.36,
+  heavyClang: 0.35,
+  deepBoom: 0.29,
+  bluntImpact: 0.27,
+
+  sawBuzz: WEAPON_BLADE.maxSeconds,
+  sawGrind: HAZARD_BLADE.maxSeconds,
+  flameWhoosh: WEAPON_JET.maxSeconds,
+  flameBillow: HAZARD_JET.maxSeconds,
+  oilSplat: OIL_SPLAT_SECONDS,
+  nitroWhoosh: NITRO_SECONDS,
+  adrenalineRise: ADRENALINE_SECONDS,
+  smokeHiss: SMOKE_SECONDS,
+};
+
 // --- levels ----------------------------------------------------------------------------------
 
 /**
@@ -851,29 +1107,29 @@ export const TARGET_PEAK: Record<SoundId, number> = {
 
 export const VOICE_TRIM: Record<SoundId, number> = {
   // moments
-  explosion: 1.09,
+  explosion: 1.14,
   shockwaveBoom: 0.39,
-  crusherSlam: 1.26,
-  deepBoom: 1.22,
+  crusherSlam: 1.27,
+  deepBoom: 1.21,
   mechanicalClunk: 0.62,
-  shellImpact: 1.54,
+  shellImpact: 1.62,
 
   // weapons — the reference tier
-  metallicTick: 10.68,
-  heavyClang: 1.29,
-  sawBuzz: 0.79,
-  spinnerWhine: 3.36,
-  discWhirr: 3.61,
+  metallicTick: 11.48,
+  heavyClang: 1.26,
+  sawBuzz: 0.74,
+  spinnerWhine: 3.34,
+  discWhirr: 3.76,
   flameWhoosh: 0.7,
-  bluntImpact: 1.52,
+  bluntImpact: 1.55,
 
   // abilities
-  electricZap: 2.73,
-  nitroWhoosh: 4.69,
-  oilSplat: 4.75,
+  electricZap: 2.86,
+  nitroWhoosh: 0.59,
+  oilSplat: 0.8,
   repairChime: 0.62,
-  adrenalineRise: 1.6,
-  smokeHiss: 3.26,
+  adrenalineRise: 0.3,
+  smokeHiss: 0.41,
 
   // sustained textures, which sit under everything
   flameBillow: 0.36,
@@ -882,7 +1138,7 @@ export const VOICE_TRIM: Record<SoundId, number> = {
   sawGrind: 0.29,
 
   // the two most frequent sounds in the show
-  dullThud: 1.39,
+  dullThud: 1.37,
   pegPing: 1.82,
 };
 

@@ -1,7 +1,4 @@
-import {
-  FLAME_BILLOW_MAX_SECONDS, FLAME_WHOOSH_MAX_SECONDS, PEG_PING_SECONDS,
-  SAW_BUZZ_MAX_SECONDS, SAW_GRIND_MAX_SECONDS, type SoundId,
-} from './palette';
+import { VOICE_SECONDS, type SoundId } from './palette';
 import { MAX_DECAY_S } from './synth';
 
 /**
@@ -95,34 +92,13 @@ export const EXEMPT: ReadonlySet<SoundId> = new Set<SoundId>(['explosion', 'mech
  * Tied to the synthesis layer's own lengths rather than picked, so retuning a voice cannot
  * silently change how dense the mix is allowed to get.
  *
- * `MAX_DECAY_S` covers every voice built out of the standard intensity curves. The exceptions
- * declare their own length, and there are now five of them: a peg note is a tenth as long as
- * a hit, while the saws and the flames are sustained events rather than impacts and outlast
- * the decay curve entirely. The arena versions run longest of all -- a bot is dragged across
- * a floor saw and stands in a flame jet, rather than being struck by either. Getting any
- * of them wrong means the cap counts a voice as finished while it is still audible, which is
- * the failure that produces mush.
- *
- * A switch rather than a table built at module scope. The table version read better and cost
- * a module-initialisation order hazard to get it — this module is imported by the playback
- * loop, and nothing it does at import time is worth a chance of the whole audio layer failing
- * to load.
+ * `MAX_DECAY_S` covers every voice built out of the standard intensity curves; the nine that
+ * are sustained events rather than impacts declare their own length in `VOICE_SECONDS`, next
+ * to the voices themselves where they cannot drift. Getting one wrong means the cap counts a
+ * voice as finished while it is still audible, which is the failure that produces mush.
  */
 export function lifetimeMs(id: SoundId): number {
-  switch (id) {
-    case 'pegPing':
-      return PEG_PING_SECONDS * 1000;
-    case 'sawBuzz':
-      return SAW_BUZZ_MAX_SECONDS * 1000;
-    case 'sawGrind':
-      return SAW_GRIND_MAX_SECONDS * 1000;
-    case 'flameWhoosh':
-      return FLAME_WHOOSH_MAX_SECONDS * 1000;
-    case 'flameBillow':
-      return FLAME_BILLOW_MAX_SECONDS * 1000;
-    default:
-      return MAX_DECAY_S * 1000;
-  }
+  return (VOICE_SECONDS[id] ?? MAX_DECAY_S) * 1000;
 }
 
 export function emptyState(): VoiceState {

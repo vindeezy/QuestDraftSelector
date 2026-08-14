@@ -1,5 +1,6 @@
 import { PALETTE, SOUND_IDS, TARGET_PEAK, VOICE_TRIM, playSound, type SoundId } from './palette';
 import { createAudioBus } from './context';
+import { lifetimeMs } from './voices';
 
 /**
  * Measuring how loud the palette actually is.
@@ -33,6 +34,10 @@ export interface VoiceLevel {
   suggested: number;
   /** How far off it is, in decibels. Positive means too loud. */
   driftDb: number;
+  /** How long the voice is actually audible for. */
+  audibleMs: number;
+  /** The slot length `voices.ts` reserves for it. */
+  reservedMs: number;
 }
 
 /** Builds an offline context. Injected because `OfflineAudioContext` is browser-only. */
@@ -61,10 +66,39 @@ const RENDER_PASSES = 5;
  */
 export const DRIFT_TOLERANCE_DB = 1.5;
 
+/**
+ * How far a voice may outlast its reserved slot before it is reported.
+ *
+ * A voice's tail decays asymptotically, so the last few milliseconds are inaudible in any
+ * real mix and chasing them would flag everything. 25ms is well short of a frame and a half.
+ */
+export const LENGTH_TOLERANCE_MS = 25;
+
 async function peakOf(id: SoundId, createOffline: OfflineFactory): Promise<number> {
   let total = 0;
   for (let pass = 0; pass < RENDER_PASSES; pass++) total += await peakOnce(id, createOffline);
   return total / RENDER_PASSES;
+}
+
+/**
+ * How long the voice can still be heard, in milliseconds.
+ *
+ * Measured against a floor rather than against true silence, because an exponential release
+ * never quite reaches zero and would otherwise report the full render length every time.
+ */
+const AUDIBLE_FLOOR = 0.0008;
+
+async function audibleMsOf(id: SoundId, createOffline: OfflineFactory): Promise<number> {
+  const ctx = createOffline(RENDER_SECONDS, SAMPLE_RATE);
+  const bus = createAudioBus({ factory: () => ctx as unknown as AudioContext });
+  bus.unlock();
+  playSound(bus, id, { intensity: 1 });
+
+  const samples = (await ctx.startRendering()).getChannelData(0);
+  for (let i = samples.length - 1; i >= 0; i--) {
+    if (Math.abs(samples[i]!) > AUDIBLE_FLOOR) return (i / SAMPLE_RATE) * 1000;
+  }
+  return 0;
 }
 
 async function peakOnce(id: SoundId, createOffline: OfflineFactory): Promise<number> {
@@ -99,6 +133,8 @@ export async function measureVoiceLevels(createOffline: OfflineFactory): Promise
       trim,
       suggested,
       driftDb: peak > 0 ? 20 * Math.log10(peak / TARGET_PEAK[id]) : 0,
+      audibleMs: await audibleMsOf(id, createOffline),
+      reservedMs: lifetimeMs(id),
     });
   }
 
@@ -109,7 +145,13 @@ export async function measureVoiceLevels(createOffline: OfflineFactory): Promise
 export function formatLevels(levels: readonly VoiceLevel[]): string {
   const width = Math.max(...SOUND_IDS.map((id) => id.length));
   const rows = levels.map((level) => {
-    const flag = Math.abs(level.driftDb) > DRIFT_TOLERANCE_DB ? '  <-- retrim' : '';
+    const loud = Math.abs(level.driftDb) > DRIFT_TOLERANCE_DB ? '  <-- retrim' : '';
+    // A voice that outlives its slot is the mush bug: the mixer frees the slot and admits
+    // another while this one is still sounding. Worth shouting about, and invisible otherwise.
+    const long = level.audibleMs > level.reservedMs + LENGTH_TOLERANCE_MS
+      ? `  <-- OUTLIVES ITS SLOT by ${Math.round(level.audibleMs - level.reservedMs)}ms`
+      : '';
+    const flag = loud + long;
     return (
       `${level.id.padEnd(width)}  peak ${level.peak.toFixed(4)}` +
       `  target ${TARGET_PEAK[level.id].toFixed(4)}` +
@@ -118,8 +160,10 @@ export function formatLevels(levels: readonly VoiceLevel[]): string {
     );
   });
   const off = levels.filter((l) => Math.abs(l.driftDb) > DRIFT_TOLERANCE_DB).length;
+  const overlong = levels.filter((l) => l.audibleMs > l.reservedMs + LENGTH_TOLERANCE_MS).length;
   return [
-    `${SOUND_IDS.length} voices, ${Object.keys(PALETTE).length} in the palette, ${off} needing a retrim`,
+    `${SOUND_IDS.length} voices, ${Object.keys(PALETTE).length} in the palette, ` +
+      `${off} needing a retrim, ${overlong} outliving their slot`,
     ...rows,
   ].join('\n');
 }
