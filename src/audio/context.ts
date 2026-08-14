@@ -30,7 +30,8 @@ export interface AudioBus {
   readonly muted: boolean;
   readonly volume: number;
   /**
-   * Decibels taken off the top end, 0 to `MAX_TONE_CUT`. 0 leaves the mix untouched.
+   * Decibels taken off the top end, 0 to `MAX_TONE_CUT`. Starts at `DEFAULT_TONE_CUT`; 0
+   * leaves the mix untouched.
    *
    * A safety net over the whole palette rather than a per-voice fix. Every voice is a guess
    * made by someone who cannot hear it, and "too bright" is the single most likely way for
@@ -78,6 +79,19 @@ export const TONE_SHELF_HZ = 2200;
 /** As far as the tone control goes. Beyond this everything sounds like it is underwater. */
 export const MAX_TONE_CUT = 18;
 
+/**
+ * Where the tone control starts.
+ *
+ * 15dB, chosen by the one person on this project who can hear it, after listening through the
+ * palette in the sound lab. Not a default in the sense of "a safe value nobody picked" -- it
+ * is the answer to a question I could not settle by reasoning, which is whether the palette
+ * was too bright in one voice or everywhere. It was everywhere.
+ *
+ * The slider remains, so this can be re-judged once the sounds are heard in a real battle
+ * rather than one at a time.
+ */
+export const DEFAULT_TONE_CUT = 15;
+
 /** The real thing, resolved lazily so importing this module in Node does not throw. */
 function browserAudioContext(): AudioContext {
   const w = globalThis as unknown as {
@@ -102,7 +116,7 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
   let toneShelf: BiquadFilterNode | null = null;
   let muted = false;
   let volume = 1;
-  let toneCut = 0;
+  let toneCut = DEFAULT_TONE_CUT;
 
   const applyGain = (): void => {
     if (masterGain) masterGain.gain.value = muted ? 0 : volume;

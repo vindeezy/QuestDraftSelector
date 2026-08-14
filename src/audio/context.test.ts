@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MAX_TONE_CUT, createAudioBus } from './context';
+import { DEFAULT_TONE_CUT, MAX_TONE_CUT, createAudioBus } from './context';
 
 /**
  * jsdom has no Web Audio, and mocking a global would leave the module reaching for
@@ -185,9 +185,11 @@ describe('createAudioBus', () => {
 });
 
 describe('the master tone control', () => {
-  it('starts flat, so it changes nothing until someone asks it to', () => {
+  it('starts at the setting chosen by ear, not flat', () => {
+    // The palette was judged too bright everywhere rather than in one voice, so the shelf is
+    // part of how these sounds are meant to be heard rather than an optional correction.
     const { bus } = makeBus();
-    expect(bus.toneCut).toBe(0);
+    expect(bus.toneCut).toBe(DEFAULT_TONE_CUT);
   });
 
   it('clamps to a sane range rather than trusting the caller', () => {

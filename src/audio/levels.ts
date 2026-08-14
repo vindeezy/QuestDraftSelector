@@ -16,6 +16,11 @@ import { createAudioBus } from './context';
  * "the sound is harsh" three rounds later.
  *
  * Rendering is offline, so this is exact rather than an estimate, and needs no speakers.
+ *
+ * One caveat worth knowing before trusting a suggestion: a voice that is badly too loud is
+ * already being squashed by the master limiter when it is measured, so its peak understates
+ * how loud it really is and one pass will not be enough. Apply, press the button again, and
+ * repeat until nothing is flagged. Two passes has always been enough so far.
  */
 
 export interface VoiceLevel {

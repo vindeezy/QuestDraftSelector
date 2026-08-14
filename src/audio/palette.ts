@@ -90,136 +90,182 @@ const heavyClang: Voice = (bus, o) => {
 };
 
 /**
- * How long the saw stays in contact.
+ * A saw blade, described by its size.
  *
- * The only weapon whose length is set here rather than by `decayFor`. Every other weapon is
- * an impact — struck, then fading — and a saw is not: it is a sustained cut with a beginning,
- * a middle and an end. `voices.ts` reads the maximum so a saw occupies a mixer slot for as
- * long as it can actually be heard.
+ * The Saw Blade weapon and the arena's saw hazard are the same event -- a powered blade biting
+ * metal -- at two very different scales, so they are built by one function from two of these
+ * rather than written twice. A change to how a saw sounds lands on both, which is the point:
+ * they should always be recognisably the same machine, one of them much larger.
+ *
+ * Every frequency in the hazard blade is roughly 40% of the weapon's, a little over an octave
+ * down, which is what reads as "bigger" rather than merely "lower".
  */
-export const SAW_BUZZ_MIN_SECONDS = 0.1;
-export const SAW_BUZZ_MAX_SECONDS = 0.25;
+interface SawBlade {
+  minSeconds: number;
+  maxSeconds: number;
+  /** Tooth rate at a graze. A heavy bite drags it down -- see `pitchFor`. */
+  toothHz: number;
+  /** Rotation, heard as chatter. A bigger blade turns slower and chatters more slowly. */
+  spinHz: number;
+  /** The noise layer that carries the cutting, and its ceiling. */
+  cutHz: number;
+  cutCeiling: number;
+  /** Ceiling on the tooth buzz, kept just above its own fundamental. */
+  teethCeiling: number;
+  /** Mechanical weight underneath. */
+  rumbleHz: number;
+  rumbleCeiling: number;
+  /** How much of the sound is weight. A larger blade is felt more and heard less. */
+  rumbleGain: number;
+  /** The initial bite as the teeth find metal. */
+  biteHz: number;
+}
+
+/** Bolted to a bot: fast, light, and gone in a quarter second. */
+const WEAPON_BLADE: SawBlade = {
+  minSeconds: 0.1,
+  maxSeconds: 0.25,
+  toothHz: 780,
+  spinHz: 44,
+  cutHz: 900,
+  cutCeiling: 2000,
+  teethCeiling: 1500,
+  rumbleHz: 96,
+  rumbleCeiling: 340,
+  rumbleGain: 0.05,
+  biteHz: 1500,
+};
 
 /**
- * Saw Blade. The one weapon that must not sound like a hit — and must not hurt to hear.
+ * Set into the arena floor: much larger, slower, heavier, and in contact for longer.
  *
- * Everything else in this file is a struck object. A powered blade is a machine doing work
- * against resistance, so this is built as one continuous gesture instead:
+ * The longer contact is not decoration. A weapon saw strikes and withdraws, while a floor saw
+ * is fixed and the bot is dragged across it -- so the hazard should sound like something you
+ * are stuck against rather than something that hit you.
+ */
+const HAZARD_BLADE: SawBlade = {
+  minSeconds: 0.18,
+  maxSeconds: 0.4,
+  toothHz: 330,
+  spinHz: 17,
+  cutHz: 430,
+  cutCeiling: 1050,
+  teethCeiling: 760,
+  rumbleHz: 48,
+  rumbleCeiling: 190,
+  rumbleGain: 0.14,
+  biteHz: 800,
+};
+
+export const SAW_BUZZ_MIN_SECONDS = WEAPON_BLADE.minSeconds;
+export const SAW_BUZZ_MAX_SECONDS = WEAPON_BLADE.maxSeconds;
+export const SAW_GRIND_MAX_SECONDS = HAZARD_BLADE.maxSeconds;
+
+/**
+ * A blade biting metal. The one weapon that must not sound like a hit -- and must not hurt to
+ * hear.
  *
  *     spinning blade -> teeth bite -> controlled grind and chatter -> blade releases
  *
- * Getting there took three attempts and the two failures are the useful part of this comment.
+ * Getting here took four attempts and the failures are the useful part of this comment.
  *
  * The first version was one noise burst at Q 18. A filter that narrow rings at its centre
  * frequency, so it was a struck bell wearing a saw's name.
  *
- * The second had the right structure and was painful to listen to. Three causes, all mine:
- * the texture sat at 1450Hz with a raw sawtooth on top of it, right in the 2-5kHz band where
- * human hearing is most sensitive; the chop LFO was a sawtooth, whose once-per-cycle jump is
- * a step in a gain envelope, which is a click, fifty times a second; and the layers summed to
- * about 0.74 against a limiter threshold of 0.5, so every hit was driven hard into the master
- * limiter and came back with limiter distortion on it. That last one is why softening the
- * synthesis alone did not fix it — the grit was being added downstream of the synthesis.
+ * The second had the right structure and was painful. The texture sat at 1450Hz with a raw
+ * sawtooth over it, right in the 2-5kHz band hearing is most sensitive to, and the chop LFO
+ * was a sawtooth whose once-per-cycle jump is a click, fifty times a second.
+ *
+ * The third was still painful, and the reason was not brightness at all: the voice peaked
+ * 25dB above a normal weapon hit, hard enough into the master limiter that every hit came
+ * back with limiter distortion on it. No amount of softening the synthesis could fix grit
+ * that was being added downstream of it. See `VOICE_TRIM` -- that turned out to be a
+ * palette-wide bug, not a saw bug.
  *
  * So the rules this version follows:
  *
- * - **Everything lives low.** The buzz is 310-780Hz and no layer is allowed past 1.6kHz.
- *   Character comes from modulation, not from brightness.
+ * - **Everything lives low.** Character comes from modulation, not brightness.
  * - **No resonant peaks anywhere.** Every Q is at or below 1, and the bite uses a lowpass
  *   rather than a bandpass so it has no peak at all.
- * - **It stays under the limiter.** The sustained layers sum to about 0.5, so the master
- *   limiter shapes peaks instead of crushing every hit.
- * - **One rotation rate, shared.** All three sustained layers chop at 44Hz, which is what
- *   makes the blade audibly keep spinning through the contact instead of sounding like three
- *   unrelated noises stacked up.
+ * - **Layer gains are balance ratios, not volumes.** A sawtooth is ~17x louder than
+ *   band-passed noise at the same `gain`, so these numbers only mean anything relative to the
+ *   primitive they are passed to. Absolute loudness is `VOICE_TRIM`'s job.
+ * - **One rotation rate, shared by every sustained layer**, which is what makes the blade
+ *   audibly keep spinning instead of sounding like three unrelated noises stacked up.
  */
-const sawBuzz: Voice = (bus, o) => {
+function sawContact(bus: AudioBus, o: PlayOptions | undefined, blade: SawBlade): void {
   const { intensity, pan, delay, level } = opt(o);
   const bite = clamp01(intensity);
-  const duration = SAW_BUZZ_MIN_SECONDS + (SAW_BUZZ_MAX_SECONDS - SAW_BUZZ_MIN_SECONDS) * bite;
+  const duration = blade.minSeconds + (blade.maxSeconds - blade.minSeconds) * bite;
 
-  // The buzz pitch: 780Hz at a graze down to 310Hz at a heavy bite. Low on purpose. This is
-  // the difference between "VRRRT" and "SKREEE" -- the character of a cut has to come from
-  // modulation down here, not from brightness up where it hurts.
-  const toothHz = pitchFor(intensity, 780);
-
-  // Blade rotation, and the one rate everything shares. ~44Hz is about 2,600rpm, and hearing
-  // the same pulse in all three layers is what makes the blade audibly keep spinning through
-  // the contact rather than sounding like three separate noises.
-  const SPIN_HZ = 44;
-
+  const toothHz = pitchFor(intensity, blade.toothHz);
   const CATCH = 0.03;
   const body = duration - CATCH * 0.5;
   const bodyDelay = delay + CATCH * 0.5;
 
   // 1. The bite. A low-mid crunch, not a skreech. `lowpass` rather than the usual bandpass so
-  //    there is no resonant peak at all -- a peak here is precisely the piercing ring to avoid.
+  //    there is no resonant peak at all -- a peak here is the piercing ring to avoid.
   noiseBurst(bus, {
     duration: CATCH,
     type: 'lowpass',
-    frequency: 1500,
-    frequencyTo: 800,
+    frequency: blade.biteHz,
+    frequencyTo: blade.biteHz * 0.55,
     q: 0.5,
-    gain: level * 0.30,
+    gain: level * 0.3,
     pan,
     delay,
   });
 
-  // 2. The rumble. Mechanical weight under the cut. Its gain looks tiny beside the others
-  //    because a sawtooth is roughly seventeen times louder than band-passed noise at the same
-  //    `gain` -- the numbers in this voice are balance ratios measured against each primitive,
-  //    not comparable volumes. A 96Hz sawtooth also barely reproduces on a laptop speaker, so
-  //    leaning on it for weight would make the saw vanish in the room this is watched in.
+  // 2. The rumble. Its gain looks tiny beside the others because a sawtooth is roughly
+  //    seventeen times louder than band-passed noise at the same `gain`.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'sawtooth',
-    frequency: 96,
-    lowpass: 340,
+    frequency: blade.rumbleHz,
+    lowpass: blade.rumbleCeiling,
     attack: 0.014,
     release: 0.05,
-    chopHz: SPIN_HZ,
+    chopHz: blade.spinHz,
     chopDepth: 0.16,
-    gain: level * 0.05,
+    gain: level * blade.rumbleGain,
     pan,
   });
 
-  // 3. The cut. The main texture, and the layer that was doing the damage before: noise
-  //    centred at 1450Hz reads as a hiss however it is capped. Down at 720Hz with a 1.6kHz
-  //    ceiling the same noise reads as crunch.
+  // 3. The cut. The main texture. Noise this low reads as crunch; the same noise an octave up
+  //    reads as a hiss however hard it is capped.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'noise',
-    frequency: 900,
-    frequencyTo: 720,
+    frequency: blade.cutHz,
+    frequencyTo: blade.cutHz * 0.8,
     q: 0.8,
-    lowpass: 2000,
+    lowpass: blade.cutCeiling,
     attack: 0.014,
     release: 0.05,
-    chopHz: SPIN_HZ,
+    chopHz: blade.spinHz,
     chopDepth: 0.3,
-    wobbleHz: 26,
+    wobbleHz: blade.spinHz * 0.6,
     wobbleDepth: 0.14,
-    gain: level * 0.30,
+    gain: level * 0.3,
     pan,
   });
 
-  // 4. The teeth. A sawtooth at tooth rate, capped just above its own fundamental so what
-  //    survives is the buzz and not the harmonics. The wobble is the teeth biting, dragging
-  //    and releasing; the downward slide is the blade loading up against the armour.
+  // 4. The teeth. The wobble is them biting, dragging and releasing; the downward slide is the
+  //    blade loading up against the armour.
   grind(bus, {
     duration: body,
     delay: bodyDelay,
     source: 'sawtooth',
     frequency: toothHz,
     frequencyTo: toothHz * 0.88,
-    lowpass: 1500,
+    lowpass: blade.teethCeiling,
     attack: 0.018,
     release: 0.055,
-    chopHz: SPIN_HZ,
+    chopHz: blade.spinHz,
     chopDepth: 0.22,
-    wobbleHz: 19,
+    wobbleHz: blade.spinHz * 0.43,
     wobbleDepth: 0.07,
     gain: level * 0.09,
     pan,
@@ -233,11 +279,14 @@ const sawBuzz: Voice = (bus, o) => {
     to: toothHz * 1.35,
     duration: FREE,
     type: 'triangle',
-    gain: level * 0.05,
+    gain: level * 0.04,
     pan,
     delay: delay + Math.max(0, duration - FREE),
   });
-};
+}
+
+/** Saw Blade, the weapon. */
+const sawBuzz: Voice = (bus, o) => sawContact(bus, o, WEAPON_BLADE);
 
 /** Spinning Bar. A whine that falls as the bar sheds energy into the target. */
 const spinnerWhine: Voice = (bus, o) => {
@@ -496,19 +545,14 @@ const flameHiss: Voice = (bus, o) => {
   });
 };
 
-/** A saw hazard chewing on a bot. Same family as the Saw Blade weapon, lower and rougher —
- *  a floor saw is bigger than one bolted to a bot. */
-const sawGrind: Voice = (bus, o) => {
-  const { intensity, pan, delay, level } = opt(o);
-  noiseBurst(bus, {
-    duration: 0.2,
-    frequency: pitchFor(intensity, 1200),
-    q: 22,
-    gain: level * 0.4,
-    pan,
-    delay,
-  });
-};
+/**
+ * The arena's saw hazard: the same blade as the weapon, much larger.
+ *
+ * Built from `HAZARD_BLADE` rather than written separately, so the two can never drift into
+ * sounding like different machines. It was previously a single noise burst at Q 22 -- the same
+ * struck-bell mistake the weapon started as, and at a peak of 0.003 it was inaudible anyway.
+ */
+const sawGrind: Voice = (bus, o) => sawContact(bus, o, HAZARD_BLADE);
 
 /** The crusher. The heaviest single impact in the game. */
 const crusherSlam: Voice = (bus, o) => {
@@ -635,39 +679,39 @@ export const TARGET_PEAK: Record<SoundId, number> = {
 
 export const VOICE_TRIM: Record<SoundId, number> = {
   // moments
-  explosion: 1.03,
+  explosion: 1.16,
   shockwaveBoom: 0.39,
-  crusherSlam: 1.32,
-  deepBoom: 1.24,
-  mechanicalClunk: 0.6,
-  shellImpact: 1.53,
+  crusherSlam: 1.26,
+  deepBoom: 1.25,
+  mechanicalClunk: 0.61,
+  shellImpact: 1.57,
 
   // weapons — the reference tier
-  metallicTick: 7.56,
-  heavyClang: 1.28,
-  sawBuzz: 0.71,
-  spinnerWhine: 2.68,
-  discWhirr: 3.42,
-  flameWhoosh: 4.05,
-  bluntImpact: 1.6,
+  metallicTick: 13.39,
+  heavyClang: 1.29,
+  sawBuzz: 0.8,
+  spinnerWhine: 3.24,
+  discWhirr: 3.73,
+  flameWhoosh: 4.77,
+  bluntImpact: 1.64,
 
   // abilities
-  electricZap: 0.76,
-  nitroWhoosh: 3.62,
-  oilSplat: 3.57,
-  repairChime: 0.51,
-  adrenalineRise: 1.49,
-  smokeHiss: 0.71,
+  electricZap: 2.61,
+  nitroWhoosh: 3.77,
+  oilSplat: 4.54,
+  repairChime: 0.62,
+  adrenalineRise: 1.59,
+  smokeHiss: 3.4,
 
   // sustained textures, which sit under everything
-  flameHiss: 2.37,
+  flameHiss: 4.51,
   // 23x. Not a typo, and not really a fix: this voice renders at a peak of 0.003 and is
   // effectively inaudible as written. The trim makes it present; it still wants rebuilding.
-  sawGrind: 28.15,
+  sawGrind: 0.29,
 
   // the two most frequent sounds in the show
-  dullThud: 1.42,
-  pegPing: 1.44,
+  dullThud: 1.36,
+  pegPing: 1.82,
 };
 
 // --- registry --------------------------------------------------------------------------------
