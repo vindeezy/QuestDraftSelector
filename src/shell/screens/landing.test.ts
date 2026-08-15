@@ -45,6 +45,8 @@ function makeContext(): ScreenContext {
     state: { hasCompletedOnce: false, claimedMemberId: null, furthestBeat: FIRST_BEAT },
     storage: undefined,
     navigate: vi.fn(),
+    controls: document.createElement('div'),
+    replay: vi.fn(),
   };
 }
 

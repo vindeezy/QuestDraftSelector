@@ -29,6 +29,8 @@ function makeContext(claimedMemberId: string | null = 'paden'): ScreenContext {
     state: { hasCompletedOnce: false, claimedMemberId, furthestBeat: FIRST_BEAT },
     storage: undefined,
     navigate: vi.fn(),
+    controls: document.createElement('div'),
+    replay: vi.fn(),
   };
 }
 
@@ -265,11 +267,13 @@ describe('sound', () => {
     const ctx = makeContext();
     const teardown = battleScreen('battle-1').render(ctx)!;
 
-    const controls = ctx.container.querySelector('.audio-controls');
+    // Docked in the router's slot beneath Back, not in the screen's own header -- the
+    // slider used to sit on top of the arena/category name.
+    const controls = ctx.controls.querySelector('.audio-controls');
     expect(controls).not.toBeNull();
-    expect(controls!.parentElement!.className).toContain('battle-header');
+    expect(ctx.container.querySelector('.audio-controls')).toBeNull();
 
     teardown();
-    expect(ctx.container.querySelector('.audio-controls')).toBeNull();
+    expect(ctx.controls.querySelector('.audio-controls')).toBeNull();
   });
 });

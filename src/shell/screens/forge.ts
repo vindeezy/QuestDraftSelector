@@ -15,7 +15,7 @@ import { categoryForBeat, nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
 import { sharedAudioBus } from '../audio';
 import { emptyState, playPlinkoFrame, tickToMs } from '../../audio/play';
-import { mountAudioControls } from './audio-controls';
+import { mountAudioControls, mountReplayControl } from './audio-controls';
 import type { Screen, ScreenContext } from './types';
 
 /**
@@ -330,6 +330,7 @@ export function forgeScreen(beat: BeatId): Screen {
         renderer?.draw(run);
 
         if (run.done) {
+          replayControl.reveal();
           scheduleContinue();
           return;
         }
@@ -349,10 +350,10 @@ export function forgeScreen(beat: BeatId): Screen {
         ctx.navigate(nextBeat(beat)!);
       });
 
-      unmountAudioControls = mountAudioControls({
-        bus,
-        host: root.querySelector<HTMLElement>('.forge-header')!,
-      });
+            // Docked under Back rather than in the board's own header, where the slider overlapped
+      // the category name.
+      unmountAudioControls = mountAudioControls({ bus, host: ctx.controls });
+      const replayControl = mountReplayControl(ctx.controls, ctx.replay);
 
       ctx.container.appendChild(root);
 
@@ -361,8 +362,13 @@ export function forgeScreen(beat: BeatId): Screen {
         unmounted = true;
         cancelAnimationFrame(frame);
         if (readTimer !== null) clearTimeout(readTimer);
-        renderer?.destroy();
+        // DOM cleanup before the renderer, deliberately. `renderer.destroy()` is the one
+        // step here that has actually thrown in the wild -- see the router's `runTeardown`
+        // comment -- and anything after a throw never runs. The router catches it and moves
+        // on, so the cost of being second in this list is a control left behind on screen.
         unmountAudioControls?.();
+        replayControl.destroy();
+        renderer?.destroy();
       };
     },
   };

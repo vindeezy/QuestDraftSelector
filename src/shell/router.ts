@@ -78,16 +78,56 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     container.dataset.beat = beat;
 
     const state = loadProgress(seed, storage);
+
+    // The left cluster is built BEFORE the screen renders, because screens dock their own
+    // playback controls into it and cannot append to something that does not exist yet. It is
+    // added to the container afterwards, though, since `renderBeat` clears the container and
+    // the screen's own render would wipe it.
+    const left = buildLeftNav(beat);
+
     const ctx: ScreenContext = {
       container,
       seed,
       state,
       storage,
       navigate: go,
+      controls: left.controls,
+      replay: () => {
+        renderBeat(beat);
+      },
     };
 
     teardown = SCREENS[beat].render(ctx) ?? null;
+    if (left.root) container.appendChild(left.root);
     renderBeatNav(beat, state);
+  }
+
+  /**
+   * Back, plus an empty slot beneath it for whatever the screen wants docked there.
+   *
+   * Playback controls belong next to navigation rather than inside the screen's own layout.
+   * They were first put in the battle and Forge headers, where the volume slider sat on top of
+   * the arena's name — the header is content, and controls floating over content is exactly
+   * the kind of thing nobody notices until they see it.
+   */
+  function buildLeftNav(beat: BeatId): { root: HTMLDivElement | null; controls: HTMLElement } {
+    const back = previousBeat(beat);
+    if (back === null) {
+      // The landing screen has no Back and makes no sound, so nothing is docked there. The
+      // slot still exists so a screen never has to check whether it has one.
+      return { root: null, controls: document.createElement('div') };
+    }
+
+    const root = document.createElement('div');
+    root.className = 'beat-nav beat-nav-left';
+    root.appendChild(navButton('back', '← Back', `Go back to the previous step (${back})`, back));
+
+    const controls = document.createElement('div');
+    controls.className = 'beat-nav-controls';
+    controls.dataset.role = 'screen-controls';
+    root.appendChild(controls);
+
+    return { root, controls };
   }
 
   /** One quiet nav button. `nav` becomes `data-nav`, which is what tests and any screen
@@ -116,21 +156,14 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
    * layout — a screen that centres its content cannot be nudged off-centre by these
    * existing.
    *
-   * Back is unconditional except on `landing`, since a previous beat has always been
-   * seen. Forward and resume are gated on `hasSeenBeat`, NOT on `canNavigateToBeat` —
+   * Back lives in `buildLeftNav` rather than here, because screens dock controls beneath it
+   * and so it has to be built before they render. Forward and resume are gated on
+   * `hasSeenBeat`, NOT on `canNavigateToBeat` —
    * see that function's doc comment for why the difference matters: the latter permits
    * one step past the frontier, which is precisely the skip forward navigation must
    * never allow.
    */
   function renderBeatNav(beat: BeatId, state: ReturnType<typeof loadProgress>): void {
-    const back = previousBeat(beat);
-    if (back !== null) {
-      const left = document.createElement('div');
-      left.className = 'beat-nav beat-nav-left';
-      left.appendChild(navButton('back', '← Back', `Go back to the previous step (${back})`, back));
-      container.appendChild(left);
-    }
-
     const forward = nextBeat(beat);
     const canGoForward = forward !== null && hasSeenBeat(state, forward);
     // Resume is only worth offering when it lands somewhere Forward wouldn't already

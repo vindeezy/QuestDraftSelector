@@ -53,6 +53,8 @@ function makeContext(claimedMemberId: string | null = 'tommy'): ScreenContext {
     state: { hasCompletedOnce: false, claimedMemberId, furthestBeat: FIRST_BEAT },
     storage: undefined,
     navigate: vi.fn(),
+    controls: document.createElement('div'),
+    replay: vi.fn(),
   };
 }
 

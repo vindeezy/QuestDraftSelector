@@ -28,6 +28,8 @@ function makeContext(claimedMemberId: string | null): ScreenContext {
     state: { hasCompletedOnce: false, claimedMemberId, furthestBeat: FIRST_BEAT },
     storage: null,
     navigate: vi.fn(),
+    controls: document.createElement('div'),
+    replay: vi.fn(),
   };
 }
 

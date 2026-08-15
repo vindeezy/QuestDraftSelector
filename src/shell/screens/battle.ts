@@ -8,7 +8,7 @@ import { nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
 import { sharedAudioBus } from '../audio';
 import { emptyState, playFrame, tickToMs } from '../../audio/play';
-import { mountAudioControls } from './audio-controls';
+import { mountAudioControls, mountPauseControl, mountReplayControl } from './audio-controls';
 import { getEventResult, memberBallVisuals } from './forge';
 import type { Screen, ScreenContext } from './types';
 
@@ -255,6 +255,9 @@ export function battleScreen(beat: BeatId): Screen {
 
       const tick = (): void => {
         if (stopped) return;
+        // Paused stops scheduling rather than skipping work, so a paused battle costs nothing.
+        // Resuming re-enters the loop from the pause control's own handler.
+        if (pauseControl.paused) return;
 
         const frameEffects: Effect[] = [];
         advanceBattleFrame(match, TICKS_PER_FRAME, frameEffects);
@@ -279,6 +282,8 @@ export function battleScreen(beat: BeatId): Screen {
         renderer?.draw(match);
 
         if (match.done) {
+          pauseControl.conceal();
+          replayControl.reveal();
           scheduleContinue();
           return;
         }
@@ -291,6 +296,7 @@ export function battleScreen(beat: BeatId): Screen {
       // good.
       startButton.addEventListener('click', () => {
         startButton.hidden = true;
+        pauseControl.reveal();
         frame = requestAnimationFrame(tick);
       });
 
@@ -298,9 +304,12 @@ export function battleScreen(beat: BeatId): Screen {
         ctx.navigate(nextBeat(beat)!);
       });
 
-      unmountAudioControls = mountAudioControls({
-        bus,
-        host: root.querySelector<HTMLElement>('.battle-header')!,
+      // Docked under Back rather than in the battle's own header, where the slider sat over
+      // the arena's name.
+      unmountAudioControls = mountAudioControls({ bus, host: ctx.controls });
+      const replayControl = mountReplayControl(ctx.controls, ctx.replay);
+      const pauseControl = mountPauseControl(ctx.controls, (isPaused) => {
+        if (!isPaused && !match.done && !stopped) frame = requestAnimationFrame(tick);
       });
 
       ctx.container.appendChild(root);
@@ -310,8 +319,14 @@ export function battleScreen(beat: BeatId): Screen {
         unmounted = true;
         cancelAnimationFrame(frame);
         if (readTimer !== null) clearTimeout(readTimer);
-        renderer?.destroy();
+        // DOM cleanup before the renderer, deliberately. `renderer.destroy()` is the one
+        // step here that has actually thrown in the wild -- see the router's `runTeardown`
+        // comment -- and anything after a throw never runs. The router catches it and moves
+        // on, so the cost of being second in this list is a control left behind on screen.
         unmountAudioControls?.();
+        replayControl.destroy();
+        pauseControl.destroy();
+        renderer?.destroy();
       };
     },
   };

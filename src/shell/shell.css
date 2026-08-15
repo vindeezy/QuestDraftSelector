@@ -2084,9 +2084,6 @@ button {
 /* --- volume and mute, on any screen that makes a noise ----------------------------------- */
 
 .audio-controls {
-  position: absolute;
-  top: 14px;
-  right: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2094,13 +2091,29 @@ button {
   background: color-mix(in srgb, var(--bg-2) 82%, transparent);
   border: 1px solid var(--line);
   border-radius: 999px;
-  /* Above the board and the arena, which both fill their column. */
-  z-index: 3;
 }
 
-.forge-header,
-.battle-header {
-  position: relative;
+/* Everything a screen docks beneath Back: volume, mute, pause, replay. Stacked, left-aligned
+   with the Back button above them, and narrow enough not to crowd the screen's own layout. */
+.beat-nav-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.beat-nav-controls:empty {
+  display: none;
+}
+
+.pause-btn.is-paused {
+  border-color: var(--neon-amber);
+  color: var(--neon-amber);
+}
+
+.replay-btn {
+  border-color: var(--neon-cyan-dim);
 }
 
 .audio-controls__mute {

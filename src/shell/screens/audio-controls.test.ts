@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createAudioBus } from '../../audio/context';
-import { mountAudioControls } from './audio-controls';
+import { mountAudioControls, mountPauseControl, mountReplayControl } from './audio-controls';
 
 /** A bus with no real context, as in jsdom or a browser that blocks audio. */
 function silentBus() {
@@ -57,5 +57,63 @@ describe('the audio controls', () => {
     expect(host.querySelector('.audio-controls')).not.toBeNull();
     teardown();
     expect(host.querySelector('.audio-controls')).toBeNull();
+  });
+});
+
+describe('the replay control', () => {
+  it('stays hidden until the thing worth replaying has finished', () => {
+    // A control that does nothing yet is worse than one that is not there.
+    const replay = mountReplayControl(host, () => {});
+    const button = host.querySelector<HTMLButtonElement>('[data-role="replay"]')!;
+    expect(button.hidden).toBe(true);
+
+    replay.reveal();
+    expect(button.hidden).toBe(false);
+  });
+
+  it('calls back when pressed, and cleans up', () => {
+    let replayed = 0;
+    const replay = mountReplayControl(host, () => { replayed++; });
+    replay.reveal();
+    host.querySelector<HTMLButtonElement>('[data-role="replay"]')!.click();
+    expect(replayed).toBe(1);
+
+    replay.destroy();
+    expect(host.querySelector('[data-role="replay"]')).toBeNull();
+  });
+});
+
+describe('the pause control', () => {
+  it('is not offered before there is anything to pause', () => {
+    // The battle waits on its own BEGIN. A Pause offered first could be pressed and then
+    // RESUMED, which would start the fight early.
+    const pause = mountPauseControl(host, () => {});
+    expect(host.querySelector<HTMLButtonElement>('[data-role="pause"]')!.hidden).toBe(true);
+    pause.reveal();
+    expect(host.querySelector<HTMLButtonElement>('[data-role="pause"]')!.hidden).toBe(false);
+  });
+
+  it('toggles, and reports each change once', () => {
+    const seen: boolean[] = [];
+    const pause = mountPauseControl(host, (p) => seen.push(p));
+    pause.reveal();
+    const button = host.querySelector<HTMLButtonElement>('[data-role="pause"]')!;
+
+    button.click();
+    expect(pause.paused).toBe(true);
+    button.click();
+    expect(pause.paused).toBe(false);
+    expect(seen).toEqual([true, false]);
+  });
+
+  it('clears the paused flag when it is hidden', () => {
+    // A battle that ends while paused must not leave the flag set for whatever shows it next.
+    const pause = mountPauseControl(host, () => {});
+    pause.reveal();
+    host.querySelector<HTMLButtonElement>('[data-role="pause"]')!.click();
+    expect(pause.paused).toBe(true);
+
+    pause.conceal();
+    expect(pause.paused).toBe(false);
   });
 });
