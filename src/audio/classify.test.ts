@@ -96,8 +96,8 @@ describe('soundFor — hazards', () => {
 
   it('falls back audibly on an unknown hazard rather than going silent', () => {
     // A new hazard should sound like SOMETHING the first time it fires, not like nothing.
-    expect(hazardSoundFor('mystery-9')).toBe('bluntImpact');
-    expect(hazardSoundFor(undefined)).toBe('bluntImpact');
+    expect(hazardSoundFor('mystery-9')).toBe('heavyClang');
+    expect(hazardSoundFor(undefined)).toBe('heavyClang');
   });
 
   it('has a real sound for every hazard in every arena — nothing reaches the fallback', () => {
@@ -116,7 +116,7 @@ describe('soundFor — hazards', () => {
     expect(ids.length).toBeGreaterThan(0); // guards against the arenas losing their hazards
     for (const id of ids) {
       expect(hazardSoundFor(id), `${id} falls back instead of having its own sound`)
-        .not.toBe('bluntImpact');
+        .not.toBe('heavyClang');
     }
   });
 });

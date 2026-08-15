@@ -68,25 +68,42 @@ const metallicTick: Voice = (bus, o) => {
   });
 };
 
-/** Hammer. A lower, heavier version of the tick with a body under it, so a hammer blow
- *  lands rather than pings. */
-const heavyClang: Voice = (bus, o) => {
-  const { intensity, pan, delay, level } = opt(o);
+/**
+ * Hammer. The old elimination sound, moved here at the watch gate.
+ *
+ * A lowpass sweeping from 1600Hz down to 70Hz with a sine falling underneath it: not a clang
+ * at all, but a mass collapsing. As an elimination it read as generic destruction; as a
+ * hammer blow it reads as something enormous landing, which is what a hammer should be.
+ *
+ * Moved exactly, with one thing deliberately not carried over — the old voice's LEVEL. It sat
+ * at 2.2x a weapon hit because eliminations are meant to tower over combat; as a weapon it
+ * sits at the weapon target like everything else. Timbre and loudness are separate concerns
+ * here, which is the whole reason `VOICE_TRIM` exists.
+ *
+ * Worth knowing: unlike the other weapons this one's pitch and length are fixed, so only its
+ * loudness responds to how hard the blow landed. Making it intensity-responsive would change
+ * the sound, so it is left alone until asked.
+ *
+ * It reserves 0.55s though its layers run 0.75s, because measured it stops being audible at
+ * 481ms — the tails are asymptotic and inaudible long before they end. Reserving the nominal
+ * length would hold a mixer slot a third of a second longer than the sound needs it, thinning
+ * out hammers in a scrum for no reason.
+ */
+const CRUSHING_BLOW_SECONDS = 0.55;
+
+const crushingBlow: Voice = (bus, o) => {
+  const { pan, delay, level } = opt(o);
   noiseBurst(bus, {
-    duration: decayFor(intensity) * 1.5,
-    frequency: pitchFor(intensity, 1100),
-    q: 4,
-    gain: level * 0.55,
+    duration: 0.75,
+    type: 'lowpass',
+    frequency: 1600,
+    frequencyTo: 70,
+    q: 0.8,
+    gain: level * 0.85,
     pan,
     delay,
   });
-  tone(bus, {
-    frequency: pitchFor(intensity, 150),
-    duration: decayFor(intensity) * 2,
-    gain: level * 0.35,
-    pan,
-    delay,
-  });
+  sweep(bus, { from: 180, to: 35, duration: 0.6, gain: level * 0.5, pan, delay });
 };
 
 /**
@@ -523,28 +540,36 @@ function flameJet(bus: AudioBus, o: PlayOptions | undefined, jet: FlameJet): voi
 /** Flamethrower, the weapon. */
 const flameWhoosh: Voice = (bus, o) => flameJet(bus, o, WEAPON_JET);
 
-/** Ram Plate. A flat shove: all body, no ring. */
-const bluntImpact: Voice = (bus, o) => {
+/**
+ * Ram Plate. The old Hammer sound, moved here at the watch gate.
+ *
+ * A resonant band at 1100Hz over a low body — the name came with the sound, because that is
+ * what this actually is and a ram plate driving into armour has every right to clang.
+ * Responds to intensity in pitch, length and loudness, so a glancing shove and a full charge
+ * are genuinely different.
+ *
+ * Also the fallback for an unrecognised hazard, a job the retired `bluntImpact` used to do:
+ * a generic heavy metallic impact is the right thing to hear when something hits a bot and
+ * the audio layer does not know what it was.
+ */
+const heavyClang: Voice = (bus, o) => {
   const { intensity, pan, delay, level } = opt(o);
   noiseBurst(bus, {
-    duration: decayFor(intensity),
-    type: 'lowpass',
-    frequency: pitchFor(intensity, 700),
-    q: 1,
-    gain: level * 0.5,
+    duration: decayFor(intensity) * 1.5,
+    frequency: pitchFor(intensity, 1100),
+    q: 4,
+    gain: level * 0.55,
     pan,
     delay,
   });
   tone(bus, {
-    frequency: pitchFor(intensity, 110),
-    duration: decayFor(intensity) * 1.5,
-    gain: level * 0.3,
+    frequency: pitchFor(intensity, 150),
+    duration: decayFor(intensity) * 2,
+    gain: level * 0.35,
     pan,
     delay,
   });
 };
-
-// --- general events -----------------------------------------------------------------------
 
 /** Bots bumping. Kept quiet and very short on purpose: this fires constantly in a scrum and
  *  its job is to sit underneath everything else, not to be noticed. */
@@ -567,21 +592,108 @@ const dullThud: Voice = (bus, o) => {
   });
 };
 
-/** A bot dies. The loudest thing in the mix, and the only voice allowed to run long — a
- *  lowpass falling from bright to rubble is what an explosion is. */
+/**
+ * An elimination. A heavy combat machine catastrophically breaking.
+ *
+ *     KRAK-WHUMP -> metallic crunch and clatter -> BZZT
+ *
+ * Explicitly not an explosion, which is what it used to be — a long falling boom reads as a
+ * bomb going off next to the bot rather than as the bot itself coming apart. Three things in
+ * sequence, all of them structural rather than pyrotechnic:
+ *
+ * 1. **The failure.** A short mid crack for the KRAK, over a low mass giving way for the
+ *    WHUMP. Both are brief; the weight comes from how low they go, not how long they last.
+ * 2. **The machine breaking.** Four heavy crunches at irregular times, then six smaller
+ *    pieces scattering. Q around 4-5 in the 400-1500Hz range is what makes metal read as
+ *    industrial — heavy plate and gearing. Higher and thinner is coins and glass, which is
+ *    the wrong scale entirely.
+ * 3. **The electronics dying.** A square wave under a very fast, very deep `wander`, so it
+ *    crackles irregularly the way an arc does rather than buzzing evenly the way a tone does.
+ *    Quiet, and over in 90ms — a prolonged buzz would turn a death into an alarm.
+ *
+ * Nothing rings: every Q stays at or below 5 and every element is short, so there is no long
+ * metallic tail. The whole event is under half a second, against the old boom's three
+ * quarters. It is the loudest thing in the palette and the only sound the mixer will never
+ * drop, so it has to land and get out of the way.
+ */
+const ELIMINATION_SECONDS = 0.46;
+
 const explosion: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
+
+  // 1a. KRAK. The structural crack. Controlled: enough edge to read as breaking, nowhere near
+  //     enough Q to ring afterwards.
   noiseBurst(bus, {
-    duration: 0.75,
-    type: 'lowpass',
-    frequency: 1600,
-    frequencyTo: 70,
-    q: 0.8,
-    gain: level * 0.85,
+    duration: 0.035,
+    type: 'bandpass',
+    frequency: 780,
+    frequencyTo: 420,
+    q: 2.2,
+    gain: level * 0.5,
     pan,
     delay,
   });
-  sweep(bus, { from: 180, to: 35, duration: 0.6, gain: level * 0.5, pan, delay });
+
+  // 1b. WHUMP. The mass underneath giving way.
+  grind(bus, {
+    duration: 0.2,
+    delay,
+    source: 'noise',
+    frequency: 520,
+    frequencyTo: 110,
+    q: 0.7,
+    lowpass: 1300,
+    attack: 0.005,
+    release: 0.15,
+    gain: level * 0.6,
+    pan,
+  });
+  sweep(bus, { from: 155, to: 42, duration: 0.26, type: 'sine', gain: level * 0.4, pan, delay });
+
+  // 2a. Heavy pieces failing. Irregular timing, because structural collapse is not rhythmic.
+  for (let n = 0; n < 4; n++) {
+    const centre = 380 + Math.random() * 700;
+    noiseBurst(bus, {
+      duration: 0.03 + Math.random() * 0.04,
+      type: 'bandpass',
+      frequency: centre,
+      frequencyTo: centre * 0.45,
+      q: 4.5,
+      gain: level * (0.2 + Math.random() * 0.12),
+      pan,
+      delay: delay + 0.05 + Math.random() * 0.18,
+    });
+  }
+
+  // 2b. Smaller pieces scattering afterwards. Higher, quieter, and capped well short of the
+  //     range where metal starts sounding like glass.
+  for (let n = 0; n < 6; n++) {
+    noiseBurst(bus, {
+      duration: 0.012 + Math.random() * 0.015,
+      type: 'bandpass',
+      frequency: 700 + Math.random() * 800,
+      q: 5,
+      gain: level * (0.07 + Math.random() * 0.06),
+      pan,
+      delay: delay + 0.14 + Math.random() * 0.26,
+    });
+  }
+
+  // 3. BZZT. An arc, not a buzzer: the wander is what makes it irregular enough to read as
+  //    something shorting rather than something beeping.
+  grind(bus, {
+    duration: 0.09,
+    delay: delay + 0.19,
+    source: 'square',
+    frequency: 165,
+    lowpass: 1900,
+    attack: 0.004,
+    release: 0.04,
+    wanderHz: 70,
+    wanderDepth: 0.85,
+    gain: level * 0.12,
+    pan,
+  });
 };
 
 /** A cannon firing. Distinct from an elimination so the room can tell "a hazard went off"
@@ -1105,13 +1217,13 @@ export const VOICE_SECONDS: Partial<Record<SoundId, number>> = {
   // slots while they were still sounding -- letting more through than the cap allowed, which
   // is the mush this whole module exists to prevent. Nothing caught it until the levels tool
   // learned to compare a voice's real length against its reserved one.
-  explosion: 0.5,
+  explosion: ELIMINATION_SECONDS,
+  crushingBlow: CRUSHING_BLOW_SECONDS,
   shockwaveBoom: 0.45,
   mechanicalClunk: 0.38,
   repairChime: 0.36,
   heavyClang: 0.35,
   deepBoom: 0.29,
-  bluntImpact: 0.27,
 
   sawBuzz: WEAPON_BLADE.maxSeconds,
   sawGrind: HAZARD_BLADE.maxSeconds,
@@ -1173,12 +1285,12 @@ export const TARGET_PEAK: Record<SoundId, number> = {
   shellImpact: WEAPON_PEAK * 1.05,
 
   metallicTick: WEAPON_PEAK,
-  heavyClang: WEAPON_PEAK,
+  crushingBlow: WEAPON_PEAK,
   sawBuzz: WEAPON_PEAK,
   spinnerWhine: WEAPON_PEAK,
   discWhirr: WEAPON_PEAK,
   flameWhoosh: WEAPON_PEAK,
-  bluntImpact: WEAPON_PEAK,
+  heavyClang: WEAPON_PEAK,
 
   electricZap: WEAPON_PEAK * 0.75,
   nitroWhoosh: WEAPON_PEAK * 0.75,
@@ -1196,35 +1308,35 @@ export const TARGET_PEAK: Record<SoundId, number> = {
 
 export const VOICE_TRIM: Record<SoundId, number> = {
   // moments
-  explosion: 1.14,
+  explosion: 2.1,
   shockwaveBoom: 0.39,
-  crusherSlam: 1.27,
-  deepBoom: 1.21,
-  mechanicalClunk: 0.62,
-  shellImpact: 1.62,
+  crusherSlam: 1.29,
+  deepBoom: 1.24,
+  mechanicalClunk: 0.61,
+  shellImpact: 1.56,
 
   // weapons — the reference tier
-  metallicTick: 11.48,
-  heavyClang: 1.26,
-  sawBuzz: 0.74,
-  spinnerWhine: 3.34,
-  discWhirr: 3.76,
-  flameWhoosh: 0.7,
-  bluntImpact: 1.55,
+  metallicTick: 11.85,
+  crushingBlow: 0.49,
+  sawBuzz: 0.73,
+  spinnerWhine: 3.26,
+  discWhirr: 3.69,
+  flameWhoosh: 0.69,
+  heavyClang: 1.31,
 
   // abilities
-  electricZap: 2.86,
-  nitroWhoosh: 0.59,
-  oilSplat: 0.37,
+  electricZap: 2.55,
+  nitroWhoosh: 0.62,
+  oilSplat: 0.41,
   repairChime: 0.62,
   adrenalineRise: 0.3,
-  smokeHiss: 0.41,
+  smokeHiss: 0.42,
 
   // sustained textures, which sit under everything
-  flameBillow: 0.36,
+  flameBillow: 0.38,
   // 23x. Not a typo, and not really a fix: this voice renders at a peak of 0.003 and is
   // effectively inaudible as written. The trim makes it present; it still wants rebuilding.
-  sawGrind: 0.29,
+  sawGrind: 0.28,
 
   // the two most frequent sounds in the show
   dullThud: 1.37,
@@ -1235,12 +1347,12 @@ export const VOICE_TRIM: Record<SoundId, number> = {
 
 export const PALETTE = {
   metallicTick,
-  heavyClang,
+  crushingBlow,
   sawBuzz,
   spinnerWhine,
   discWhirr,
   flameWhoosh,
-  bluntImpact,
+  heavyClang,
   dullThud,
   explosion,
   deepBoom,

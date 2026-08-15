@@ -39,12 +39,12 @@ function botIndexOf(botId: string | null): number | null {
  * completeness check at build time, not by a viewer hearing a thud on draft night.
  */
 export const WEAPON_SOUNDS = new Map<string, SoundId>([
-  ['weapon-hammer', 'heavyClang'],
+  ['weapon-hammer', 'crushingBlow'],
   ['weapon-saw-blade', 'sawBuzz'],
   ['weapon-spinning-bar', 'spinnerWhine'],
   ['weapon-vertical-spinner', 'discWhirr'],
   ['weapon-flamethrower', 'flameWhoosh'],
-  ['weapon-ram-plate', 'bluntImpact'],
+  ['weapon-ram-plate', 'heavyClang'],
 ]);
 
 export const ABILITY_SOUNDS = new Map<string, SoundId>([
@@ -77,8 +77,12 @@ export const HAZARD_SOUNDS = new Map<string, SoundId>([
  * Audible on purpose. A new hazard added later should sound like SOMETHING the first time
  * it fires — silence would read as a bug in the hazard rather than a gap in the sound
  * table, and would be much harder to notice.
+ *
+ * A generic heavy metallic impact, which is the right thing to hear when something hits a bot
+ * and the audio layer does not know what it was. It doubles as the Ram Plate, and that overlap
+ * is fine: both are "a bot was struck by something solid".
  */
-const UNKNOWN_HAZARD: SoundId = 'bluntImpact';
+const UNKNOWN_HAZARD: SoundId = 'heavyClang';
 
 export function hazardSoundFor(source: string | undefined): SoundId {
   if (!source) return UNKNOWN_HAZARD;
