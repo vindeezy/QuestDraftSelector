@@ -51,9 +51,14 @@ const RENDER_SECONDS = 1.2;
  *
  * Noise-based voices start at a random offset into the shared noise buffer, so a single
  * render's peak swings by several decibels — enough to send this tool chasing a difference
- * that is not there. Averaging a few passes makes the number stable enough to trim against.
+ * that is not there. Averaging makes the number stable enough to trim against.
+ *
+ * Nine rather than five because the worst case is `metallicTick`: a narrow band-passed burst,
+ * the most frequent sound in the show, and jittery enough at five passes to be flagged on
+ * some runs and not others. A tool that reports a different problem every time it is pressed
+ * teaches you to ignore it.
  */
-const RENDER_PASSES = 5;
+const RENDER_PASSES = 9;
 
 /**
  * How far a trim may drift before it is worth reporting.

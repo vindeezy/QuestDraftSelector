@@ -719,6 +719,39 @@ const nitroWhoosh: Voice = (bus, o) => {
  */
 const OIL_SPLAT_SECONDS = 0.72;
 
+/**
+ * How high the whole slick sits.
+ *
+ * Applied to every frequency in the voice, ceilings included, so raising it transposes the
+ * sound rather than merely brightening it — move the centres without the ceilings and the
+ * top of the texture is clipped off instead of moving up with everything else.
+ *
+ * One number because this voice has been retuned four times and "a bit higher" should not
+ * mean editing eleven scattered constants and getting one of them wrong.
+ */
+const OIL_PITCH = 1.22;
+
+/**
+ * A hard ceiling on the whole voice, applied after the pitch scale.
+ *
+ * Transposing the ceilings along with the centres is what makes a pitch change a transposition
+ * rather than a brightening — but it also lets content through that was previously damped.
+ * Measured, raising the pitch by 1.22 took the 2-5kHz band from 0.3% of the sound's energy to
+ * 5.7%. That is the band that made the saw painful three times running, and this voice fires
+ * on top of a fight rather than alone.
+ *
+ * So the pitch is free to move and the top is not. Raise `OIL_PITCH` as far as you like; the
+ * texture climbs and the fatiguing octave stays shut.
+ */
+const OIL_CEILING = 2050;
+
+/** Scales a frequency by the voice's pitch. */
+const oilHz = (hz: number): number => hz * OIL_PITCH;
+
+/** A filter ceiling: pitched with the rest of the voice, but never past `OIL_CEILING`. */
+const oilTop = (hz: number): number => Math.min(hz * OIL_PITCH, OIL_CEILING);
+
+
 const oilSplat: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
 
@@ -728,10 +761,10 @@ const oilSplat: Voice = (bus, o) => {
     duration: 0.2,
     delay,
     source: 'noise',
-    frequency: 950,
-    frequencyTo: 480,
+    frequency: oilHz(950),
+    frequencyTo: oilHz(480),
     q: 0.6,
-    lowpass: 1900,
+    lowpass: oilTop(1900),
     attack: 0.025,
     release: 0.14,
     // Shallower wander than the layers behind it: the leading edge is the only part that has
@@ -749,10 +782,10 @@ const oilSplat: Voice = (bus, o) => {
     duration: OIL_SPLAT_SECONDS - 0.04,
     delay: delay + 0.03,
     source: 'noise',
-    frequency: 1150,
-    frequencyTo: 330,
+    frequency: oilHz(1150),
+    frequencyTo: oilHz(330),
     q: 0.55,
-    lowpass: 1900,
+    lowpass: oilTop(1900),
     attack: 0.03,
     release: OIL_SPLAT_SECONDS * 0.5,
     wanderHz: 9,
@@ -767,10 +800,10 @@ const oilSplat: Voice = (bus, o) => {
     duration: OIL_SPLAT_SECONDS - 0.08,
     delay: delay + 0.02,
     source: 'noise',
-    frequency: 330,
-    frequencyTo: 155,
+    frequency: oilHz(330),
+    frequencyTo: oilHz(155),
     q: 0.6,
-    lowpass: 620,
+    lowpass: oilTop(620),
     attack: 0.022,
     release: OIL_SPLAT_SECONDS * 0.45,
     wanderHz: 6,
@@ -781,8 +814,8 @@ const oilSplat: Voice = (bus, o) => {
 
   // 4. A low swell rather than a plop: the note of a mass arriving, well under the rush.
   sweep(bus, {
-    from: 165,
-    to: 72,
+    from: oilHz(165),
+    to: oilHz(72),
     duration: 0.16,
     type: 'sine',
     gain: level * 0.12,
@@ -793,7 +826,7 @@ const oilSplat: Voice = (bus, o) => {
   // 5. Folding. Short formant sweeps at random moments, for portions of the fluid separating
   //    as it spreads. Texture inside the rush now, not the headline.
   for (let n = 0; n < 2; n++) {
-    const from = 520 + Math.random() * 340;
+    const from = oilHz(520 + Math.random() * 340);
     grind(bus, {
       duration: 0.09 + Math.random() * 0.06,
       delay: delay + 0.12 + Math.random() * 0.3,
@@ -801,7 +834,7 @@ const oilSplat: Voice = (bus, o) => {
       frequency: from,
       frequencyTo: from * 0.35,
       q: 3.2,
-      lowpass: 1500,
+      lowpass: oilTop(1500),
       attack: 0.012,
       release: 0.06,
       gain: level * 0.11,
@@ -1182,7 +1215,7 @@ export const VOICE_TRIM: Record<SoundId, number> = {
   // abilities
   electricZap: 2.86,
   nitroWhoosh: 0.59,
-  oilSplat: 0.41,
+  oilSplat: 0.37,
   repairChime: 0.62,
   adrenalineRise: 0.3,
   smokeHiss: 0.41,
