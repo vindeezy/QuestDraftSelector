@@ -694,62 +694,97 @@ const nitroWhoosh: Voice = (bus, o) => {
 };
 
 /**
- * Oil Slick. A thick blob of motor oil dumped on a metal floor.
+ * Oil Slick. Thick, viscous fluid striking a hard surface and spreading.
  *
- *     thick liquid releases -> satisfying wet splat -> quick oily spread
+ *     heavy liquid lands -> deforms -> folds and spreads outward
  *
- * What makes a liquid read as THICK rather than as water is the falling pitch of the impact.
- * A blob deforms as it lands, its resonant cavity collapses, and the note drops -- fast for
- * water, slower and lower for oil. That drop is layer one, and it is a sine because a blob of
- * oil has no edge and no harmonics; anything brighter here would be a metallic clang, which
- * is the one thing an oil slick must not sound like.
+ * The whole sound lives between 150Hz and 900Hz, and nothing is allowed a real presence above
+ * 1.5kHz. That ceiling is not a stylistic preference — it is the single acoustic difference
+ * between oil and water. Bright transients read as thin, splashing droplets; damp them and
+ * the same event reads as something heavy and slow.
  *
- * The spread is a short noise band sliding downward, not a hiss: it thins and settles rather
- * than escaping. Kept brief and clean, on the polished side of realistic, because "wet" is a
- * short walk from unpleasant.
+ * Four properties do the work, and each corrects a way the first version went wrong:
+ *
+ * 1. **A rounded transient, not a sharp one.** The impact is a `grind` with a 14ms attack
+ *    rather than a `noiseBurst`, which starts at full gain and is therefore a click. Oil does
+ *    not click. It arrives.
+ * 2. **Noise leads, tone follows.** The falling pitch is what makes a liquid read as thick,
+ *    but it is a supporting layer here, not the sound itself. Led by the tone it becomes a
+ *    cartoon blop; led by low filtered noise it stays dense and physical.
+ * 3. **Irregular amplitude movement.** The spread uses `wander` rather than a chop or a
+ *    wobble: random depths at random intervals, so the texture folds and separates unevenly.
+ *    A periodic modulator here would sound like a machine, which is exactly what an even
+ *    tremolo on noise is.
+ * 4. **No resonance anywhere.** Every Q sits below 1, so the floor underneath never rings.
+ *    The liquid dominates; the surface contributes nothing but stopping it.
  */
-const OIL_SPLAT_SECONDS = 0.46;
+const OIL_SPLAT_SECONDS = 0.52;
 
 const oilSplat: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
 
-  // 1. SPLOP. The falling note of a heavy blob losing its shape.
-  sweep(bus, {
-    from: 340,
-    to: 95,
-    duration: 0.075,
-    type: 'sine',
-    gain: level * 0.5,
-    pan,
-    delay,
-  });
-
-  // 2. The wet of the impact. Lowpass rather than bandpass: no peak, so no ring.
-  noiseBurst(bus, {
-    duration: 0.1,
-    type: 'lowpass',
-    frequency: 1250,
-    frequencyTo: 420,
-    q: 0.6,
-    gain: level * 0.34,
-    pan,
-    delay,
-  });
-
-  // 3. The spread. Slides down and thins out as the puddle settles.
+  // 1. The impact. Dense low noise with a rounded onset -- this is the BLUP, and it has to
+  //    LEAD. Balanced by ear it did not: the spread layers summed louder than the contact and
+  //    the whole thing swelled instead of landing. Measured, the peak sat 180ms after onset,
+  //    which is not an impact at all.
   grind(bus, {
-    duration: OIL_SPLAT_SECONDS - 0.08,
-    delay: delay + 0.06,
+    duration: 0.19,
+    delay,
     source: 'noise',
-    frequency: 880,
-    frequencyTo: 360,
+    frequency: 430,
+    frequencyTo: 195,
     q: 0.7,
-    lowpass: 1700,
-    attack: 0.012,
-    release: 0.2,
-    wobbleHz: 14,
-    wobbleDepth: 0.16,
-    gain: level * 0.26,
+    lowpass: 1100,
+    attack: 0.014,
+    release: 0.13,
+    gain: level * 0.58,
+    pan,
+  });
+
+  // 2. The tonal component. Subtle, and underneath: the note of a blob losing its shape.
+  //    Sine, because a blob has no edge and no harmonics.
+  sweep(bus, {
+    from: 215,
+    to: 78,
+    duration: 0.13,
+    type: 'sine',
+    gain: level * 0.2,
+    pan,
+    delay,
+  });
+
+  // 3. The spread. Folding and separating unevenly as it runs out across the floor.
+  grind(bus, {
+    duration: OIL_SPLAT_SECONDS - 0.09,
+    delay: delay + 0.07,
+    source: 'noise',
+    frequency: 610,
+    frequencyTo: 255,
+    q: 0.6,
+    lowpass: 1400,
+    attack: 0.025,
+    release: 0.24,
+    wanderHz: 11,
+    wanderDepth: 0.5,
+    gain: level * 0.22,
+    pan,
+  });
+
+  // 4. The weight of it, still moving after the spread has thinned. A second wander at a
+  //    different rate, so the two never line up into a pulse.
+  grind(bus, {
+    duration: OIL_SPLAT_SECONDS - 0.13,
+    delay: delay + 0.1,
+    source: 'noise',
+    frequency: 280,
+    frequencyTo: 165,
+    q: 0.6,
+    lowpass: 700,
+    attack: 0.04,
+    release: 0.26,
+    wanderHz: 7,
+    wanderDepth: 0.4,
+    gain: level * 0.16,
     pan,
   });
 };

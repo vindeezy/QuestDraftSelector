@@ -285,6 +285,17 @@ export interface GrindOptions extends VoiceOptions {
   chopHz?: number;
   /** 0-1, how deep the chop cuts. */
   chopDepth?: number;
+  /**
+   * Irregular amplitude movement, in average events per second.
+   *
+   * Different from `chop`, and the difference is the point. A chop is one LFO: perfectly
+   * periodic, which the ear hears as a machine. This schedules random gain breakpoints at
+   * random intervals, so the texture folds and separates unevenly — the difference between a
+   * motor and a thick liquid spreading.
+   */
+  wanderHz?: number;
+  /** 0-1. How far the wander pulls the level down at its deepest. */
+  wanderDepth?: number;
   /** Frequency wobble rate — something fighting resistance rather than running free. */
   wobbleHz?: number;
   /** 0-1, as a fraction of `frequency`. */
@@ -393,6 +404,25 @@ export function grind(bus: AudioBus, options: GrindOptions): void {
     tone.Q.value = 0.7; // no resonant peak at the corner -- that would add the very edge this removes
     chain.connect(tone);
     chain = tone;
+  }
+
+  if (options.wanderHz && options.wanderDepth) {
+    const depth = clamp01(options.wanderDepth);
+    const wander = ctx.createGain();
+    const period = 1 / Math.max(1, options.wanderHz);
+
+    let t = at;
+    wander.gain.setValueAtTime(1 - depth * Math.random(), t);
+    // Both the spacing and the depth are random, so nothing about the pattern repeats. A
+    // random depth on an even grid still reads as a pulse; it is the uneven spacing that
+    // makes it liquid.
+    while (t < end) {
+      t += period * (0.45 + Math.random() * 1.1);
+      wander.gain.linearRampToValueAtTime(1 - depth * Math.random(), Math.min(t, end));
+    }
+
+    chain.connect(wander);
+    chain = wander;
   }
 
   const peak = Math.max(0.0001, options.gain ?? 0.5);
