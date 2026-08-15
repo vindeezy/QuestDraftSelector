@@ -1,4 +1,4 @@
-import { partAt, slotCountFor } from '../sim/parts/tables';
+import { partIdFor } from '../sim/parts/from-effect';
 import type { BotBuild } from '../sim/parts/assemble';
 import type { Effect } from '../sim/arena/effects';
 import type { SoundId } from './palette';
@@ -15,20 +15,15 @@ import type { SoundId } from './palette';
  *
  * Two different mechanisms do that, and the split is deliberate:
  *
- * - **Weapons and abilities are derived from `botId` plus the builds.** The effect already
- *   says which bot, and any consumer already holds every member's build, so the part is
- *   knowable without the simulation repeating it. Nothing was added to `src/sim/` for this.
+ * - **Weapons and abilities are derived from `botId` plus the builds**, via
+ *   `sim/parts/from-effect`. The effect already says which bot, and any consumer already holds
+ *   every member's build, so the part is knowable without the simulation repeating it. That
+ *   lookup is shared with the VFX layer, which asks the identical question for the identical
+ *   reason.
  * - **Hazards come from `Effect.source`**, because a `hazardHit` lands at the BOT's position
  *   and nothing about the event otherwise says what struck it. That field is the one
  *   addition SND 1 made, and it carries the zone or emitter's own id.
  */
-
-/** `bot-3` -> 3. Anything else -> null, so a malformed id falls back rather than throwing. */
-function botIndexOf(botId: string | null): number | null {
-  if (botId === null || !botId.startsWith('bot-')) return null;
-  const index = Number(botId.slice('bot-'.length));
-  return Number.isInteger(index) && index >= 0 ? index : null;
-}
 
 /**
  * Part id -> sound, for every weapon and every ability.
@@ -90,20 +85,6 @@ export function hazardSoundFor(source: string | undefined): SoundId {
   return HAZARD_SOUNDS.get(family) ?? UNKNOWN_HAZARD;
 }
 
-/** The part in `category` that bot `index` is carrying, or null if the index is unknown. */
-function partIdFor(
-  builds: readonly BotBuild[],
-  index: number | null,
-  category: 'weapon' | 'ability',
-): string | null {
-  if (index === null) return null;
-  const build = builds[index];
-  if (!build) return null;
-  const slot = category === 'weapon' ? build.weapon : build.ability;
-  if (!Number.isInteger(slot) || slot < 0 || slot >= slotCountFor(category)) return null;
-  return partAt(category, slot).id;
-}
-
 /**
  * The sound for one effect. Never returns nothing — every path ends in a real voice, because
  * a missing sound is indistinguishable from a broken simulation to anyone watching.
@@ -111,11 +92,11 @@ function partIdFor(
 export function soundFor(effect: Effect, builds: readonly BotBuild[]): SoundId {
   switch (effect.kind) {
     case 'weaponHit': {
-      const id = partIdFor(builds, botIndexOf(effect.botId), 'weapon');
+      const id = partIdFor(builds, effect.botId, 'weapon');
       return (id === null ? undefined : WEAPON_SOUNDS.get(id)) ?? 'metallicTick';
     }
     case 'abilityFire': {
-      const id = partIdFor(builds, botIndexOf(effect.botId), 'ability');
+      const id = partIdFor(builds, effect.botId, 'ability');
       return (id === null ? undefined : ABILITY_SOUNDS.get(id)) ?? 'electricZap';
     }
     case 'hazardHit':

@@ -1,4 +1,6 @@
-import { Application, BitmapText, Container, Graphics, Text } from 'pixi.js';
+import {
+  Application, BitmapText, Container, Graphics, Particle, ParticleContainer, Rectangle, Text,
+} from 'pixi.js';
 import { TileState } from '../sim/arena/tiles';
 import { destroyOnce } from './destroy-once';
 import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
@@ -8,6 +10,11 @@ import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
 import { drawBotPortrait } from './bot-portrait';
 import type { BotBuild } from '../sim/parts/assemble';
 import type { Elimination, Match } from '../sim/arena/match';
+import type { Effect } from '../sim/arena/effects';
+import { createParticleField } from './vfx/particles';
+import { SHAKE_CEILING, visualFor } from './vfx';
+import { botIndexOf } from '../sim/parts/from-effect';
+import { prefersReducedMotion } from './reduced-motion';
 
 const BOT_COLORS = [
   0xff6a3d, 0x3ddc84, 0x4aa8ff, 0xc77dff, 0xffd23d,
@@ -197,8 +204,49 @@ const BUTTON_PRESSED = 0xffe45c;
 const PROJECTILE_COLOR = 0xffffff;
 const PROJECTILE_GLOW = 0xfff3a0;
 
+/** One frame at the fixed sixty-per-second the whole show is built around. */
+const FRAME_SECONDS = 1 / 60;
+
+/** How long a struck bot stays lit. Short: it must read as a hit, not as a status. */
+const FLASH_SECONDS = 0.16;
+
+/** How long a shake takes to die away. */
+const SHAKE_SECONDS = 0.28;
+
+/**
+ * How far the arena may move at full shake.
+ *
+ * Four pixels. It reads as a jolt, and more starts costing readability — which is the one
+ * thing shake is least allowed to take, since a death is exactly when everybody is scanning
+ * the screen for whose bot it was.
+ */
+const SHAKE_PIXELS = 4;
+
+/** The radius the particle texture is drawn at, so a particle's `size` becomes a scale. */
+const DOT_RADIUS = 8;
+
+/** Rings used to fake a radial falloff on the particle texture. */
+const DOT_RINGS = 6;
+
+/**
+ * The most opaque a single particle may be.
+ *
+ * Well under 1, because particles arrive in groups and overlap constantly -- twenty at full
+ * opacity in the same place is an object, not an effect. This is the number that decides
+ * whether sparks sit over the fight or bury it.
+ */
+const PARTICLE_ALPHA = 0.5;
+
 export interface ArenaRenderer {
-  draw(match: Match): void;
+  /**
+   * Draws one frame.
+   *
+   * `effects` is the frame's accumulated bus, not `match.effects`: the battle screen may run
+   * more than one tick per rendered frame, and the bus is cleared at the start of every tick,
+   * so reading it here would show only the last tick's events and silently drop the rest.
+   * Defaults to `match.effects` for callers stepping one tick a frame.
+   */
+  draw(match: Match, effects?: readonly Effect[]): void;
   destroy(): void;
 }
 
@@ -252,10 +300,17 @@ export async function createArenaRenderer(
 
   // The arena itself keeps the exact coordinates it always had — only the canvas grew,
   // to the right, to make room for the kill feed. Nothing here shifts.
+  //
+  // Everything the arena draws lives inside `world` so screen shake can move all of it at
+  // once. The kill feed stays outside: it is a list of text in the margin, and a running
+  // scoreboard that jitters every time somebody dies is harder to read at exactly the moment
+  // people are reading it.
+  const world = new Container();
+  app.stage.addChild(world);
   const floor = new Graphics();
-  app.stage.addChild(floor);
+  world.addChild(floor);
   const dynamic = new Graphics();
-  app.stage.addChild(dynamic);
+  world.addChild(dynamic);
 
   // BitmapText, not Text: every bot's label moves every frame (see the `pixijs-scene-text`
   // skill and `plinko-renderer.ts`'s identical choice for the same reason) — an
@@ -274,7 +329,7 @@ export async function createArenaRenderer(
    * extent, so scaling the whole container is the only way to keep those proportions.
    */
   const silhouetteLayer = new Container();
-  app.stage.addChild(silhouetteLayer);
+  world.addChild(silhouetteLayer);
   const silhouettes: (Container | null)[] = match.bots.map((bot, index) => {
     const build = builds?.[index];
     if (!build) return null;
@@ -287,8 +342,62 @@ export async function createArenaRenderer(
     return drawing.view;
   });
 
+  /**
+   * Sparks and dust.
+   *
+   * Above the bots so a hit reads as landing ON one, and BELOW the labels and tags so a
+   * viewer hunting their own machine can always still read the names. That ordering is the
+   * whole reason this sits here rather than on top: if effects hide bots, effects lose.
+   *
+   * One texture, one draw call, and a pool allocated once — see `vfx/particles.ts` for why
+   * the bound matters more than the look.
+   */
+  // A SOFT dot, not a hard disc. Concentric rings of falling alpha approximate a radial
+  // falloff, and the difference is not cosmetic: hard-edged circles at full opacity stack into
+  // a solid mass wherever several land together, which in a scrum is a pale blob sitting on
+  // top of the bots. Soft edges accumulate into a glow instead of a shape.
+  const dot = new Graphics();
+  for (let ring = DOT_RINGS; ring >= 1; ring--) {
+    const t = ring / DOT_RINGS;
+    dot.circle(0, 0, DOT_RADIUS * t).fill({ color: 0xffffff, alpha: 0.16 * (1 - t) + 0.08 });
+  }
+  // `resolution: 1` explicitly. `generateTexture` otherwise inherits the application's
+  // resolution, which is the viewer's `devicePixelRatio` -- so on a 2.5x display every
+  // particle came out two and a half times too big, and the effect layer looked different on
+  // every monitor. Particle size is a design decision, not a property of somebody's screen.
+  const dotTexture = app.renderer.generateTexture({ target: dot, resolution: 1 });
+  dot.destroy();
+
+  const field = createParticleField();
+  const sprites = field.particles.map(
+    () => new Particle({ texture: dotTexture, anchorX: 0.5, anchorY: 0.5, alpha: 0 }),
+  );
+  const particleLayer = new ParticleContainer({
+    texture: dotTexture,
+    particles: sprites,
+    // Position, size and colour all change every frame; without these the GPU keeps the
+    // values from when each particle was uploaded and nothing appears to move.
+    dynamicProperties: { position: true, vertex: true, color: true },
+    // Required in practice: a ParticleContainer reports empty bounds by default and is
+    // culled as invisible the moment anything turns culling on.
+    boundsArea: new Rectangle(0, 0, width, height),
+  });
+  world.addChild(particleLayer);
+
+  /**
+   * The white bloom on a bot that was just struck.
+   *
+   * Drawn as its own layer rather than tinting the silhouette, because tint MULTIPLIES: it can
+   * only ever darken a sprite, so it cannot brighten a bot no matter what colour is passed. An
+   * additive overlay is the only way to make something on a canvas get lighter.
+   *
+   * Above the bots so it is visible, below the labels so it can never hide a name.
+   */
+  const flashLayer = new Graphics();
+  world.addChild(flashLayer);
+
   const labels = new Container();
-  app.stage.addChild(labels);
+  world.addChild(labels);
   const labelTexts = match.bots.map((_, index) => {
     const visual = resolveBotVisual(index, botVisuals);
     const text = new BitmapText({
@@ -301,7 +410,7 @@ export async function createArenaRenderer(
   });
 
   const tags = new Container();
-  app.stage.addChild(tags);
+  world.addChild(tags);
   const tagTexts = match.bots.map(() => {
     const text = new BitmapText({
       text: '',
@@ -311,6 +420,22 @@ export async function createArenaRenderer(
     tags.addChild(text);
     return text;
   });
+
+  /**
+   * How white each bot is flashing, 0-1, decaying every frame.
+   *
+   * The flash does more work than the sparks do. Sparks say "a hit happened somewhere"; a
+   * bot going bright says "it happened to THAT one", which is what somebody hunting their
+   * own machine in a ten-bot scrum actually needs.
+   */
+  const flash = match.bots.map(() => 0);
+
+  /** Current shake energy, 0-1, decaying every frame. */
+  let shake = 0;
+
+  // Read once. Someone who has asked their operating system for less motion is not asking
+  // per battle, and re-querying every frame would cost more than it could ever save.
+  const calm = prefersReducedMotion();
 
   // Bot number (1-based, matching the legacy on-body label) by id, resolved once — the
   // roster does not change over a match's lifetime. Still used as the kill feed's
@@ -504,7 +629,80 @@ export async function createArenaRenderer(
     }
   };
 
-  const draw = (current: Match): void => {
+  /**
+   * Turns one frame's events into sparks, flashes and shake.
+   *
+   * Spawns first, then advances, then paints, so a particle created this frame is visible this
+   * frame rather than one late. At sixty frames a second a one-frame delay on a hit is not
+   * consciously noticed but it is felt, and it costs nothing to avoid.
+   */
+  const consume = (effects: readonly Effect[]): void => {
+    for (const effect of effects) {
+      const visual = visualFor(effect, builds ?? []);
+
+      for (const layer of visual.layers) {
+        const spec = {
+          x: effect.x,
+          y: effect.y,
+          // Reduced motion thins the spawn rather than removing it. Somebody who asked for
+          // less movement still needs to see that a hit landed; they just do not need a
+          // faceful of debris to know it.
+          intensity: effect.intensity * layer.scale * (calm ? 0.45 : 1),
+          tint: layer.tint,
+        };
+        if (layer.kind === 'burst') field.burst(spec);
+        else if (layer.kind === 'puff') field.puff(spec);
+        else field.ring(spec);
+      }
+
+      if (visual.flash) {
+        const index = botIndexOf(effect.botId);
+        if (index !== null && index < flash.length) flash[index] = 1;
+      }
+
+      // The strongest event of the frame wins rather than accumulating: three eliminations at
+      // once is a bigger moment, not three times the earthquake.
+      if (!calm && visual.shake > shake) shake = Math.min(visual.shake, SHAKE_CEILING);
+    }
+
+    field.advance(FRAME_SECONDS);
+
+    for (let i = 0; i < flash.length; i++) {
+      flash[i] = Math.max(0, flash[i]! - FRAME_SECONDS / FLASH_SECONDS);
+    }
+    shake = Math.max(0, shake - FRAME_SECONDS / SHAKE_SECONDS);
+
+    // Offset the whole arena, kill feed excluded. Rounded to whole pixels: a sub-pixel offset
+    // on a canvas this size blurs every edge instead of reading as a jolt.
+    const amount = shake * SHAKE_PIXELS;
+    world.x = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
+    world.y = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
+
+    // Copy the pool onto the GPU-facing structs. Dead particles go to alpha 0 rather than
+    // being removed: the sprite list is fixed for the renderer's whole lifetime, which is the
+    // entire reason this is one draw call.
+    for (let i = 0; i < sprites.length; i++) {
+      const particle = field.particles[i]!;
+      const sprite = sprites[i]!;
+      if (!particle.active) {
+        sprite.alpha = 0;
+        continue;
+      }
+      sprite.x = particle.x;
+      sprite.y = particle.y;
+      const scale = particle.size / DOT_RADIUS;
+      sprite.scaleX = scale;
+      sprite.scaleY = scale;
+      sprite.tint = particle.tint;
+      // Fades across its life, so particles thin away rather than vanishing mid-flight, and
+      // never reaches full opacity -- see `PARTICLE_ALPHA`.
+      sprite.alpha = Math.min(1, (particle.life / particle.maxLife) * 1.4) * PARTICLE_ALPHA;
+    }
+  };
+
+  const draw = (current: Match, effects: readonly Effect[] = current.effects): void => {
+    consume(effects);
+    flashLayer.clear();
     drawFloor(current);
     dynamic.clear();
     drawHazards(current);
@@ -533,6 +731,13 @@ export async function createArenaRenderer(
       // your ball", carried from the Forge into the battles.
       if (isHighlighted) {
         dynamic.circle(x, y, r + 6).fill({ color: 0xffffff, alpha: 0.16 });
+      }
+
+      // The bloom for a bot struck in the last sixth of a second. Drawn for every bot, with
+      // or without a silhouette, so the demo loop's plain circles react too.
+      const lit = flash[index] ?? 0;
+      if (lit > 0) {
+        flashLayer.circle(x, y, r + 3).fill({ color: 0xffffff, alpha: lit * 0.5 });
       }
 
       const silhouette = silhouettes[index];

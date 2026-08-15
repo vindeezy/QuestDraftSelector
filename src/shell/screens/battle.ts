@@ -279,7 +279,9 @@ export function battleScreen(beat: BeatId): Screen {
           width: match.arena.grid.width,
         });
 
-        renderer?.draw(match);
+        // The same accumulated bus the sound layer just read, for the same reason: at more
+        // than one tick per frame `match.effects` holds only the last tick's events.
+        renderer?.draw(match, frameEffects);
 
         if (match.done) {
           pauseControl.conceal();

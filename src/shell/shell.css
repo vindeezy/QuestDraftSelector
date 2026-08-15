@@ -206,6 +206,10 @@ button {
 
 .beat-nav-left {
   left: 18px;
+  /* Stacked, so the playback controls sit UNDER Back rather than beside it. The right-hand
+     cluster stays a row: Forward and Resume are peers and read better side by side. */
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .beat-nav-right {
@@ -2093,14 +2097,20 @@ button {
   border-radius: 999px;
 }
 
-/* Everything a screen docks beneath Back: volume, mute, pause, replay. Stacked, left-aligned
-   with the Back button above them, and narrow enough not to crowd the screen's own layout. */
+/* Everything a screen docks beneath Back: volume, mute, pause, replay. Stacked and
+   left-aligned under the Back button, narrow enough not to crowd the screen's own layout. */
 .beat-nav-controls {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 2px;
+}
+
+/* These are controls the viewer is meant to find, unlike the quiet nav buttons they sit
+   beneath, so they do not fade out until hovered. */
+.beat-nav-controls .beat-nav-btn {
+  opacity: 0.75;
 }
 
 .beat-nav-controls:empty {
