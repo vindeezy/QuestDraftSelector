@@ -304,50 +304,212 @@ function sawContact(bus: AudioBus, o: PlayOptions | undefined, blade: SawBlade):
 /** Saw Blade, the weapon. */
 const sawBuzz: Voice = (bus, o) => sawContact(bus, o, WEAPON_BLADE);
 
-/** Spinning Bar. A whine that falls as the bar sheds energy into the target. */
-const spinnerWhine: Voice = (bus, o) => {
-  const { intensity, pan, delay, level } = opt(o);
-  sweep(bus, {
-    from: pitchFor(intensity, 1500),
-    to: pitchFor(intensity, 520),
-    duration: decayFor(intensity) * 1.3,
-    type: 'sawtooth',
-    gain: level * 0.22,
-    pan,
-    delay,
-  });
-  noiseBurst(bus, {
-    duration: decayFor(intensity),
-    frequency: pitchFor(intensity, 2400),
-    q: 5,
-    gain: level * 0.3,
-    pan,
-    delay,
-  });
+/**
+ * A spinning weapon striking armour, described by how its energy is delivered.
+ *
+ * The Spinning Bar and the Vertical Spinner are the same technology — heavy steel turning
+ * very fast, dumping rotational energy into another machine — differing only in the DIRECTION
+ * of the transfer. So they are one function and two configs, the same way the saws and the
+ * flames are.
+ *
+ * Four things happen in both, and every one of them is a real physical stage rather than a
+ * layer added for thickness:
+ *
+ *   collision -> KLANG -> the weapon rotating on THROUGH the contact -> the chassis reacting
+ *
+ * That third stage is what makes these spinners rather than hammers. A hammer stops when it
+ * lands; a spinner keeps turning, so there is always a brief scrape or bite after the impact.
+ * Its direction is the entire difference between the two weapons, and it is why the configs
+ * carry a `contactFrom`/`contactTo` pair rather than a single pitch.
+ */
+interface Spinner {
+  seconds: number;
+  /** The dense low-mid body of the collision. */
+  bodyHz: number;
+  bodyCeiling: number;
+  /** The metallic crack, and how sharply it is focused. */
+  klangHz: number;
+  klangQ: number;
+  klangSeconds: number;
+  /** When the crack lands relative to the rotational contact — the two weapons order these
+   *  differently, and that ordering is most of what tells them apart. */
+  klangDelay: number;
+  /** The weapon turning through the contact. Down for a bar sweeping past and away; UP for a
+   *  spinner tooth catching under armour and lifting. */
+  contactFrom: number;
+  contactTo: number;
+  contactSeconds: number;
+  contactQ: number;
+  contactGain: number;
+  contactDelay: number;
+  /** The chassis ringing dully afterwards. */
+  rattleHz: number;
+  /** Panels and fixings reacting. */
+  debris: number;
+  debrisHz: number;
+}
+
+/**
+ * Spinning Bar: KLANG-KRUNK. Broad, heavy, sideways.
+ *
+ * Lower and wider than the spinner throughout, and the scrape comes AFTER the crack — the bar
+ * lands flat and then sweeps on past, shedding energy as it goes, which is why its contact
+ * slides downward.
+ */
+const BAR: Spinner = {
+  seconds: 0.34,
+  bodyHz: 260,
+  bodyCeiling: 900,
+  klangHz: 760,
+  klangQ: 3.2,
+  klangSeconds: 0.09,
+  klangDelay: 0,
+  contactFrom: 620,
+  contactTo: 300,
+  contactSeconds: 0.11,
+  contactQ: 3,
+  contactGain: 0.75,
+  contactDelay: 0.055,
+  rattleHz: 120,
+  debris: 3,
+  debrisHz: 800,
 };
 
-/** Vertical Spinner. Same family as the bar but higher and thinner, so the two are
- *  distinguishable without being unrelated — they are both spinning metal. */
-const discWhirr: Voice = (bus, o) => {
-  const { intensity, pan, delay, level } = opt(o);
-  sweep(bus, {
-    from: pitchFor(intensity, 2600),
-    to: pitchFor(intensity, 1100),
-    duration: decayFor(intensity),
-    type: 'square',
-    gain: level * 0.16,
-    pan,
-    delay,
-  });
-  noiseBurst(bus, {
-    duration: decayFor(intensity) * 0.8,
-    frequency: pitchFor(intensity, 3400),
-    q: 9,
-    gain: level * 0.3,
-    pan,
-    delay,
-  });
+/**
+ * Vertical Spinner: KRAK-KRRT-KLANG. Sharper, tighter, upward.
+ *
+ * Two changes carry the whole difference, and both are structural rather than tonal.
+ *
+ * The contact sweeps UP rather than down — a tooth catching under armour and driving it
+ * upward, instead of a bar sweeping sideways and away. And the order is inverted: the bite
+ * arrives first and the crack lands after it, because the tooth catches BEFORE it delivers.
+ * The bar cracks first and scrapes past afterwards.
+ *
+ * Everything else is a shade tighter and brighter. Not much — they have to stay obviously the
+ * same technology.
+ */
+const DISC: Spinner = {
+  seconds: 0.3,
+  bodyHz: 300,
+  bodyCeiling: 1050,
+  klangHz: 980,
+  klangQ: 4.2,
+  klangSeconds: 0.07,
+  klangDelay: 0.045,
+  contactFrom: 480,
+  contactTo: 1150,
+  contactSeconds: 0.085,
+  contactQ: 3.8,
+  contactGain: 0.9,
+  contactDelay: 0.008,
+  rattleHz: 145,
+  debris: 4,
+  debrisHz: 950,
 };
+
+/**
+ * Heavy steel meeting armour at speed.
+ *
+ * Kept deliberately clear of two neighbours it could easily collide with. It must not sound
+ * like the saws, which are sustained cuts — everything here is an impact, and the rotational
+ * contact is under 110ms rather than a quarter second of grinding. And it must not sound like
+ * the Hammer, which is a mass collapsing with nothing after it; these always carry that brief
+ * scrape or bite, because the weapon is still turning when it leaves.
+ *
+ * Nothing goes above about 1.9kHz and no Q exceeds 4.2, so it reads as heavy industrial steel
+ * rather than as thin metal, and nothing rings.
+ */
+function spinnerStrike(bus: AudioBus, o: PlayOptions | undefined, spin: Spinner): void {
+  const { intensity, pan, delay, level } = opt(o);
+  const force = clamp01(intensity);
+
+  // 1. The collision. The mass behind the blow, and the reason it reads as heavy rather than
+  //    as a tap: it goes low and it goes there immediately.
+  grind(bus, {
+    duration: 0.16,
+    delay,
+    source: 'noise',
+    frequency: spin.bodyHz,
+    frequencyTo: spin.bodyHz * 0.45,
+    q: 0.7,
+    lowpass: spin.bodyCeiling,
+    attack: 0.004,
+    release: 0.12,
+    gain: level * 0.5,
+    pan,
+  });
+
+  // 2. The KLANG. Metal-on-metal contact. Q stays low enough that it cracks and stops rather
+  //    than ringing on.
+  noiseBurst(bus, {
+    duration: spin.klangSeconds,
+    type: 'bandpass',
+    frequency: spin.klangHz,
+    frequencyTo: spin.klangHz * 0.55,
+    q: spin.klangQ,
+    // 1.8 against the body's 0.5, and they end up comparable. A band-pass at Q 3-4 throws
+    // away roughly five times more amplitude than `grind`'s gentle filter, so matching the
+    // numbers would bury the KLANG under the collision -- which is exactly what the first
+    // version did, and what the spectrum showed before anyone had to listen for it.
+    gain: level * 1.8,
+    pan,
+    delay: delay + spin.klangDelay,
+  });
+
+  // 3. The weapon turning through the contact. The direction of this sweep is the difference
+  //    between the two weapons.
+  grind(bus, {
+    duration: spin.contactSeconds,
+    delay: delay + spin.contactDelay,
+    source: 'noise',
+    frequency: spin.contactFrom,
+    frequencyTo: spin.contactTo,
+    q: spin.contactQ,
+    lowpass: 1900,
+    attack: 0.006,
+    release: 0.05,
+    wanderHz: 40,
+    wanderDepth: 0.3,
+    gain: level * spin.contactGain,
+    pan,
+  });
+
+  // 4. The chassis. A dull low ring that wobbles as the frame absorbs the hit.
+  grind(bus, {
+    duration: spin.seconds - 0.06,
+    delay: delay + 0.02,
+    source: 'triangle',
+    frequency: spin.rattleHz,
+    lowpass: spin.rattleHz * 3,
+    attack: 0.006,
+    release: spin.seconds * 0.5,
+    chopHz: 34,
+    chopDepth: 0.2,
+    gain: level * 0.07,
+    pan,
+  });
+
+  // 5. Panels and fixings reacting. Scales with how hard the blow landed, so a glancing hit
+  //    rattles nothing and a heavy one shakes pieces loose.
+  const pieces = Math.round(spin.debris * (0.4 + force * 0.6));
+  for (let n = 0; n < pieces; n++) {
+    noiseBurst(bus, {
+      duration: 0.014 + Math.random() * 0.016,
+      type: 'bandpass',
+      frequency: spin.debrisHz * (0.7 + Math.random() * 0.7),
+      q: 4.5,
+      gain: level * (0.4 + Math.random() * 0.3),
+      pan,
+      delay: delay + 0.06 + Math.random() * (spin.seconds * 0.55),
+    });
+  }
+}
+
+/** Spinning Bar. */
+const barSmash: Voice = (bus, o) => spinnerStrike(bus, o, BAR);
+
+/** Vertical Spinner. */
+const spinnerBite: Voice = (bus, o) => spinnerStrike(bus, o, DISC);
 
 /**
  * A jet of flame, described by its size.
@@ -1210,6 +1372,8 @@ const pegPing: Voice = (bus, o) => {
  * module-initialisation failure that took down the whole audio layer.
  */
 export const VOICE_SECONDS: Partial<Record<SoundId, number>> = {
+  barSmash: BAR.seconds,
+  spinnerBite: DISC.seconds,
   pegPing: PEG_PING_SECONDS,
 
   // Measured, not intended. These seven were written with their own hardcoded durations long
@@ -1287,8 +1451,8 @@ export const TARGET_PEAK: Record<SoundId, number> = {
   metallicTick: WEAPON_PEAK,
   crushingBlow: WEAPON_PEAK,
   sawBuzz: WEAPON_PEAK,
-  spinnerWhine: WEAPON_PEAK,
-  discWhirr: WEAPON_PEAK,
+  barSmash: WEAPON_PEAK,
+  spinnerBite: WEAPON_PEAK,
   flameWhoosh: WEAPON_PEAK,
   heavyClang: WEAPON_PEAK,
 
@@ -1319,8 +1483,8 @@ export const VOICE_TRIM: Record<SoundId, number> = {
   metallicTick: 11.85,
   crushingBlow: 0.49,
   sawBuzz: 0.73,
-  spinnerWhine: 3.26,
-  discWhirr: 3.69,
+  barSmash: 1.0,
+  spinnerBite: 0.96,
   flameWhoosh: 0.69,
   heavyClang: 1.31,
 
@@ -1349,8 +1513,8 @@ export const PALETTE = {
   metallicTick,
   crushingBlow,
   sawBuzz,
-  spinnerWhine,
-  discWhirr,
+  barSmash,
+  spinnerBite,
   flameWhoosh,
   heavyClang,
   dullThud,

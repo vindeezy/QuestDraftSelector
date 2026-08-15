@@ -41,8 +41,8 @@ function botIndexOf(botId: string | null): number | null {
 export const WEAPON_SOUNDS = new Map<string, SoundId>([
   ['weapon-hammer', 'crushingBlow'],
   ['weapon-saw-blade', 'sawBuzz'],
-  ['weapon-spinning-bar', 'spinnerWhine'],
-  ['weapon-vertical-spinner', 'discWhirr'],
+  ['weapon-spinning-bar', 'barSmash'],
+  ['weapon-vertical-spinner', 'spinnerBite'],
   ['weapon-flamethrower', 'flameWhoosh'],
   ['weapon-ram-plate', 'heavyClang'],
 ]);

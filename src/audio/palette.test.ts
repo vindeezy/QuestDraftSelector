@@ -39,7 +39,7 @@ describe('the palette registry', () => {
     // here with the missing name rather than later with a silent fallback.
     const required: SoundId[] = [
       // one per weapon
-      'crushingBlow', 'sawBuzz', 'spinnerWhine', 'discWhirr', 'flameWhoosh', 'heavyClang',
+      'crushingBlow', 'sawBuzz', 'barSmash', 'spinnerBite', 'flameWhoosh', 'heavyClang',
       // one per ability
       'electricZap', 'nitroWhoosh', 'oilSplat', 'shockwaveBoom', 'repairChime',
       'adrenalineRise', 'smokeHiss',
