@@ -23,6 +23,7 @@ import { DEFAULT_PLINKO, createPlinkoRun, advance } from '../src/sim/plinko/plin
 import { toEventMembers } from '../src/config/roster';
 import { soundFor } from '../src/audio/classify';
 import { EXEMPT, GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../src/audio/voices';
+import { PARTICLE_CAPACITY, burstCount, createParticleField } from '../src/render/vfx/particles';
 // The shipped record, so this measures the fight the league will actually watch rather than
 // whichever seed happened to be typed here.
 import officialRecord from '../data/official-event.json';
@@ -31,6 +32,10 @@ const MS_PER_TICK = 1000 / 60;
 
 /** Running totals for one screen's worth of sound. */
 interface Mix {
+  /** Most particles alive at once, if every effect threw a burst. */
+  peakParticles: number;
+  /** How many spawns the pool had to refuse a fresh slot for. */
+  recycled: number;
   raw: number;
   played: number;
   /** Every voice ringing at once, exempt sounds included. */
@@ -44,7 +49,7 @@ interface Mix {
 
 function newMix(): Mix {
   return {
-    raw: 0, played: 0, peak: 0, peakCapped: 0, worstRawSecond: 0,
+    raw: 0, played: 0, peak: 0, peakCapped: 0, worstRawSecond: 0, peakParticles: 0, recycled: 0,
     requested: new Map(), kept: new Map(),
   };
 }
@@ -87,6 +92,11 @@ function report(label: string, mix: Mix, ticks: number): void {
     `peak overlap  ${mix.peak} voices ringing at once ` +
     `(${mix.peakCapped} of them capped, limit ${GLOBAL_CAP})${over}`,
   );
+  const full = mix.recycled > 0 ? `  <-- pool ran out ${mix.recycled} times` : '';
+  console.log(
+    `peak particles ${mix.peakParticles} alive at once of ${PARTICLE_CAPACITY}` +
+    ` (${Math.round((100 * mix.peakParticles) / PARTICLE_CAPACITY)}% of the pool)${full}`,
+  );
 
   const top = [...mix.requested.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (top.length > 0) {
@@ -120,6 +130,11 @@ for (let index = 0; index < result.battles.length; index++) {
   let rawThisSecond = 0;
   let tick = 0;
 
+  // Every effect throws a burst, which is the worst case FX 2 could possibly ask for -- it
+  // will send some events to the cheaper puff and ring instead. Sizing against the ceiling
+  // means the pool cannot be the thing that breaks when the mapping changes.
+  const particles = createParticleField();
+
   while (!match.done) {
     advanceMatch(match);
     const requests = match.effects.map((effect) => ({
@@ -128,6 +143,18 @@ for (let index = 0; index < result.battles.length; index++) {
     }));
     rawThisSecond += requests.length;
     state = tally(mix, state, requests, tick * MS_PER_TICK);
+
+    for (const effect of match.effects) {
+      const wanted = burstCount(effect.intensity);
+      const free = particles.particles.filter((p) => !p.active).length;
+      if (wanted > free) mix.recycled++;
+      particles.burst({ x: effect.x, y: effect.y, intensity: effect.intensity, tint: 0xffffff });
+    }
+    particles.advance(MS_PER_TICK / 1000);
+    mix.peakParticles = Math.max(
+      mix.peakParticles,
+      particles.particles.reduce((n, p) => n + (p.active ? 1 : 0), 0),
+    );
 
     if (tick % 60 === 59) {
       mix.worstRawSecond = Math.max(mix.worstRawSecond, rawThisSecond);
