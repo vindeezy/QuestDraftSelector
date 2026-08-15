@@ -694,139 +694,120 @@ const nitroWhoosh: Voice = (bus, o) => {
 };
 
 /**
- * Oil Slick. Thick, viscous fluid striking a hard surface, squelching and spreading.
+ * Oil Slick. A bucketful of thick fluid thrown across a hard floor at an angle.
  *
- *     heavy liquid lands -> squelches as it deforms -> folds and spreads outward
+ *     leading edge arrives -> WSHHHH as it runs out across the floor -> thins and settles
  *
- * The whole sound lives between 150Hz and 900Hz, and nothing is allowed a real presence above
- * 1.5kHz. That ceiling is not a stylistic preference — it is the single acoustic difference
- * between oil and water. Bright transients read as thin, splashing droplets; damp them and
- * the same event reads as something heavy and slow.
+ * The important thing about that image is that it is a TRAVELLING sound, not an impact. Fluid
+ * thrown at an angle never strikes one spot: the front arrives and keeps going, spreading and
+ * thinning as it goes. So there is no plop here, and no single moment where it lands. The
+ * rush is the sound, and the arrival is only its leading edge.
  *
- * Five properties do the work, and each corrects a way an earlier version went wrong:
+ * That is a deliberate reversal. An earlier version led with a punchy contact and treated the
+ * spread as its tail, which is right for a blob dropped straight down and wrong for this.
+ * The contact is now soft and smeared -- a 25ms attack rather than 9ms -- and the sustained
+ * layer is the loudest thing in the voice.
  *
- * 1. **A rounded transient, not a sharp one.** The impact is a `grind` with a short attack
- *    rather than a `noiseBurst`, which starts at full gain and is therefore a click. Oil does
- *    not click. It arrives.
- * 2. **Noise leads, tone follows.** The falling pitch is what makes a liquid read as thick,
- *    but led by the tone it becomes a cartoon blop; led by low filtered noise it stays dense.
- * 3. **A MOVING RESONANCE.** This is the squelch, and it was the missing ingredient. A
- *    squish is a formant — a resonant peak sliding downward while broadband noise passes
- *    through it, exactly like a vocal tract closing. Every other layer here keeps Q below 1
- *    to stop the floor ringing; these two sit around Q 3 and sweep hard, which reads as the
- *    liquid itself having a shape that changes rather than as a surface being struck.
- * 4. **Irregular amplitude movement.** `wander` rather than a chop: random depths at random
- *    intervals, so the texture folds and separates unevenly instead of pulsing.
- * 5. **Squelch events during the spread.** Two or three short formant sweeps at random
- *    moments, for portions of the blob separating after the main impact.
+ * What keeps it oil rather than water, given that the reference is literally a bucket of
+ * water: weight and damping. Real water thrown on concrete is bright and thin, with most of
+ * its character above 2kHz. Everything here stays under about 1.9kHz and carries a heavy
+ * low-mid body underneath, so it reads as something with mass moving across the floor.
+ *
+ * Two short formant sweeps survive from the squelch pass, quieter now. Q around 3 gives the
+ * fluid an audible shape that changes as it folds; every other layer stays below Q 1 so the
+ * floor itself never rings.
  */
-const OIL_SPLAT_SECONDS = 0.52;
+const OIL_SPLAT_SECONDS = 0.72;
 
 const oilSplat: Voice = (bus, o) => {
   const { pan, delay, level } = opt(o);
 
-  // 1. The impact. Dense low noise with a rounded onset -- this is the BLUP, and it has to
-  //    LEAD. Balanced by ear it did not: the spread layers summed louder than the contact and
-  //    the whole thing swelled instead of landing. Measured, the peak sat 180ms after onset,
-  //    which is not an impact at all.
+  // 1. The leading edge. Where the fluid first meets the floor -- soft and smeared, because
+  //    thrown at an angle it arrives across a span rather than at a point.
   grind(bus, {
-    duration: 0.17,
+    duration: 0.2,
     delay,
     source: 'noise',
-    frequency: 430,
-    frequencyTo: 195,
-    q: 0.7,
-    lowpass: 1100,
-    attack: 0.009,
-    release: 0.11,
-    gain: level * 0.54,
+    frequency: 950,
+    frequencyTo: 480,
+    q: 0.6,
+    lowpass: 1900,
+    attack: 0.025,
+    release: 0.14,
+    // Shallower wander than the layers behind it: the leading edge is the only part that has
+    // to be reliably present, and a deep random dip on the first frames can start the whole
+    // sound limply. Everything after this can afford to be uneven.
+    wanderHz: 18,
+    wanderDepth: 0.16,
+    gain: level * 0.4,
     pan,
   });
 
-  // 2. The squelch. A resonant peak sliding down through the impact: the sound of a thick
-  //    mass changing shape. Q 3 is enough to have a pitch and nowhere near enough to ring.
+  // 2. The rush. The loudest and longest layer, and the whole point of the sound: fluid
+  //    running out across the floor, sliding downward as it spreads and slows.
   grind(bus, {
-    duration: 0.16,
-    delay: delay + 0.005,
+    duration: OIL_SPLAT_SECONDS - 0.04,
+    delay: delay + 0.03,
     source: 'noise',
-    frequency: 860,
-    frequencyTo: 240,
-    q: 3.2,
-    lowpass: 1500,
-    attack: 0.008,
-    release: 0.1,
-    wanderHz: 22,
-    wanderDepth: 0.35,
+    frequency: 1150,
+    frequencyTo: 330,
+    q: 0.55,
+    lowpass: 1900,
+    attack: 0.03,
+    release: OIL_SPLAT_SECONDS * 0.5,
+    wanderHz: 9,
+    wanderDepth: 0.42,
+    gain: level * 0.5,
+    pan,
+  });
+
+  // 3. The mass underneath. What separates thrown oil from thrown water: weight that keeps
+  //    moving after the bright part of the rush has thinned out.
+  grind(bus, {
+    duration: OIL_SPLAT_SECONDS - 0.08,
+    delay: delay + 0.02,
+    source: 'noise',
+    frequency: 330,
+    frequencyTo: 155,
+    q: 0.6,
+    lowpass: 620,
+    attack: 0.022,
+    release: OIL_SPLAT_SECONDS * 0.45,
+    wanderHz: 6,
+    wanderDepth: 0.36,
     gain: level * 0.3,
     pan,
   });
 
-  // 3. The tonal component. Subtle, and underneath: the note of a blob losing its shape.
-  //    Sine, because a blob has no edge and no harmonics.
+  // 4. A low swell rather than a plop: the note of a mass arriving, well under the rush.
   sweep(bus, {
-    from: 215,
-    to: 78,
-    duration: 0.13,
+    from: 165,
+    to: 72,
+    duration: 0.16,
     type: 'sine',
-    gain: level * 0.2,
+    gain: level * 0.12,
     pan,
     delay,
   });
 
-  // 4. The spread. Folding and separating unevenly as it runs out across the floor.
-  grind(bus, {
-    duration: OIL_SPLAT_SECONDS - 0.09,
-    delay: delay + 0.07,
-    source: 'noise',
-    frequency: 610,
-    frequencyTo: 255,
-    q: 0.6,
-    lowpass: 1400,
-    attack: 0.025,
-    release: 0.24,
-    wanderHz: 14,
-    wanderDepth: 0.62,
-    gain: level * 0.22,
-    pan,
-  });
-
-  // 5. Portions separating. Short formant sweeps at random moments -- the same squelch as
-  //    layer 2, smaller and scattered, so the puddle keeps moving after it lands.
-  const squelches = 3;
-  for (let n = 0; n < squelches; n++) {
-    const from = 520 + Math.random() * 380;
+  // 5. Folding. Short formant sweeps at random moments, for portions of the fluid separating
+  //    as it spreads. Texture inside the rush now, not the headline.
+  for (let n = 0; n < 2; n++) {
+    const from = 520 + Math.random() * 340;
     grind(bus, {
-      duration: 0.075 + Math.random() * 0.05,
-      delay: delay + 0.1 + Math.random() * 0.24,
+      duration: 0.09 + Math.random() * 0.06,
+      delay: delay + 0.12 + Math.random() * 0.3,
       source: 'noise',
       frequency: from,
-      frequencyTo: from * 0.32,
-      q: 3.6,
-      lowpass: 1400,
-      attack: 0.008,
-      release: 0.05,
-      gain: level * 0.16,
+      frequencyTo: from * 0.35,
+      q: 3.2,
+      lowpass: 1500,
+      attack: 0.012,
+      release: 0.06,
+      gain: level * 0.11,
       pan,
     });
   }
-
-  // 6. The weight of it, still moving after the spread has thinned. A wander at a different
-  //    rate again, so nothing lines up into a pulse.
-  grind(bus, {
-    duration: OIL_SPLAT_SECONDS - 0.13,
-    delay: delay + 0.1,
-    source: 'noise',
-    frequency: 280,
-    frequencyTo: 165,
-    q: 0.6,
-    lowpass: 700,
-    attack: 0.04,
-    release: 0.26,
-    wanderHz: 7,
-    wanderDepth: 0.4,
-    gain: level * 0.16,
-    pan,
-  });
 };
 
 /** Shockwave. A push outward, so it swells before it falls rather than starting at its
@@ -1201,7 +1182,7 @@ export const VOICE_TRIM: Record<SoundId, number> = {
   // abilities
   electricZap: 2.86,
   nitroWhoosh: 0.59,
-  oilSplat: 0.8,
+  oilSplat: 0.41,
   repairChime: 0.62,
   adrenalineRise: 0.3,
   smokeHiss: 0.41,
