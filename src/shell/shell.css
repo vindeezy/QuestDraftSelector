@@ -2080,3 +2080,63 @@ button {
   line-height: 1.55;
   white-space: pre;
 }
+
+/* --- volume and mute, on any screen that makes a noise ----------------------------------- */
+
+.audio-controls {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 7px;
+  background: color-mix(in srgb, var(--bg-2) 82%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  /* Above the board and the arena, which both fill their column. */
+  z-index: 3;
+}
+
+.forge-header,
+.battle-header {
+  position: relative;
+}
+
+.audio-controls__mute {
+  padding: 2px 4px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.audio-controls__mute:hover {
+  background: var(--bg-3);
+}
+
+.audio-controls__mute.is-muted {
+  opacity: 0.55;
+}
+
+.audio-controls__slider {
+  width: 88px;
+  accent-color: var(--neon-cyan);
+  cursor: pointer;
+}
+
+.audio-controls__slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (max-width: 720px) {
+  /* The slider is the first thing to go: mute is the control that actually matters in a
+     room, and the header has no width to spare on a phone. */
+  .audio-controls__slider {
+    display: none;
+  }
+}

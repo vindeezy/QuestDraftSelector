@@ -1,23 +1,40 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { landingScreen } from './landing';
-import { getSharedAudioContext, __resetAudioContextForTests } from '../audio';
+import { sharedAudioBus, __resetAudioBusForTests } from '../audio';
 import { FIRST_BEAT } from '../beats';
 import type { ScreenContext } from './types';
 
-/** Stands in for the real `AudioContext` — see `audio.test.ts`'s doc comment for why
- *  jsdom can't provide one itself. Assigned onto `window`/`globalThis` here (rather than
- *  injected through a parameter, the way `audio.test.ts` does it directly) because the
- *  landing screen calls `ensureAudioResumed()` with no arguments, exactly as production
- *  code does — this test is checking that real call path, not the injectable one. */
-class FakeAudioContext {
-  state = 'suspended';
-  resumeCalls = 0;
-  async resume(): Promise<void> {
-    this.resumeCalls++;
-    this.state = 'running';
-  }
+/** Stands in for the real `AudioContext` — jsdom has no Web Audio. Injected through the
+ *  bus's factory seam, so this exercises the production call path: the landing screen asks
+ *  for the shared bus by name, exactly as it does in the browser. */
+function fakeContext() {
+  const node = (name: string) => ({ name, connect: (t: { name: string }) => t });
+  const ctx = {
+    ...node('root'),
+    currentTime: 0,
+    state: 'suspended' as string,
+    destination: node('destination'),
+    resumeCalls: 0,
+    resume() {
+      ctx.resumeCalls++;
+      ctx.state = 'running';
+      return Promise.resolve();
+    },
+    createGain: () => ({ ...node('gain'), gain: { value: 1 } }),
+    createBiquadFilter: () => ({
+      ...node('shelf'), type: '', frequency: { value: 0 }, gain: { value: 0 }, Q: { value: 0 },
+    }),
+    createDynamicsCompressor: () => ({
+      ...node('limiter'),
+      threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 1 },
+      attack: { value: 0 }, release: { value: 0 },
+    }),
+  };
+  return ctx;
 }
+
+let audioCtx: ReturnType<typeof fakeContext> | null = null;
 
 function makeContext(): ScreenContext {
   const container = document.createElement('div');
@@ -32,8 +49,11 @@ function makeContext(): ScreenContext {
 }
 
 beforeEach(() => {
-  __resetAudioContextForTests();
-  (globalThis as unknown as { AudioContext: typeof FakeAudioContext }).AudioContext = FakeAudioContext;
+  audioCtx = null;
+  __resetAudioBusForTests(() => {
+    audioCtx = fakeContext();
+    return audioCtx as unknown as AudioContext;
+  });
 });
 
 describe('landingScreen', () => {
@@ -54,21 +74,30 @@ describe('landingScreen', () => {
     expect(ctx.navigate).toHaveBeenCalledWith('name-select');
   });
 
-  it('clicking Begin creates and resumes the shared AudioContext', async () => {
+  it('clicking Begin unlocks the one shared bus every later screen plays through', () => {
+    // BEGIN is the only click guaranteed to happen before the Forge or a battle needs sound,
+    // and browsers will not start audio outside a gesture. If this stops working the whole
+    // event is silent, with nothing else to hang the unlock off.
     const ctx = makeContext();
     landingScreen.render(ctx);
 
-    expect(getSharedAudioContext()).toBeNull();
+    expect(sharedAudioBus().ready).toBe(false);
     ctx.container.querySelector<HTMLButtonElement>('button')!.click();
 
-    // ensureAudioResumed() is fired without being awaited by the click handler
-    // (audio must never block navigation) -- give its microtasks a turn.
-    await Promise.resolve();
-    await Promise.resolve();
+    expect(sharedAudioBus().ready).toBe(true);
+    expect(audioCtx?.resumeCalls).toBe(1);
+    expect(audioCtx?.state).toBe('running');
+  });
 
-    const audioCtx = getSharedAudioContext() as unknown as FakeAudioContext;
-    expect(audioCtx).not.toBeNull();
-    expect(audioCtx.resumeCalls).toBe(1);
-    expect(audioCtx.state).toBe('running');
+  it('still navigates on a browser that refuses audio', () => {
+    __resetAudioBusForTests(() => {
+      throw new Error('no audio here');
+    });
+    const ctx = makeContext();
+    landingScreen.render(ctx);
+
+    ctx.container.querySelector<HTMLButtonElement>('button')!.click();
+
+    expect(ctx.navigate).toHaveBeenCalledWith('name-select');
   });
 });

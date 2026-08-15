@@ -342,3 +342,17 @@ describe('forgeScreen', () => {
     }
   });
 });
+
+describe('sound', () => {
+  it('puts volume and mute in the header, and takes them away on teardown', () => {
+    const ctx = makeContext();
+    const teardown = forgeScreen('forge-1').render(ctx)!;
+
+    const controls = ctx.container.querySelector('.audio-controls');
+    expect(controls).not.toBeNull();
+    expect(controls!.parentElement!.className).toContain('forge-header');
+
+    teardown();
+    expect(ctx.container.querySelector('.audio-controls')).toBeNull();
+  });
+});

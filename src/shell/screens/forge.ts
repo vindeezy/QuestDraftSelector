@@ -1,5 +1,7 @@
 import { DEFAULT_BOARD } from '../../sim/plinko/board';
-import { DEFAULT_PLINKO, advance, createPlinkoRun, type PlinkoRun } from '../../sim/plinko/plinko';
+import {
+  DEFAULT_PLINKO, advance, createPlinkoRun, type PlinkoEffect, type PlinkoRun,
+} from '../../sim/plinko/plinko';
 import {
   createPlinkoRenderer,
   releaseMargin,
@@ -11,6 +13,9 @@ import { CATEGORIES, partAt, slotCountFor, type CategoryName } from '../../sim/p
 import { ROSTER, type RosterMember } from '../../config/roster';
 import { categoryForBeat, nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
+import { sharedAudioBus } from '../audio';
+import { emptyState, playPlinkoFrame, tickToMs } from '../../audio/play';
+import { mountAudioControls } from './audio-controls';
 import type { Screen, ScreenContext } from './types';
 
 /**
@@ -135,9 +140,22 @@ export function replayForgeBoard(seed: number, category: CategoryName, memberCou
  *
  * Mutates `revealed` in place (ball index -> already shown) and returns the indices
  * newly added this call, in ball order.
+ *
+ * `effects` collects every peg strike across the ticks this call ran, because `advance`
+ * clears the run's own list at the start of each tick — reading `run.effects` afterwards
+ * would hear only the last tick's strikes and silently drop the rest the moment
+ * `TICKS_PER_FRAME` rises above one. Same reason `advanceBattleFrame` accumulates.
  */
-export function stepForgeRun(run: PlinkoRun, revealed: boolean[], ticks: number): number[] {
-  for (let i = 0; i < ticks && !run.done; i++) advance(run);
+export function stepForgeRun(
+  run: PlinkoRun,
+  revealed: boolean[],
+  ticks: number,
+  effects?: PlinkoEffect[],
+): number[] {
+  for (let i = 0; i < ticks && !run.done; i++) {
+    advance(run);
+    if (effects) effects.push(...run.effects);
+  }
 
   const newlyRevealed: number[] = [];
   const slotLine = run.config.board.slotTopY + run.config.ballRadius;
@@ -259,6 +277,12 @@ export function forgeScreen(beat: BeatId): Screen {
       let readTimer: ReturnType<typeof setTimeout> | null = null;
       let renderer: PlinkoRenderer | null = null;
 
+      // Unlocked several beats ago by BEGIN on the landing screen. Each board gets a fresh
+      // mixer state: six boards in a row must not accumulate one another's voice budgets.
+      const bus = sharedAudioBus();
+      let voices = emptyState();
+      let unmountAudioControls: (() => void) | null = null;
+
       // Computed from `run.balls` before anything else touches them — the run is still
       // at tick 0 here, so this reads the true release positions (see `releaseMargin`'s
       // doc comment), the ones the "at rest" pre-drop frame needs to be able to show.
@@ -287,9 +311,22 @@ export function forgeScreen(beat: BeatId): Screen {
       const tick = (): void => {
         if (stopped) return;
 
-        for (const memberIndex of stepForgeRun(run, revealed, TICKS_PER_FRAME)) {
+        const pegHits: PlinkoEffect[] = [];
+        for (const memberIndex of stepForgeRun(run, revealed, TICKS_PER_FRAME, pegHits)) {
           appendResultRow(memberIndex);
         }
+
+        // Pitch follows the ball across the board, so ten balls cascading read as a run of
+        // notes rather than a rattle. Clocked off the run's own tick count for the same
+        // reason the battle is: the mix must not thin out on a machine that drops frames.
+        voices = playPlinkoFrame({
+          bus,
+          effects: pegHits,
+          state: voices,
+          nowMs: tickToMs(run.world.tick),
+          width: run.config.board.width,
+        });
+
         renderer?.draw(run);
 
         if (run.done) {
@@ -312,6 +349,11 @@ export function forgeScreen(beat: BeatId): Screen {
         ctx.navigate(nextBeat(beat)!);
       });
 
+      unmountAudioControls = mountAudioControls({
+        bus,
+        host: root.querySelector<HTMLElement>('.forge-header')!,
+      });
+
       ctx.container.appendChild(root);
 
       return () => {
@@ -320,6 +362,7 @@ export function forgeScreen(beat: BeatId): Screen {
         cancelAnimationFrame(frame);
         if (readTimer !== null) clearTimeout(readTimer);
         renderer?.destroy();
+        unmountAudioControls?.();
       };
     },
   };

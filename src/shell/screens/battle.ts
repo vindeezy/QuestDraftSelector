@@ -6,6 +6,9 @@ import { ROSTER, toEventMembers, type RosterMember } from '../../config/roster';
 import { createArenaRenderer, type ArenaRenderer } from '../../render/arena-renderer';
 import { nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
+import { sharedAudioBus } from '../audio';
+import { emptyState, playFrame, tickToMs } from '../../audio/play';
+import { mountAudioControls } from './audio-controls';
 import { getEventResult, memberBallVisuals } from './forge';
 import type { Screen, ScreenContext } from './types';
 
@@ -208,6 +211,14 @@ export function battleScreen(beat: BeatId): Screen {
       let readTimer: ReturnType<typeof setTimeout> | null = null;
       let renderer: ArenaRenderer | null = null;
 
+      // The bus is already unlocked -- BEGIN on the landing screen did it several beats ago,
+      // which is the only click browsers will accept for the whole event. Each battle starts
+      // from a FRESH mixer state: three battles share one bus but must not share a voice
+      // budget, or battle two would open with battle one's voices still counted against it.
+      const bus = sharedAudioBus();
+      let voices = emptyState();
+      let unmountAudioControls: (() => void) | null = null;
+
       // The arena's canvas is drawn at a fixed native resolution (the grid's own pixel
       // size plus the kill-feed margin, `arena-renderer.ts`'s `KILL_FEED_WIDTH`) — never
       // measured from the host element the way `build-reveal.ts`'s portrait is. CSS alone
@@ -247,10 +258,23 @@ export function battleScreen(beat: BeatId): Screen {
 
         const frameEffects: Effect[] = [];
         advanceBattleFrame(match, TICKS_PER_FRAME, frameEffects);
-        // Consumption point: sound and VFX (a later plan — see the module doc comment and
-        // design spec §6/§7) read `frameEffects` here, once per rendered frame, after every
-        // tick that ran this frame has already contributed to it. Nothing reads it yet.
-        void frameEffects;
+
+        // The consumption point WEB 4 reserved. Read once per rendered frame, after every
+        // tick that ran this frame has contributed to it -- which is why `advanceBattleFrame`
+        // accumulates rather than the loop reading `match.effects` directly: at more than one
+        // tick per frame the earlier ticks' effects would already have been cleared.
+        //
+        // Clocked off the simulation's own tick count, not the wall. A machine that cannot
+        // keep 60fps should get the same mix as one that can, and `performance.now()` here
+        // would quietly thin the sound out on exactly the laptop that is already struggling.
+        voices = playFrame({
+          bus,
+          effects: frameEffects,
+          builds: event.builds,
+          state: voices,
+          nowMs: tickToMs(match.world.tick),
+          width: match.arena.grid.width,
+        });
 
         renderer?.draw(match);
 
@@ -274,6 +298,11 @@ export function battleScreen(beat: BeatId): Screen {
         ctx.navigate(nextBeat(beat)!);
       });
 
+      unmountAudioControls = mountAudioControls({
+        bus,
+        host: root.querySelector<HTMLElement>('.battle-header')!,
+      });
+
       ctx.container.appendChild(root);
 
       return () => {
@@ -282,6 +311,7 @@ export function battleScreen(beat: BeatId): Screen {
         cancelAnimationFrame(frame);
         if (readTimer !== null) clearTimeout(readTimer);
         renderer?.destroy();
+        unmountAudioControls?.();
       };
     },
   };

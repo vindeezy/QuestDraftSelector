@@ -1,68 +1,103 @@
-// @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ensureAudioResumed, getSharedAudioContext, __resetAudioContextForTests } from './audio';
-import type { AudioContextLike } from './audio';
+import { ensureAudioResumed, sharedAudioBus, __resetAudioBusForTests } from './audio';
 
-/** A minimal stand-in for the real `AudioContext` — jsdom doesn't implement Web Audio
- *  at all, so every test here injects one of these rather than relying on a global. */
-class FakeAudioContext implements AudioContextLike {
-  state: string = 'suspended';
-  resumeCalls = 0;
+/**
+ * There must be exactly ONE audio bus for the whole event.
+ *
+ * This file used to test a second `AudioContext` that lived here, separate from the one the
+ * sound layer built. Two contexts means two output graphs: master volume and mute reach one
+ * of them, the BEGIN gesture unlocks the other, and neither problem shows up until something
+ * actually makes a noise. These tests exist to keep it collapsed.
+ *
+ * jsdom has no Web Audio, so the context factory is injected — the same seam `progress.ts`
+ * uses for `localStorage`.
+ */
 
-  async resume(): Promise<void> {
-    this.resumeCalls++;
-    this.state = 'running';
-  }
+interface FakeNode {
+  name: string;
+  connect(target: { name: string }): unknown;
 }
 
-/** Stands in for a browser old enough (or locked down enough) to have no Web Audio at
- *  all — constructing it always throws, the way calling a missing global would. */
-class ThrowingAudioContext implements AudioContextLike {
-  state = 'suspended';
-  constructor() {
-    throw new Error('AudioContext is not available');
-  }
-  async resume(): Promise<void> {
-    // unreachable — the constructor always throws first
-  }
+function fakeContext(log: string[]) {
+  const node = (name: string): FakeNode => ({
+    name,
+    connect(target) {
+      log.push(`${name}->${target.name}`);
+      return target;
+    },
+  });
+  const ctx = {
+    ...node('root'),
+    currentTime: 0,
+    state: 'suspended' as string,
+    destination: node('destination'),
+    resume() {
+      ctx.state = 'running';
+      log.push('resume');
+      return Promise.resolve();
+    },
+    createGain: () => ({ ...node('gain'), gain: { value: 1 } }),
+    createBiquadFilter: () => ({
+      ...node('shelf'), type: '', frequency: { value: 0 }, gain: { value: 0 }, Q: { value: 0 },
+    }),
+    createDynamicsCompressor: () => ({
+      ...node('limiter'),
+      threshold: { value: 0 }, knee: { value: 0 }, ratio: { value: 1 },
+      attack: { value: 0 }, release: { value: 0 },
+    }),
+  };
+  return ctx;
 }
+
+let log: string[];
+let built: number;
 
 beforeEach(() => {
-  __resetAudioContextForTests();
+  log = [];
+  built = 0;
+  __resetAudioBusForTests(() => {
+    built++;
+    return fakeContext(log) as unknown as AudioContext;
+  });
 });
 
-describe('ensureAudioResumed', () => {
-  it('creates and resumes a suspended context', async () => {
-    const ctx = await ensureAudioResumed(FakeAudioContext);
-    expect(ctx).not.toBeNull();
-    expect((ctx as FakeAudioContext).resumeCalls).toBe(1);
-    expect(ctx!.state).toBe('running');
+describe('the shared bus', () => {
+  it('is the same bus every time it is asked for', () => {
+    expect(sharedAudioBus()).toBe(sharedAudioBus());
+    expect(ensureAudioResumed()).toBe(sharedAudioBus());
   });
 
-  it('reuses the same context across repeated calls instead of creating a new one', async () => {
-    const first = await ensureAudioResumed(FakeAudioContext);
-    const second = await ensureAudioResumed(FakeAudioContext);
-    expect(second).toBe(first);
+  it('stays silent until unlocked, because browsers block audio before a gesture', () => {
+    expect(sharedAudioBus().ready).toBe(false);
+    expect(built).toBe(0);
+
+    ensureAudioResumed();
+
+    expect(sharedAudioBus().ready).toBe(true);
+    expect(built).toBe(1);
+    expect(log).toContain('resume');
   });
 
-  it('does not call resume() again once the context is already running', async () => {
-    const first = (await ensureAudioResumed(FakeAudioContext)) as FakeAudioContext;
-    expect(first.resumeCalls).toBe(1);
-    await ensureAudioResumed(FakeAudioContext);
-    expect(first.resumeCalls).toBe(1);
+  it('is idempotent, because BEGIN can be clicked twice', () => {
+    ensureAudioResumed();
+    ensureAudioResumed();
+    ensureAudioResumed();
+    expect(built).toBe(1);
   });
 
-  it('returns null, never throws, when no AudioContext constructor is available', async () => {
-    await expect(ensureAudioResumed(null)).resolves.toBeNull();
+  it('keeps a volume set before the gesture', () => {
+    // The controls exist on screens the viewer may reach before anything makes a sound.
+    sharedAudioBus().setVolume(0.4);
+    ensureAudioResumed();
+    expect(sharedAudioBus().volume).toBeCloseTo(0.4);
+    expect(sharedAudioBus().masterGain?.gain.value).toBeCloseTo(0.4);
   });
 
-  it('returns null, never throws, when constructing the context itself throws', async () => {
-    await expect(ensureAudioResumed(ThrowingAudioContext)).resolves.toBeNull();
-  });
-
-  it('updates the module-level singleton read by getSharedAudioContext', async () => {
-    expect(getSharedAudioContext()).toBeNull();
-    const ctx = await ensureAudioResumed(FakeAudioContext);
-    expect(getSharedAudioContext()).toBe(ctx);
+  it('lets the walkthrough continue on a browser with no Web Audio at all', () => {
+    __resetAudioBusForTests(() => {
+      throw new Error('no audio here');
+    });
+    expect(() => ensureAudioResumed()).not.toThrow();
+    expect(sharedAudioBus().ready).toBe(false);
   });
 });

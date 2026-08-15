@@ -257,3 +257,19 @@ describe('battleScreen', () => {
     }
   }, 30000);
 });
+
+describe('sound', () => {
+  it('puts volume and mute in the header, and takes them away on teardown', () => {
+    // Draft night is ten people in a room around one screen. Somebody will want it quieter,
+    // and the control has to be on the screen that is making the noise.
+    const ctx = makeContext();
+    const teardown = battleScreen('battle-1').render(ctx)!;
+
+    const controls = ctx.container.querySelector('.audio-controls');
+    expect(controls).not.toBeNull();
+    expect(controls!.parentElement!.className).toContain('battle-header');
+
+    teardown();
+    expect(ctx.container.querySelector('.audio-controls')).toBeNull();
+  });
+});
