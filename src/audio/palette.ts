@@ -322,11 +322,32 @@ const sawBuzz: Voice = (bus, o) => sawContact(bus, o, WEAPON_BLADE);
  * Its direction is the entire difference between the two weapons, and it is why the configs
  * carry a `contactFrom`/`contactTo` pair rather than a single pitch.
  */
+/**
+ * The Hammer's weight, borrowed.
+ *
+ * A lowpass corner falling from bright to rubble with a sine sliding underneath it: the exact
+ * shape of `crushingBlow`. Optional, because only the bar wants it — a hybrid of the two was
+ * asked for at the watch gate, and this is the half that comes from the Hammer.
+ */
+interface Collapse {
+  fromHz: number;
+  toHz: number;
+  seconds: number;
+  gain: number;
+  subFromHz: number;
+  subToHz: number;
+  subSeconds: number;
+  subGain: number;
+}
+
 interface Spinner {
   seconds: number;
   /** The dense low-mid body of the collision. */
   bodyHz: number;
   bodyCeiling: number;
+  bodyGain: number;
+  /** A mass collapsing under the collision. Only the bar has one. */
+  collapse?: Collapse;
   /** The metallic crack, and how sharply it is focused. */
   klangHz: number;
   klangQ: number;
@@ -355,11 +376,30 @@ interface Spinner {
  * Lower and wider than the spinner throughout, and the scrape comes AFTER the crack — the bar
  * lands flat and then sweeps on past, shedding energy as it goes, which is why its contact
  * slides downward.
+ *
+ * A hybrid, from the watch gate: it keeps everything that makes it a spinner — the crack, the
+ * sideways scrape, the chassis rattle, the debris — and takes its weight from the Hammer,
+ * whose collapsing lowpass now sits underneath the whole thing. That is also what makes it
+ * nearly twice the spinner's length, which suits a weapon meant to read as broad and heavy
+ * against one meant to read as sharp and tight.
  */
 const BAR: Spinner = {
-  seconds: 0.34,
+  seconds: 0.55,
   bodyHz: 260,
   bodyCeiling: 900,
+  // Pulled well back: the collapse below now carries the weight, and leaving both at full
+  // strength just muddies the low end with two things saying the same thing.
+  bodyGain: 0.22,
+  collapse: {
+    fromHz: 1600,
+    toHz: 70,
+    seconds: 0.5,
+    gain: 0.62,
+    subFromHz: 180,
+    subToHz: 35,
+    subSeconds: 0.42,
+    subGain: 0.4,
+  },
   klangHz: 760,
   klangQ: 3.2,
   klangSeconds: 0.09,
@@ -392,6 +432,7 @@ const DISC: Spinner = {
   seconds: 0.3,
   bodyHz: 300,
   bodyCeiling: 1050,
+  bodyGain: 0.5,
   klangHz: 980,
   klangQ: 4.2,
   klangSeconds: 0.07,
@@ -423,8 +464,32 @@ function spinnerStrike(bus: AudioBus, o: PlayOptions | undefined, spin: Spinner)
   const { intensity, pan, delay, level } = opt(o);
   const force = clamp01(intensity);
 
-  // 1. The collision. The mass behind the blow, and the reason it reads as heavy rather than
-  //    as a tap: it goes low and it goes there immediately.
+  // 1a. The collapse, when the weapon has one. This is the Hammer's own shape, and it is what
+  //     makes the bar feel like something enormous arriving rather than something quick.
+  if (spin.collapse) {
+    const c = spin.collapse;
+    noiseBurst(bus, {
+      duration: c.seconds,
+      type: 'lowpass',
+      frequency: c.fromHz,
+      frequencyTo: c.toHz,
+      q: 0.8,
+      gain: level * c.gain,
+      pan,
+      delay,
+    });
+    sweep(bus, {
+      from: c.subFromHz,
+      to: c.subToHz,
+      duration: c.subSeconds,
+      gain: level * c.subGain,
+      pan,
+      delay,
+    });
+  }
+
+  // 1b. The collision. The reason it reads as heavy rather than as a tap: it goes low and it
+  //     goes there immediately.
   grind(bus, {
     duration: 0.16,
     delay,
@@ -435,7 +500,7 @@ function spinnerStrike(bus: AudioBus, o: PlayOptions | undefined, spin: Spinner)
     lowpass: spin.bodyCeiling,
     attack: 0.004,
     release: 0.12,
-    gain: level * 0.5,
+    gain: level * spin.bodyGain,
     pan,
   });
 
@@ -1483,8 +1548,8 @@ export const VOICE_TRIM: Record<SoundId, number> = {
   metallicTick: 11.85,
   crushingBlow: 0.49,
   sawBuzz: 0.73,
-  barSmash: 1.0,
-  spinnerBite: 0.96,
+  barSmash: 0.66,
+  spinnerBite: 1.1,
   flameWhoosh: 0.69,
   heavyClang: 1.31,
 
