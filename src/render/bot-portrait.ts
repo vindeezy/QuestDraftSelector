@@ -51,12 +51,22 @@ export interface BotPortraitAnchors {
   armour: Point2;
 }
 
+export interface BotPortraitWeapon {
+  /** The moving part. Rotate or scale this; the mount around it keeps it attached. */
+  node: Container;
+  motion: WeaponMotion;
+  /** The nozzle or contact point, in the portrait's own local units — the arena scales it. */
+  muzzle: Point2;
+}
+
 export interface BotPortraitDrawing {
   /** Local origin is the bot's own centre, facing +x — the same "heading 0 -> +x"
    *  convention `arena-renderer.ts` already uses for `cosOf(bot.heading)`, so a future
    *  caller can rotate this exactly the way it already rotates a heading spike. */
   view: Container;
   anchors: BotPortraitAnchors;
+  /** Everything a caller needs to animate the weapon. The build reveal ignores it. */
+  weapon: BotPortraitWeapon;
   /** The chassis's own drawn radius, in local units — `CHASSIS_BASE_RADIUS` scaled per
    *  chassis (only Tower's differs, see `chassisRadiusFor`). A caller fitting the
    *  portrait into a box can use this instead of re-measuring bounds. */
@@ -377,7 +387,26 @@ const WEAPON_DARK = 0x393f4a;
  *
  * Returns the weapon's own outermost point — the tip a leader line should land on.
  */
-function drawWeapon(g: Graphics, weaponId: string, frontX: number): Point2 {
+/**
+ * How a weapon moves under its own power.
+ *
+ * Top-down matters here. A saw blade and a spinning bar rotate in the plane we are looking
+ * at, so they simply spin. A VERTICAL spinner does not: its disc turns about a horizontal
+ * axis, so from above it does not rotate at all — it appears to thin and thicken as the disc
+ * presents its edge and then its face. Spinning it in-plane would be the easy thing to do and
+ * would read as the wrong machine.
+ */
+export type WeaponMotion = 'spin' | 'edge' | 'swing' | 'jet' | 'none';
+
+export interface WeaponDrawing {
+  /** Where a leader line should land — the tip, as before. */
+  tip: Point2;
+  /** The point the weapon moves about: a blade's centre, a haft's root, a nozzle's mouth. */
+  pivot: Point2;
+  motion: WeaponMotion;
+}
+
+function drawWeapon(g: Graphics, weaponId: string, frontX: number): WeaponDrawing {
   switch (weaponId) {
     case 'weapon-vertical-spinner': {
       const cx = frontX + 14;
@@ -386,7 +415,7 @@ function drawWeapon(g: Graphics, weaponId: string, frontX: number): Point2 {
       g.moveTo(cx, -22)
         .lineTo(cx, 22)
         .stroke({ width: 2, color: 0xffffff, alpha: 0.5 });
-      return { x: cx, y: -26 };
+      return { tip: { x: cx, y: -26 }, pivot: { x: cx, y: 0 }, motion: 'edge' };
     }
     case 'weapon-hammer': {
       const headX = frontX + 22;
@@ -394,7 +423,9 @@ function drawWeapon(g: Graphics, weaponId: string, frontX: number): Point2 {
         .lineTo(headX - 10, 0)
         .stroke({ width: 6, color: WEAPON_DARK });
       g.poly([headX - 12, -20, headX + 10, -14, headX + 10, 14, headX - 12, 20]).fill(WEAPON_METAL);
-      return { x: headX + 10, y: 0 };
+      // Pivots at the haft's root, where an arm would hold it, so it swings rather than
+      // orbiting the bot.
+      return { tip: { x: headX + 10, y: 0 }, pivot: { x: frontX - 6, y: 0 }, motion: 'swing' };
     }
     case 'weapon-saw-blade': {
       const cx = frontX + 12;
@@ -409,28 +440,34 @@ function drawWeapon(g: Graphics, weaponId: string, frontX: number): Point2 {
       // outer radius itself. Anchoring at the outer radius directly would land outside
       // the shape actually drawn.
       const halfStep = Math.PI / teeth;
-      return { x: cx + outer * Math.cos(halfStep), y: 0 };
+      return {
+        tip: { x: cx + outer * Math.cos(halfStep), y: 0 },
+        pivot: { x: cx, y: 0 },
+        motion: 'spin',
+      };
     }
     case 'weapon-spinning-bar': {
       const cx = frontX + 4;
       g.rect(cx - 4, -30, 8, 60).fill(WEAPON_METAL);
       g.circle(cx, 0, 6).fill(WEAPON_DARK);
-      return { x: cx, y: -30 };
+      return { tip: { x: cx, y: -30 }, pivot: { x: cx, y: 0 }, motion: 'spin' };
     }
     case 'weapon-ram-plate': {
       g.roundRect(frontX - 4, -26, 16, 52, 3).fill(WEAPON_METAL);
       g.roundRect(frontX - 4, -26, 16, 52, 3).stroke({ width: 2, color: WEAPON_DARK, alpha: 0.85 });
-      return { x: frontX + 12, y: 0 };
+      return { tip: { x: frontX + 12, y: 0 }, pivot: { x: frontX, y: 0 }, motion: 'none' };
     }
     case 'weapon-flamethrower': {
       const tipX = frontX + 26;
       g.poly([frontX - 2, -8, tipX, -4, tipX, 4, frontX - 2, 8]).fill(WEAPON_DARK);
       g.circle(tipX, 0, 5).fill(0xff8a3d);
       g.circle(tipX, 0, 5).stroke({ width: 1.5, color: 0xffd23d, alpha: 0.9 });
-      return { x: tipX, y: 0 };
+      // The nozzle mouth: where flame has to come from, or it looks like the bot is on
+      // fire rather than firing.
+      return { tip: { x: tipX, y: 0 }, pivot: { x: tipX, y: 0 }, motion: 'jet' };
     }
     default:
-      return { x: frontX, y: 0 };
+      return { tip: { x: frontX, y: 0 }, pivot: { x: frontX, y: 0 }, motion: 'none' };
   }
 }
 
@@ -588,22 +625,34 @@ export function drawBotPortrait(
 
   const weaponGfx = new Graphics();
   const frontX = extentX(shape, 1);
-  const weaponAnchor = drawWeapon(weaponGfx, weaponPart.id, frontX);
+  const drawn = drawWeapon(weaponGfx, weaponPart.id, frontX);
+  const weaponAnchor = drawn.tip;
   const weaponScale = options.weaponScale ?? 1;
-  if (weaponScale !== 1) {
-    // Scaled about the mount point, not the bot's centre: pivoting at (frontX, 0) and
-    // positioning there leaves that point fixed while everything drawn beyond it grows.
-    // Scaling about the origin would push the weapon off the chassis as it enlarged.
-    weaponGfx.pivot.set(frontX, 0);
-    weaponGfx.position.set(frontX, 0);
-    weaponGfx.scale.set(weaponScale);
-  }
-  view.addChild(weaponGfx);
+
+  // Two nested transforms, because the weapon needs two different centres at once. The MOUNT
+  // scales about where the weapon meets the chassis, so enlarging it grows the weapon outward
+  // instead of pushing it off the bot. The moving part inside pivots about the weapon's own
+  // centre, so a blade spins in place rather than orbiting the chassis. One container cannot
+  // do both: pivot and position are a single point.
+  const weaponMount = new Container();
+  weaponMount.pivot.set(frontX, 0);
+  weaponMount.position.set(frontX, 0);
+  weaponMount.scale.set(weaponScale);
+
+  weaponGfx.pivot.set(drawn.pivot.x, drawn.pivot.y);
+  weaponGfx.position.set(drawn.pivot.x, drawn.pivot.y);
+  weaponMount.addChild(weaponGfx);
+  view.addChild(weaponMount);
 
   const chassisAnchor: Point2 = { x: extentX(shape, -1), y: 0 };
 
   return {
     view,
+    weapon: {
+      node: weaponGfx,
+      motion: drawn.motion,
+      muzzle: { x: drawn.tip.x, y: drawn.tip.y },
+    },
     anchors: {
       chassis: chassisAnchor,
       // Moved with the weapon, so a leader line still lands on the tip it points at.

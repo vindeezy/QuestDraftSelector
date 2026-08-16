@@ -118,8 +118,25 @@ export function resolveHit(
   // One weaponHit per landed blow, positioned on the bot that got hit — where the
   // sparks belong. Intensity is normalised damage, not the raw number, so a consumer
   // never needs to know the game's damage scale.
+  //
+  // `source` carries the ATTACKER, which is what `source` has always meant: the thing that
+  // caused this. For a hazard it is the zone or emitter; for a blow it is the bot that
+  // landed it. The renderer needs it because two of the weapon animations belong to the
+  // attacker rather than the victim — a hammer swings on the bot holding it, and flame comes
+  // out of a nozzle rather than appearing on whoever is being burned.
+  //
+  // Adding it cannot change the simulation: effects are derived, cleared every tick, and
+  // never part of the checksum. See `effects.ts` for that contract.
   if (effects) {
-    pushEffect(effects, 'weaponHit', target.body.x, target.body.y, weaponHitIntensity(dealt), target.body.id);
+    pushEffect(
+      effects,
+      'weaponHit',
+      target.body.x,
+      target.body.y,
+      weaponHitIntensity(dealt),
+      target.body.id,
+      attacker.body.id,
+    );
   }
 
   // Reflect. Spiked Composite is the only thing that changes the ATTACKER's maths.

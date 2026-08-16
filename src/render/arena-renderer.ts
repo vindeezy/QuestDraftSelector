@@ -7,7 +7,7 @@ import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/su
 import { ZoneShape } from '../sim/arena/zone';
 import { isActive } from '../sim/arena/activation';
 import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
-import { drawBotPortrait } from './bot-portrait';
+import { drawBotPortrait, type BotPortraitWeapon } from './bot-portrait';
 import type { BotBuild } from '../sim/parts/assemble';
 import type { Elimination, Match } from '../sim/arena/match';
 import type { Effect } from '../sim/arena/effects';
@@ -222,6 +222,39 @@ const SHAKE_SECONDS = 0.28;
  */
 const SHAKE_PIXELS = 4;
 
+/**
+ * Radians a spinning weapon turns per simulation tick.
+ *
+ * Driven off `match.world.tick` rather than wall-clock time, so a replay of the same seed
+ * shows the blade at the same angle every time. Nothing depends on that -- visuals are never
+ * checksummed -- but Replay exists, and a fight that looked different the second time would
+ * quietly undermine the thing the whole site is built on.
+ *
+ * Deliberately not the real rpm. A blade turning at anything like its true speed under a 60Hz
+ * sampler is a stroboscope: it reads as stationary, or as slowly turning backwards. This is
+ * the fastest it can go while still obviously spinning forwards.
+ */
+const SPIN_PER_TICK = 0.42;
+
+/**
+ * Ticks a hammer takes to swing through and settle back.
+ *
+ * Measured against how often a hammer actually connects: 57-77 landed blows across a battle,
+ * roughly one every two seconds. At fourteen ticks the swing lasted under a quarter second,
+ * so the weapon sat still, blinked, and froze again -- which reads as a bug rather than as a
+ * hammer. Long enough here to be seen, short enough to be over before the next blow.
+ */
+const SWING_TICKS = 26;
+
+/** How far a hammer swings, in radians. */
+const SWING_ARC = 1.15;
+
+/** Ticks a flamethrower keeps burning after its last landed hit. */
+const FLAME_TICKS = 10;
+
+/** Half-angle of the flame cone. */
+const FLAME_SPREAD = 0.34;
+
 /** The radius the particle texture is drawn at, so a particle's `size` becomes a scale. */
 const DOT_RADIUS = 8;
 
@@ -331,17 +364,28 @@ export async function createArenaRenderer(
    */
   const silhouetteLayer = new Container();
   world.addChild(silhouetteLayer);
-  const silhouettes: (Container | null)[] = match.bots.map((bot, index) => {
-    const build = builds?.[index];
-    if (!build) return null;
-    const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
-      weaponScale: ARENA_WEAPON_SCALE,
-    });
-    const scale = bot.body.radius / drawing.radius;
-    drawing.view.scale.set(scale);
-    silhouetteLayer.addChild(drawing.view);
-    return drawing.view;
-  });
+  const silhouettes: (Container | null)[] = [];
+
+  /** Per bot: how its weapon moves, and where its muzzle sits in ARENA units. */
+  const weapons: (({ scale: number } & BotPortraitWeapon) | null)[] = match.bots.map(
+    (bot, index) => {
+      const build = builds?.[index];
+      if (!build) {
+        silhouettes.push(null);
+        return null;
+      }
+      const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
+        weaponScale: ARENA_WEAPON_SCALE,
+      });
+      const scale = bot.body.radius / drawing.radius;
+      drawing.view.scale.set(scale);
+      silhouetteLayer.addChild(drawing.view);
+      silhouettes.push(drawing.view);
+      // The muzzle comes back in the portrait's own units; everything drawn here is in arena
+      // units, and the two differ by the same factor the silhouette was scaled by.
+      return { ...drawing.weapon, scale: scale * ARENA_WEAPON_SCALE };
+    },
+  );
 
   /**
    * Sparks and dust.
@@ -439,6 +483,10 @@ export async function createArenaRenderer(
    * own machine in a ten-bot scrum actually needs.
    */
   const flash = match.bots.map(() => 0);
+
+  /** Ticks remaining on each bot's hammer swing, and on each flamethrower's burn. */
+  const swing = match.bots.map(() => 0);
+  const burn = match.bots.map(() => 0);
 
   /** Current shake energy, 0-1, decaying every frame. */
   let shake = 0;
@@ -670,6 +718,17 @@ export async function createArenaRenderer(
         if (index !== null && index < flash.length) flash[index] = 1;
       }
 
+      // Weapon motion belongs to the ATTACKER, which `source` names. The victim gets the
+      // flash and the sparks; the bot that swung gets the swing.
+      if (effect.kind === 'weaponHit') {
+        const by = botIndexOf(effect.source ?? null);
+        if (by !== null && by < swing.length) {
+          const motion = weapons[by]?.motion;
+          if (motion === 'swing') swing[by] = SWING_TICKS;
+          else if (motion === 'jet') burn[by] = FLAME_TICKS;
+        }
+      }
+
       // The strongest event of the frame wins rather than accumulating: three eliminations at
       // once is a bigger moment, not three times the earthquake.
       if (!calm && visual.shake > shake) shake = Math.min(visual.shake, SHAKE_CEILING);
@@ -679,6 +738,10 @@ export async function createArenaRenderer(
 
     for (let i = 0; i < flash.length; i++) {
       flash[i] = Math.max(0, flash[i]! - FRAME_SECONDS / FLASH_SECONDS);
+      // Counted in ticks rather than seconds, because they are wound by simulation events
+      // and read by a simulation-clocked animation.
+      swing[i] = Math.max(0, swing[i]! - 1);
+      burn[i] = Math.max(0, burn[i]! - 1);
     }
     shake = Math.max(0, shake - FRAME_SECONDS / SHAKE_SECONDS);
 
@@ -762,7 +825,60 @@ export async function createArenaRenderer(
         silhouette.visible = true;
         silhouette.x = x;
         silhouette.y = y;
-        silhouette.rotation = (bot.heading / ANGLE_STEPS) * Math.PI * 2;
+        const heading = (bot.heading / ANGLE_STEPS) * Math.PI * 2;
+        silhouette.rotation = heading;
+
+        // The weapon moves under its own power, on top of wherever the bot is facing.
+        const weapon = weapons[index];
+        if (weapon) {
+          switch (weapon.motion) {
+            case 'spin':
+              // A saw or a bar turning in the plane we are looking down on. Wrapped rather
+              // than left to accumulate: a three-minute battle would otherwise reach several
+              // thousand radians, where float precision starts to visibly quantise the angle.
+              weapon.node.rotation = (current.world.tick * SPIN_PER_TICK) % (Math.PI * 2);
+              break;
+
+            case 'edge': {
+              // A vertical spinner's disc turns about a HORIZONTAL axis, so from above it
+              // never rotates -- it thins to an edge and swells back to its face twice per
+              // revolution. Spinning it in-plane would be easier and would read as a
+              // different machine entirely.
+              const phase = Math.cos(current.world.tick * SPIN_PER_TICK);
+              weapon.node.scale.set(0.18 + 0.82 * Math.abs(phase), 1);
+              break;
+            }
+
+            case 'swing': {
+              // Wound back and released: fast through the blow, slower returning, which is
+              // what makes it read as a swing rather than a wobble.
+              const left = swing[index] ?? 0;
+              const t = left / SWING_TICKS;
+              weapon.node.rotation = -SWING_ARC * Math.sin(t * Math.PI) * (t > 0.5 ? 1 : 0.45);
+              break;
+            }
+
+            case 'jet': {
+              if ((burn[index] ?? 0) > 0) {
+                // From the nozzle, along the bot's heading. The muzzle is in the portrait's
+                // own units, rotated into the arena with the bot.
+                const reach = weapon.muzzle.x * weapon.scale;
+                field.jet({
+                  x: x + Math.cos(heading) * reach,
+                  y: y + Math.sin(heading) * reach,
+                  intensity: calm ? 0.35 : 0.75,
+                  tint: 0xff9a3c,
+                  angle: heading,
+                  spread: FLAME_SPREAD,
+                });
+              }
+              break;
+            }
+
+            default:
+              break;
+          }
+        }
         // No heading spike: the silhouette faces where the bot faces, so the shape itself
         // now says what the spike used to.
       } else {

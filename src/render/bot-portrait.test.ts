@@ -71,8 +71,16 @@ function geometrySignature(g: Graphics): string {
  *  every other test can just index into `view.children` without re-deriving it. */
 function layersOf(build: BotBuild, colour = MEMBER_COLOUR) {
   const drawing = drawBotPortrait(build, colour);
-  const [chassisLayer, armourLayer, weaponLayer] = drawing.view.children as Graphics[];
-  return { drawing, chassisLayer: chassisLayer!, armourLayer: armourLayer!, weaponLayer: weaponLayer! };
+  const [chassisLayer, armourLayer] = drawing.view.children as Graphics[];
+  // The weapon is reached through the drawing's own handle rather than by child index. It
+  // sits inside a mount container now (so it can scale about the chassis and spin about its
+  // own centre at the same time), and an index-based lookup silently found the wrong node.
+  return {
+    drawing,
+    chassisLayer: chassisLayer!,
+    armourLayer: armourLayer!,
+    weaponLayer: drawing.weapon.node as Graphics,
+  };
 }
 
 describe('drawBotPortrait — chassis silhouettes', () => {

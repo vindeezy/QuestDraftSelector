@@ -227,3 +227,40 @@ describe('clear', () => {
     expect(live(f)).toBe(0);
   });
 });
+
+describe('the jet', () => {
+  it('throws everything within its cone, not in all directions', () => {
+    // The whole point of the shape. A jet that radiates is a bot on fire rather than a bot
+    // firing, which is precisely the distinction the flamethrower has to make.
+    const f = field(fakeRandom([0, 0.25, 0.5, 0.75, 1]));
+    f.jet({ x: 0, y: 0, intensity: 1, tint: 0xffffff, angle: 0, spread: 0.4 });
+
+    const live = f.particles.filter((p) => p.active);
+    expect(live.length).toBeGreaterThan(3);
+    for (const p of live) {
+      const angle = Math.atan2(p.vy, p.vx);
+      expect(Math.abs(angle), `${angle}`).toBeLessThanOrEqual(0.4 + 1e-6);
+    }
+  });
+
+  it('points where it is aimed', () => {
+    const f = field(fakeRandom([0.5]));
+    f.jet({ x: 0, y: 0, intensity: 1, tint: 0xffffff, angle: Math.PI / 2, spread: 0.1 });
+    for (const p of f.particles.filter((p) => p.active)) {
+      expect(p.vy).toBeGreaterThan(0); // +y, straight down the aim
+      expect(Math.abs(p.vx)).toBeLessThan(Math.abs(p.vy));
+    }
+  });
+
+  it('barely falls, because flame does not arc like a spark', () => {
+    const a = field();
+    a.jet({ x: 0, y: 0, intensity: 1, tint: 0xffffff, angle: 0, spread: 0.3 });
+    const flame = a.particles.find((p) => p.active)!;
+
+    const b = field();
+    b.burst({ x: 0, y: 0, intensity: 1, tint: 0xffffff });
+    const spark = b.particles.find((p) => p.active)!;
+
+    expect(flame.weight).toBeLessThan(spark.weight);
+  });
+});

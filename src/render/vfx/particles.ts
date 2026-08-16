@@ -76,10 +76,25 @@ export interface ParticleField {
   puff(options: SpawnOptions): void;
   /** An evenly spaced expanding circle: shockwaves, eliminations. */
   ring(options: SpawnOptions): void;
+  /**
+   * A cone thrown in one direction: flame from a nozzle.
+   *
+   * The only shape that has a direction. Everything else here radiates, because an impact
+   * has no preferred way to spray — but a jet that radiates is a bot on fire rather than a
+   * bot firing, which is the whole difference the flamethrower needs to communicate.
+   */
+  jet(options: JetOptions): void;
   /** Integrates by `seconds`. */
   advance(seconds: number): void;
   /** Retires everything. */
   clear(): void;
+}
+
+export interface JetOptions extends SpawnOptions {
+  /** Radians. The direction the nozzle points. */
+  angle: number;
+  /** Radians of half-spread either side of `angle`. */
+  spread: number;
 }
 
 export interface FieldOptions {
@@ -109,6 +124,10 @@ function puffCount(intensity: number): number {
 
 function ringCount(intensity: number): number {
   return Math.round(12 + 16 * clamp01(intensity));
+}
+
+function jetCount(intensity: number): number {
+  return Math.round(4 + 7 * clamp01(intensity));
 }
 
 export function createParticleField(options: FieldOptions = {}): ParticleField {
@@ -223,6 +242,26 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
         // Evenly spaced and all at one speed. Randomise either and it stops being a shockwave
         // and becomes an ordinary burst — the deliberateness IS the effect.
         spawn(o, speed, (i / count) * Math.PI * 2, 0.3 + 0.16 * force, 3.4 + 2.6 * force, 0.55, 0.25);
+      }
+    },
+
+    jet(o) {
+      const force = clamp01(o.intensity);
+      const count = jetCount(o.intensity);
+      for (let i = 0; i < count; i++) {
+        // Speed varies across the cone so the flame has depth rather than arriving as a
+        // solid front, and the slower particles fall behind into a tail.
+        spawn(
+          o,
+          130 + 190 * force * (0.45 + 0.55 * random()),
+          o.angle + (random() * 2 - 1) * o.spread,
+          0.16 + 0.2 * random(),
+          4 + 4.5 * random(),
+          0.22,
+          // Nearly weightless. Flame rises if anything; it certainly does not arc down like
+          // a spark, and gravity on a jet reads as the bot spitting rather than burning.
+          0.05,
+        );
       }
     },
 
