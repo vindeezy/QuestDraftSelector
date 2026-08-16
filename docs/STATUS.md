@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-06
+Last updated: 2026-08-15
 
 **Deadline: end of August 2026.** The league needs a working draft-order experience.
 
@@ -17,8 +17,11 @@ Last updated: 2026-08-06
 | Event pipeline | Done. Six Forge boards + three battles + scoring + draft order, from one master seed. |
 | Recording | Done. `npm run record -- 10` rolls candidates; `--save <seed>` writes the official record. |
 | **Arena 1 — The Grinder** | **Done and locked.** Built to spec, measured, balanced. |
-| **Arenas 2 and 3** | **Not started.** The Gauntlet and The Crossfire are still their original designs. |
-| Website | **Not started. This is the critical path.** |
+| **Arenas 2 and 3** | The Gauntlet and The Crossfire. Playable and recorded against; not rebuilt to spec. |
+| Website | **Done end to end.** Landing through Forge, build reveal, three battles, scoreboards, draft order. |
+| Official event | **Recorded and deployed.** Seed `43000236`, checksum `2e92efe2`. |
+| Sound | Done. 23 synthesised voices, level-matched by measurement, mixed with per-sound and global voice caps. |
+| VFX | Done. Pooled particles, per-weapon/ability/hazard visuals, bot flash, screen shake, reduced-motion support. |
 
 ## Commands
 
@@ -33,6 +36,38 @@ npm run distribution -- 400        # Plinko slot distribution and per-ball fairn
 ```
 
 `--arena=` accepts `grinder`, `proving`, or is omitted for the greybox default.
+
+## Performance baseline
+
+Measured 15 August on the production build, Chrome, 2.5x device pixel ratio, one full
+114-second battle (The Gauntlet) with sound and particles live.
+
+| | measured | budget |
+|---|---|---|
+| Frame work, median | 0.5 ms | — |
+| Frame work, p99 | 3.4 ms | — |
+| **Frame work, worst** | **5.6 ms** | **16.7 ms** |
+| Callbacks over 8 ms | 0 | — |
+| Frame delta, p99 | 18.3 ms | — |
+| **Dropped frames (delta > 33 ms)** | **0 of 7,068** | — |
+| Peak particles alive | 293 | 900 (the pool) |
+
+**Roughly a third of the frame budget at the worst moment, and the pool never ran out.** No
+tuning was needed; the numbers are recorded so a future change that slows this down has
+something to fail against rather than a feeling to argue with.
+
+Two things worth knowing before trusting these numbers again:
+
+- **Frame DELTAS cannot measure headroom.** They are floored by vsync at 16.7 ms, so a
+  perfectly idle loop and a loop using 90% of its budget both read as 16.7. The work figures
+  above come from wrapping `requestAnimationFrame` and timing the callback itself. Measure
+  that, not the gaps.
+- **A screen transition costs about 230 ms**, from tearing down one PixiJS renderer and
+  building the next. It is the largest hitch in the whole show, it is not the particle layer,
+  and it happens between beats rather than during one. Left alone deliberately.
+
+Re-measure with `npm run mix` for the simulation-side counts (voices and particles, no
+browser needed), and by hand in the browser for frame timings.
 
 ## The rules that must not be broken
 
