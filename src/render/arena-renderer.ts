@@ -13,6 +13,7 @@ import type { Elimination, Match } from '../sim/arena/match';
 import type { Effect } from '../sim/arena/effects';
 import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
+import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { botIndexOf } from '../sim/parts/from-effect';
 import { prefersReducedMotion } from './reduced-motion';
 
@@ -237,17 +238,15 @@ const SHAKE_PIXELS = 4;
 const SPIN_PER_TICK = 0.42;
 
 /**
- * Ticks a hammer takes to swing through and settle back.
+ * Ticks a hammer takes to rear up, smash down and settle.
  *
  * Measured against how often a hammer actually connects: 57-77 landed blows across a battle,
- * roughly one every two seconds. At fourteen ticks the swing lasted under a quarter second,
+ * roughly one every two seconds. At fourteen ticks the stroke lasted under a quarter second,
  * so the weapon sat still, blinked, and froze again -- which reads as a bug rather than as a
- * hammer. Long enough here to be seen, short enough to be over before the next blow.
+ * hammer. Long enough here to be seen, and short enough to fit inside the shortest attack
+ * cooldown a build can roll, so one stroke is always finished before the next begins.
  */
 const SWING_TICKS = 26;
-
-/** How far a hammer swings, in radians. */
-const SWING_ARC = 1.15;
 
 /** Ticks a flamethrower keeps burning after its last landed hit. */
 const FLAME_TICKS = 10;
@@ -484,8 +483,12 @@ export async function createArenaRenderer(
    */
   const flash = match.bots.map(() => 0);
 
-  /** Ticks remaining on each bot's hammer swing, and on each flamethrower's burn. */
-  const swing = match.bots.map(() => 0);
+  /**
+   * Ticks remaining on each flamethrower's burn.
+   *
+   * Only the jet needs one. A hammer's crush is driven from the simulation's own
+   * `nextAttackTick`, so it needs no timer here -- see `hammerProgress`.
+   */
   const burn = match.bots.map(() => 0);
 
   /** Current shake energy, 0-1, decaying every frame. */
@@ -718,14 +721,12 @@ export async function createArenaRenderer(
         if (index !== null && index < flash.length) flash[index] = 1;
       }
 
-      // Weapon motion belongs to the ATTACKER, which `source` names. The victim gets the
-      // flash and the sparks; the bot that swung gets the swing.
+      // Flame belongs to the ATTACKER, which `source` names. The victim gets the flash and
+      // the sparks; the bot that fired gets the fire.
       if (effect.kind === 'weaponHit') {
         const by = botIndexOf(effect.source ?? null);
-        if (by !== null && by < swing.length) {
-          const motion = weapons[by]?.motion;
-          if (motion === 'swing') swing[by] = SWING_TICKS;
-          else if (motion === 'jet') burn[by] = FLAME_TICKS;
+        if (by !== null && by < burn.length && weapons[by]?.motion === 'jet') {
+          burn[by] = FLAME_TICKS;
         }
       }
 
@@ -738,9 +739,8 @@ export async function createArenaRenderer(
 
     for (let i = 0; i < flash.length; i++) {
       flash[i] = Math.max(0, flash[i]! - FRAME_SECONDS / FLASH_SECONDS);
-      // Counted in ticks rather than seconds, because they are wound by simulation events
-      // and read by a simulation-clocked animation.
-      swing[i] = Math.max(0, swing[i]! - 1);
+      // Counted in ticks rather than seconds, because it is wound by a simulation event and
+      // read by a simulation-clocked animation.
       burn[i] = Math.max(0, burn[i]! - 1);
     }
     shake = Math.max(0, shake - FRAME_SECONDS / SHAKE_SECONDS);
@@ -833,28 +833,31 @@ export async function createArenaRenderer(
         if (weapon) {
           switch (weapon.motion) {
             case 'spin':
-              // A saw or a bar turning in the plane we are looking down on. Wrapped rather
-              // than left to accumulate: a three-minute battle would otherwise reach several
-              // thousand radians, where float precision starts to visibly quantise the angle.
-              weapon.node.rotation = (current.world.tick * SPIN_PER_TICK) % (Math.PI * 2);
+              // A saw or a bar turning in the plane we are looking down on.
+              weapon.node.rotation = spinAngle(current.world.tick, SPIN_PER_TICK);
               break;
 
-            case 'edge': {
+            case 'edge':
               // A vertical spinner's disc turns about a HORIZONTAL axis, so from above it
-              // never rotates -- it thins to an edge and swells back to its face twice per
-              // revolution. Spinning it in-plane would be easier and would read as a
-              // different machine entirely.
-              const phase = Math.cos(current.world.tick * SPIN_PER_TICK);
-              weapon.node.scale.set(0.18 + 0.82 * Math.abs(phase), 1);
+              // never rotates -- it presents its edge, then its face.
+              weapon.node.scale.set(edgeScale(current.world.tick, SPIN_PER_TICK), 1);
               break;
-            }
 
             case 'swing': {
-              // Wound back and released: fast through the blow, slower returning, which is
-              // what makes it read as a swing rather than a wobble.
-              const left = swing[index] ?? 0;
-              const t = left / SWING_TICKS;
-              weapon.node.rotation = -SWING_ARC * Math.sin(t * Math.PI) * (t > 0.5 ? 1 : 0.45);
+              // A crush, not a sweep. The head rears up and drops, which from directly above
+              // is not a movement across the screen at all -- see `hammerPose` for how that
+              // is projected into something a top-down viewer can actually read.
+              //
+              // Timed from when the bot may strike NEXT rather than from when it last landed
+              // a blow, so the smash arrives on the beat instead of a sixth of a second after
+              // its own sound.
+              const pose = hammerPose(
+                hammerProgress(bot.nextAttackTick - current.world.tick, SWING_TICKS),
+              );
+              // `reach` runs along the haft and `size` scales the whole weapon, and the mount
+              // pivots at the haft's root -- so the head draws back toward the chassis and
+              // swells, rather than the weapon sliding off the bot.
+              weapon.node.scale.set(pose.reach * pose.size, pose.size);
               break;
             }
 
