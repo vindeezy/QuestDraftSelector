@@ -387,7 +387,12 @@ export async function createArenaRenderer(
     // culled as invisible the moment anything turns culling on.
     boundsArea: new Rectangle(0, 0, width, height),
   });
+  // Required. Passing `particles` to the constructor deliberately skips the per-call view
+  // update, so without this the container never builds its GPU buffers and draws nothing at
+  // all -- which is exactly what it did.
+  particleLayer.update();
   world.addChild(particleLayer);
+
 
   /**
    * The white bloom on a bot that was just struck.
