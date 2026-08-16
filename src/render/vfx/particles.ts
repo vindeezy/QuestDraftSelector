@@ -205,7 +205,10 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
           18 + 46 * force * random(),
           random() * Math.PI * 2,
           0.38 + 0.4 * random(),
-          6 + 6 * random(),
+          // 20% smaller than they were, which takes about a third off the area they cover.
+          // Dust is the most frequent thing on screen -- collisions alone fire roughly 800
+          // times a battle -- so it is the one effect whose job is to be felt and not noticed.
+          4.8 + 4.8 * random(),
           0.3,
           0.12,
         );
