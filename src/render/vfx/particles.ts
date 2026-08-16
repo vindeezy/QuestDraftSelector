@@ -16,6 +16,10 @@
  * than the tail of one that landed half a second ago, and refusing to spawn would make a
  * heavy scrum look emptier than a light one.
  *
+ * Sizes are in world units and chosen against the BOT radius (roughly 14-20), not in the
+ * abstract. The first pass used 1-3, which is a pixel or two on screen and simply cannot be
+ * seen next to a machine eight times its size.
+ *
  * `Math.random` is fine here. This is presentation, downstream of the effect bus, and cannot
  * reach the simulation — the lint guard enforces the direction that matters. It is injectable
  * anyway, so the geometry can be asserted rather than eyeballed.
@@ -183,8 +187,8 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
           o,
           90 + 240 * force * random(),
           random() * Math.PI * 2,
-          0.18 + 0.3 * random(),
-          1.1 + 1.6 * random(),
+          0.22 + 0.32 * random(),
+          2.4 + 3.4 * random(),
           0.06,
           1,
         );
@@ -200,8 +204,8 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
           o,
           18 + 46 * force * random(),
           random() * Math.PI * 2,
-          0.34 + 0.36 * random(),
-          3.4 + 3.2 * random(),
+          0.38 + 0.4 * random(),
+          6 + 6 * random(),
           0.3,
           0.12,
         );
@@ -215,7 +219,7 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
       for (let i = 0; i < count; i++) {
         // Evenly spaced and all at one speed. Randomise either and it stops being a shockwave
         // and becomes an ordinary burst — the deliberateness IS the effect.
-        spawn(o, speed, (i / count) * Math.PI * 2, 0.3 + 0.16 * force, 1.6 + 1.2 * force, 0.55, 0.25);
+        spawn(o, speed, (i / count) * Math.PI * 2, 0.3 + 0.16 * force, 3.4 + 2.6 * force, 0.55, 0.25);
       }
     },
 

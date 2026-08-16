@@ -225,17 +225,18 @@ const SHAKE_PIXELS = 4;
 /** The radius the particle texture is drawn at, so a particle's `size` becomes a scale. */
 const DOT_RADIUS = 8;
 
-/** Rings used to fake a radial falloff on the particle texture. */
-const DOT_RINGS = 6;
+/** Rings used to build a radial falloff on the particle texture. Eight passes at 0.3 each
+ *  accumulate to roughly 0.94 at the centre and 0.3 at the rim. */
+const DOT_RINGS = 8;
 
 /**
  * The most opaque a single particle may be.
  *
- * Well under 1, because particles arrive in groups and overlap constantly -- twenty at full
- * opacity in the same place is an object, not an effect. This is the number that decides
- * whether sparks sit over the fight or bury it.
+ * The softness now lives in the texture rather than here, so this can sit high: the first
+ * version stacked a faint texture UNDER a low ceiling and the two multiplied down to nothing.
+ * The texture stops overlaps becoming a solid mass; this only trims the very brightest.
  */
-const PARTICLE_ALPHA = 0.5;
+const PARTICLE_ALPHA = 0.85;
 
 export interface ArenaRenderer {
   /**
@@ -356,10 +357,14 @@ export async function createArenaRenderer(
   // falloff, and the difference is not cosmetic: hard-edged circles at full opacity stack into
   // a solid mass wherever several land together, which in a scrum is a pale blob sitting on
   // top of the bots. Soft edges accumulate into a glow instead of a shape.
+  // Drawn largest-first so the rings ACCUMULATE: each pass adds a little more opacity to
+  // everything inside it, which builds a bright core fading to a soft edge. The first attempt
+  // gave every ring a low alpha and no accumulation, producing a dot that was uniformly faint
+  // -- measured at 0.02-0.06 on screen, which is invisible. A spark needs a solid centre; the
+  // softness is only there so overlapping ones blend instead of stacking into a disc.
   const dot = new Graphics();
   for (let ring = DOT_RINGS; ring >= 1; ring--) {
-    const t = ring / DOT_RINGS;
-    dot.circle(0, 0, DOT_RADIUS * t).fill({ color: 0xffffff, alpha: 0.16 * (1 - t) + 0.08 });
+    dot.circle(0, 0, (DOT_RADIUS * ring) / DOT_RINGS).fill({ color: 0xffffff, alpha: 0.3 });
   }
   // `resolution: 1` explicitly. `generateTexture` otherwise inherits the application's
   // resolution, which is the viewer's `devicePixelRatio` -- so on a 2.5x display every

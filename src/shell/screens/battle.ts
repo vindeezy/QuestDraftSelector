@@ -297,6 +297,10 @@ export function battleScreen(beat: BeatId): Screen {
       // anticipation beat as `forge.ts`'s DROP 'EM; once pressed, the button is gone for
       // good.
       startButton.addEventListener('click', () => {
+        // Unlocked on the landing screen several beats ago, and unlocked AGAIN here. A context
+        // suspended while the viewer was on another screen only comes back from inside a user
+        // gesture, and this is the last one before the battle makes any noise.
+        bus.unlock();
         startButton.hidden = true;
         pauseControl.reveal();
         frame = requestAnimationFrame(tick);

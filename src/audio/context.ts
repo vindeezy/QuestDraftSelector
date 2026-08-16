@@ -40,9 +40,12 @@ export interface AudioBus {
    */
   readonly toneCut: number;
   /**
-   * Creates and resumes the context. Idempotent, because the gesture that triggers it is a
-   * button a viewer can press twice, and because both the Forge and the battles unlock on
-   * their own start control.
+   * Creates the context, or resumes it if it exists and has been suspended.
+   *
+   * Idempotent, because the gesture that triggers it is a button a viewer can press twice, and
+   * because every screen that makes a sound calls it on mount and on its own start control.
+   * That repetition is the point: a context can be suspended out from under the site at any
+   * time, and the only way back is a call like this one from inside a user gesture.
    */
   unlock(): void;
   setMuted(muted: boolean): void;
@@ -147,7 +150,15 @@ export function createAudioBus(options: AudioBusOptions = {}): AudioBus {
     },
 
     unlock() {
-      if (ctx !== null) return;
+      if (ctx !== null) {
+        // Built already -- but it may have been SUSPENDED since. Browsers suspend an audio
+        // context when its page is hidden or backgrounded, and a suspended context makes no
+        // sound ever again on its own. This used to return here, so navigating away from a
+        // battle and coming back left the whole event silent with no way to recover short of
+        // a reload. Resuming is cheap and a no-op when it is already running.
+        if (ctx.state !== 'running') void ctx.resume?.()?.catch?.(() => {});
+        return;
+      }
       try {
         const created = factory();
         const gain = created.createGain();

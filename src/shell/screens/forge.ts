@@ -342,6 +342,10 @@ export function forgeScreen(beat: BeatId): Screen {
       // the project owner asked for; see the module doc comment's "the reason matters"
       // note. Once pressed, the button is gone for good; there is no re-drop.
       dropButton.addEventListener('click', () => {
+        // Same reason as the battle's BEGIN: a context suspended while the viewer was on
+        // another screen only comes back from inside a user gesture, and this is the last one
+        // before the board makes any noise.
+        bus.unlock();
         dropButton.hidden = true;
         frame = requestAnimationFrame(tick);
       });

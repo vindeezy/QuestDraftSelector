@@ -223,3 +223,27 @@ describe('the master tone control', () => {
     expect(bus.toneCut).toBe(9);
   });
 });
+
+describe('recovering a suspended context', () => {
+  it('resumes on unlock when the browser has suspended it', () => {
+    // Browsers suspend an audio context when its page is hidden or backgrounded. `unlock` used
+    // to return early once a context existed, so navigating away from a battle and back left
+    // the event permanently silent -- reported from a real watch, not from a test.
+    const { bus } = makeBus();
+    bus.unlock();
+    const ctx = bus.ctx as unknown as { state: string; resume(): Promise<void> };
+
+    ctx.state = 'suspended';
+    bus.unlock();
+
+    expect(ctx.state).toBe('running');
+  });
+
+  it('does not rebuild the context when it resumes one', () => {
+    const { bus, created } = makeBus();
+    bus.unlock();
+    (bus.ctx as unknown as { state: string }).state = 'suspended';
+    bus.unlock();
+    expect(created()).toBe(1);
+  });
+});
