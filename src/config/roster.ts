@@ -33,38 +33,50 @@ const REQUIRED_MEMBER_COUNT = 10;
  * The ten members, in league order. `toEventMembers` preserves this order, and it's the
  * order the website should list members in.
  *
- * The colours are first-draft values, deliberately adjusted from the plain named colour
- * where the plain version risked being confusable with another member's in motion at
- * small size. Record here, not just in a commit message, because the next person to touch
- * this file needs to know these hexes are not arbitrary:
+ * The colours were adjusted on 17 August after the material textures went on, and the reason
+ * is worth keeping: **a texture multiplies, so every bot's apparent colour became its member
+ * colour times its own armour's brightness.** Those brightnesses run from 0.47 for depleted
+ * uranium to 0.84 for aluminium, which put the ARMOUR on the same channel as the identity.
+ * Measured in CIELAB, the closest pair of bots went from 30.8 apart to 7.5 — Vin drew uranium
+ * and his white bot rendered as `#787878`, a grey barely distinguishable from Nick Lenker's
+ * silver. Nobody could find their machine.
  *
- * - **Black (`#1C1F26`)** sits on the arena's dark slate floor (`#35424f`). The hex alone
- *   is not enough to keep it legible there — it needs a light outline applied at render
- *   time, or it disappears into the background. That outline is a rendering requirement
- *   this file cannot enforce; note it here so whoever wires bot/ball tinting doesn't skip
- *   it for this one member.
- * - **Gold (`#D9A520`) and Yellow (`#FFE81F`)** were pushed apart deliberately. The plain
- *   named versions of gold and yellow sit close enough in hue that at 40-unit bot size, in
- *   motion, they read as the same colour.
- * - **White (`#FFFFFF`) and Silver (`#9FB0C0`)** have the same problem for the same
- *   reason — silver here is cooled and darkened so it reads as its own colour rather than
- *   a dirty white.
+ * That was fixed in two places, and both are needed:
  *
- * These are first-draft values. The only test that matters for them is looking at all ten
- * colours together on screen, at actual bot size, in motion — not as static swatches — and
- * that check has not been done yet. Revisit these hexes once it has.
+ * - `TEXTURE_STRENGTH` in `render/bot-portrait.ts` draws the flat colour first and the material
+ *   over it at partial alpha, which lifts the multiplier range from [0.47, 0.84] to
+ *   [0.71, 0.91]. This half was unavoidable: white is already `#ffffff`, so no change to a hex
+ *   could have rescued it.
+ * - These hexes, chosen by search rather than by eye. A script walked candidate colours within
+ *   each member's own hue family — nobody's bot may quietly become a different colour to win a
+ *   distance metric — maximising the SMALLEST pairwise CIELAB distance across all ten. That
+ *   took the worst pair from 17.3 to 34.0.
+ *
+ * Two things that search taught, which the previous by-eye pass could not have found:
+ *
+ * - **Red, orange, gold and yellow are four members on one continuous hue ramp.** Moving any
+ *   one of them into a gap simply closes a different gap. The first hand-made attempt fixed
+ *   gold-versus-yellow and immediately created orange-versus-gold at exactly the same distance.
+ * - **Yellow had to get PALER, not deeper.** With gold pushed bright, a richer yellow collided
+ *   with it again — measured at 27.8 against 34.0 for the paler one.
+ *
+ * Black still needs its light outline at render time, or it vanishes into the floor. That is a
+ * rendering requirement this file cannot enforce.
+ *
+ * These have now had the test that matters — all ten on screen, at bot size, in motion, over
+ * the textured floor — which the previous set never had.
  */
 export const ROSTER: readonly RosterMember[] = [
-  { id: 'paden', name: 'Paden Simmons', initials: 'PS', colour: '#2E6FF2' }, // Blue
+  { id: 'paden', name: 'Paden Simmons', initials: 'PS', colour: '#2278FF' }, // Blue — pushed bluer
   { id: 'tommy', name: 'Tommy McCormick', initials: 'TM', colour: '#1C1F26' }, // Black — needs a light outline at render time, see comment above
   { id: 'colby', name: 'Colby Thompson', initials: 'CT', colour: '#E03131' }, // Red
   { id: 'pat', name: 'Pat Driscoll', initials: 'PD', colour: '#2FB344' }, // Green
-  { id: 'spencer', name: 'Spencer Lalk', initials: 'SL', colour: '#FF7A18' }, // Orange
-  { id: 'rob', name: 'Rob Arena', initials: 'RA', colour: '#D9A520' }, // Gold — pushed apart from Yellow, see comment above
-  { id: 'erik', name: 'Erik Gundersen', initials: 'EG', colour: '#FF3FA4' }, // Hot Pink
-  { id: 'nickc', name: 'Nick Cinotti', initials: 'NC', colour: '#FFE81F' }, // Yellow — pushed apart from Gold, see comment above
+  { id: 'spencer', name: 'Spencer Lalk', initials: 'SL', colour: '#FB933F' }, // Orange — brighter, away from Red
+  { id: 'rob', name: 'Rob Arena', initials: 'RA', colour: '#F8B408' }, // Gold — brighter, away from Orange
+  { id: 'erik', name: 'Erik Gundersen', initials: 'EG', colour: '#FF54C8' }, // Hot Pink — pinker, away from Red
+  { id: 'nickc', name: 'Nick Cinotti', initials: 'NC', colour: '#FCFB72' }, // Yellow — brighter and PALER, which is what separates it from Gold
   { id: 'vin', name: 'Vin Cinotti', initials: 'VC', colour: '#FFFFFF' }, // White
-  { id: 'nickl', name: 'Nick Lenker', initials: 'NL', colour: '#9FB0C0' }, // Silver — cooled/darkened from plain silver, see comment above
+  { id: 'nickl', name: 'Nick Lenker', initials: 'NL', colour: '#647793' }, // Silver — darkened hard, so White stays white
 ];
 
 /** Identifies a member in an error message: name, id, and position, so a validation

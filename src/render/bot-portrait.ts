@@ -215,6 +215,26 @@ function chassisRadiusFor(chassisId: string): number {
  * texture in `src/render/textures/` is deliberately light — multiplying can only darken, and a
  * dark material would swallow the one thing that says whose bot this is.
  */
+/**
+ * How strongly a material shows through a bot's colour, 0 to 1.
+ *
+ * Not 1, and the reason is measured rather than aesthetic. A texture MULTIPLIES, so a bot's
+ * apparent colour became its member colour times its armour's brightness -- and those run from
+ * 0.47 for depleted uranium to 0.84 for aluminium. That put the ARMOUR on the same channel as
+ * the identity: Vin drew uranium and his white bot rendered as `#787878`, while Nick Lenker's
+ * silver drew titanium and rendered `#69747e`. Measured in CIELAB, those two went from 30.8
+ * apart to 7.5, which is not "similar", it is the same colour.
+ *
+ * Worse, it could not be fixed by changing the hexes. White is already `#ffffff`; there is no
+ * brighter white to reach for.
+ *
+ * Drawing the flat colour first and the textured copy over it at this alpha makes the effective
+ * multiplier `1 - s + s * texture`, which pulls the range from [0.47, 0.84] up to [0.71, 0.91].
+ * The material keeps its full pattern -- every rivet, weave and pit is still there -- at reduced
+ * amplitude, and the ten colours get most of their separation back.
+ */
+export const TEXTURE_STRENGTH = 0.55;
+
 function bodyFill(colour: number, texture: Texture | null): number | FillInput {
   return texture === null ? colour : { texture, color: colour, textureSpace: 'local' };
 }
@@ -231,26 +251,34 @@ function weaponFill(texture: Texture | null | undefined): number | FillInput {
   return { texture, color: WEAPON_METAL, textureSpace: 'local' };
 }
 
+function traceShape(g: Graphics, shape: ChassisShape): Graphics {
+  switch (shape.kind) {
+    case 'poly':
+      return g.poly(flatten(shape.points));
+    case 'circle':
+      return g.circle(0, 0, shape.radius);
+    case 'roundRect':
+      return g.roundRect(shape.x, shape.y, shape.width, shape.height, shape.radius);
+    case 'regularPoly':
+      return g.regularPoly(0, 0, shape.radius, shape.sides, shape.rotation);
+  }
+}
+
 function fillShape(
   g: Graphics,
   shape: ChassisShape,
   colour: number,
   texture: Texture | null = null,
 ): void {
-  const fill = bodyFill(colour, texture);
-  switch (shape.kind) {
-    case 'poly':
-      g.poly(flatten(shape.points)).fill(fill);
-      return;
-    case 'circle':
-      g.circle(0, 0, shape.radius).fill(fill);
-      return;
-    case 'roundRect':
-      g.roundRect(shape.x, shape.y, shape.width, shape.height, shape.radius).fill(fill);
-      return;
-    case 'regularPoly':
-      g.regularPoly(0, 0, shape.radius, shape.sides, shape.rotation).fill(fill);
-      return;
+  // Flat colour first, then the material over it at partial alpha. Two passes rather than one,
+  // because a single textured fill multiplies at full strength and the armour's brightness ends
+  // up impersonating the member's colour -- see `TEXTURE_STRENGTH`.
+  traceShape(g, shape).fill(colour);
+  if (texture !== null) {
+    traceShape(g, shape).fill({
+      ...(bodyFill(colour, texture) as object),
+      alpha: TEXTURE_STRENGTH,
+    } as FillInput);
   }
 }
 

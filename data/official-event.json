@@ -7,7 +7,7 @@
     {
       "id": "paden",
       "name": "Paden Simmons",
-      "colour": "#2E6FF2"
+      "colour": "#2278FF"
     },
     {
       "id": "tommy",
@@ -27,22 +27,22 @@
     {
       "id": "spencer",
       "name": "Spencer Lalk",
-      "colour": "#FF7A18"
+      "colour": "#FB933F"
     },
     {
       "id": "rob",
       "name": "Rob Arena",
-      "colour": "#D9A520"
+      "colour": "#F8B408"
     },
     {
       "id": "erik",
       "name": "Erik Gundersen",
-      "colour": "#FF3FA4"
+      "colour": "#FF54C8"
     },
     {
       "id": "nickc",
       "name": "Nick Cinotti",
-      "colour": "#FFE81F"
+      "colour": "#FCFB72"
     },
     {
       "id": "vin",
@@ -52,9 +52,9 @@
     {
       "id": "nickl",
       "name": "Nick Lenker",
-      "colour": "#9FB0C0"
+      "colour": "#647793"
     }
   ],
-  "checksum": "2e92efe2",
-  "recordedAt": "2026-08-13T20:21:35.036Z"
+  "checksum": "b2e672a8",
+  "recordedAt": "2026-08-17T22:01:29.960Z"
 }
