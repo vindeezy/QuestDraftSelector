@@ -25,6 +25,7 @@ import {
   FLOOR_TEXTURE_LIFT,
   OIL_COLOR,
   OIL_SHEEN,
+  OIL_TINT,
   brighten,
   isOiled,
   oilSplatPoints,
@@ -841,20 +842,47 @@ export async function createArenaRenderer(
         const y = row * size;
         const w = size;
 
+        // The tile's own ground, ALWAYS -- an oil slick sits on the floor rather than
+        // replacing it. Drawing only the splat left the rest of the tile unpainted, so the page
+        // behind the arena showed through as a black square around every spill.
+        //
+        // Taken from the surface the tile STARTED with, not the one it has now. The ability
+        // records a slick by setting the tile to Ice (see `floor-state.ts`), so using the
+        // current surface would paint a blue ice square under every splat -- swapping a black
+        // box for a blue one.
+        const groundSurface = oiled
+          ? ((baseSurfaces[index] ?? Surface.Plain) as SurfaceValue)
+          : surface;
+        const colour = SURFACE_COLOR[groundSurface] ?? PLAIN_FLOOR_COLOR;
+        const texture = surfaceTexture(groundSurface);
+        floorBase.rect(x, y, w, w).fill(
+          texture === null
+            ? colour
+            : {
+                texture,
+                color: brighten(colour, FLOOR_TEXTURE_LIFT).colour,
+                // GLOBAL rather than local, purely so a matrix can be supplied. Local space
+                // stretches the texture to each tile identically, which removes the gaps and
+                // leaves the repetition -- 192 copies of one image, which reads as tiling just
+                // as loudly as the lines did.
+                textureSpace: 'global',
+                matrix: arenaTextureMatrix,
+              },
+        );
+
         if (oiled) {
           const oil = oilTexture();
           // A wandering closed loop rather than the tile's square. The tile is what is
           // slippery; the square is just how the simulation stores it.
           const splat = oilSplatPoints(cx, cy, w, index);
           floorBase.poly(splat).fill(
-            // Untinted when a texture exists: `0xffffff` multiplies to exactly the texture.
             oil === null
               ? OIL_COLOR
               : {
                   texture: oil,
-                  color: 0xffffff,
-                  // Oil takes the same arena-wide mapping, so two adjacent slicks read as one
-                  // spreading pool rather than two identical stamps.
+                  color: OIL_TINT,
+                  // The same arena-wide mapping as the floor, so two adjacent slicks read as
+                  // one spreading pool rather than two identical stamps.
                   textureSpace: 'global',
                   matrix: arenaTextureMatrix,
                 },
@@ -868,26 +896,11 @@ export async function createArenaRenderer(
             floorBase.ellipse(cx + size * 0.14, cy + size * 0.12, size * 0.16, size * 0.11)
               .fill({ color: OIL_SHEEN, alpha: 0.35 });
           }
-        } else {
-          const colour = SURFACE_COLOR[surface] ?? PLAIN_FLOOR_COLOR;
-          const texture = surfaceTexture(surface);
-          floorBase.rect(x, y, w, w).fill(
-            texture === null
-              ? colour
-              : {
-                  texture,
-                  color: brighten(colour, FLOOR_TEXTURE_LIFT).colour,
-                  // GLOBAL rather than local, purely so a matrix can be supplied. Local space
-                  // stretches the texture to each tile identically, which removes the gaps and
-                  // leaves the repetition -- 192 copies of one image, which reads as tiling just
-                  // as loudly as the lines did.
-                  textureSpace: 'global',
-                  matrix: arenaTextureMatrix,
-                },
-          );
         }
 
-        const push = effectOf(surface);
+        // The ground's own push, not the oiled tile's -- a conveyor that took a slick is
+        // still a conveyor underneath, and should still show which way it runs.
+        const push = effectOf(groundSurface);
         if (push.pushX !== 0 || push.pushY !== 0) {
           // Conveyors are otherwise indistinguishable from each other, so the push
           // direction is the whole point of drawing a chevron at all.

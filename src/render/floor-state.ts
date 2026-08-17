@@ -53,6 +53,22 @@ export const OIL_COLOR = 0x1a1726;
 /** The faint cool sheen on top of the pool. Oil's one recognisable trait besides being dark. */
 export const OIL_SHEEN = 0x4b4a7a;
 
+/**
+ * What the oil texture is multiplied by.
+ *
+ * It used to be drawn untinted, on the reasoning that oil's identity is its own colour and a
+ * multiply could only spoil the iridescence. That was right until the plain floor was
+ * lightened: the texture averages luminance 60 and the floor now sits near 78, so a slick and
+ * clean ground were within twenty levels of each other and the spill stopped reading as a
+ * spill.
+ *
+ * Multiply is the only lever available -- it cannot brighten, but oil wants to go the other way
+ * anyway. Roughly 0.43, which lands the slick near luminance 25 against a floor of 78: dark
+ * enough to be unmistakably a liquid on the ground rather than a patch of it. Slightly cool
+ * rather than neutral grey, so what iridescence survives leans blue-purple instead of muddying.
+ */
+export const OIL_TINT = 0x6e6e85;
+
 /** True when a surface value is one a texture should be looked up for. Ordinary floor is drawn
  *  as flat colour and needs no lookup. */
 export function isTexturedSurface(surface: SurfaceValue): boolean {
