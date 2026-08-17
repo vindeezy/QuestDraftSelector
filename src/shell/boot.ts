@@ -1,5 +1,6 @@
 import { checkOfficialRecord, checkRecord, type ChecksumCheck } from './checksum-gate';
 import { mountRouter } from './router';
+import { loadMaterials } from '../render/materials';
 import { clearProgress } from './progress';
 import type { EventRecord } from '../sim/event/record';
 
@@ -133,6 +134,14 @@ export async function boot(
   applyResetParam(check.record.masterSeed);
 
   container.innerHTML = '';
+
+  // Started here and deliberately NOT awaited. The first beat that needs a material texture is
+  // the build reveal, ten beats and several minutes of Forge away, so 320 KB has all the time it
+  // needs; blocking the landing screen on it would be paying a real cost to prevent a problem
+  // that cannot happen. `void` rather than a bare call so the floating promise is explicit --
+  // `loadMaterials` never rejects, by design.
+  void loadMaterials();
+
   mountRouter({ container, seed: check.record.masterSeed });
   return check;
 }

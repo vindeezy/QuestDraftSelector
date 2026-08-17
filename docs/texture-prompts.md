@@ -379,23 +379,38 @@ Requirements:
 
 ### 14. Oil slick — `floor-oil.png`
 
+**Revised 17 August, and it deliberately breaks the "keep it light" rule above.** Every other
+texture here is light because the renderer multiplies a colour into it, and multiplying can only
+darken. Oil is the exception: it is now drawn with its own colour rather than taking one from
+the surface table (see `src/render/floor-state.ts`), because it is the one surface whose
+identity *is* its colour. Tar is dark because the code says so; oil is dark **and iridescent**,
+and a multiply would flatten the iridescence to nothing. So this one is generated dark, with the
+sheen actually in the image, and is drawn untinted.
+
+If it comes back looking washed out, the fix is the opposite of the usual one: ask for it darker
+and for stronger iridescence.
+
 ```
 Create a 1024x1024 square image of a flat liquid spill, viewed perfectly straight-on from
 directly above — like a flatbed scan, not a photograph of an object.
 
-Material: a slick of spilled oil. Irregular pooled shapes with soft edges, and a faint
-iridescent sheen where the film is thin.
+Material: a slick of spilled motor oil on a hard floor. Dark, glossy, irregular pooled shapes
+with soft edges, and a clearly visible iridescent rainbow sheen where the film is thin — the
+blues, purples and faint greens of oil on wet ground.
 
 Requirements:
 - The spill fills the entire square edge to edge. No border, no frame, no background, no
   vignette, no darkening at the corners.
-- Completely flat, even lighting. No drop shadows, no bright highlights, no visible light
-  source.
-- Medium grey overall, but unlike the other textures a FAINT iridescent colour shimmer is
-  wanted here — subtle blues and purples in the thin film. Keep it restrained.
-- Coarse detail: a few large pooled shapes with soft concentric edges, not fine spatter.
-- No text, no numbers, no logos, no objects, no reflections of surroundings, no perspective.
-  Just the surface.
+- Completely flat, even lighting. No drop shadows, no hotspots, no visible light source, and no
+  reflections of surroundings, windows or sky.
+- DARK overall — this one is meant to be dark, unlike the other textures in this document. It is
+  drawn without any colour applied on top, so the darkness and the sheen both have to be in the
+  image itself.
+- The iridescence should be clearly visible but not neon: soft bands of blue and purple through
+  the thin film, not a psychedelic swirl.
+- Coarse detail: a few large pooled shapes with soft concentric edges, not fine spatter or
+  droplets.
+- No text, no numbers, no logos, no objects, no perspective. Just the surface.
 ```
 
 ---

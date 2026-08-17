@@ -21,10 +21,6 @@ event.
 
 ---
 
-## Open
-
-*Nothing yet — first entries expected from the WEB 7 (Forge) watch gate.*
-
 ## Known from the build, not yet judged on screen
 
 Things flagged during implementation that need a human eye before anyone can say whether
@@ -44,3 +40,17 @@ they are actually wrong.
 ## Done
 
 *Nothing yet.*
+
+## Open
+
+- **The build reveal's portrait overlaps its info cards on a narrow window.** Seen at roughly
+  800x1040 while checking MAT 1: the bot covers the card text on both sides, and the weapon
+  overlaps the member name in the header. Fine at 1600 wide, where the cards sit clear of it.
+  Not caused by the textures — the portrait scales off its own drawn bounds, which materials do
+  not change — so this predates them. Whether it matters depends on what the league watches on;
+  if anyone is on a laptop or a tablet in portrait, it does.
+- **Aluminium armour may read as "no texture applied".** It is deliberately the smoothest and
+  lightest material — its lack of features is how it is told apart from Titanium and Alloy — but
+  next to Hardened Steel's obvious rivets, a viewer on the reveal may reasonably conclude that
+  their bot missed out. Judge at the MAT 1 gate. If it needs help, the fix is a slightly stronger
+  mottling rather than adding features it should not have.

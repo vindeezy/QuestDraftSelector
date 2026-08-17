@@ -15,6 +15,7 @@ import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
 import { OIL_COLOR, OIL_SHEEN, isOiled } from './floor-state';
+import { armourTexture } from './materials';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
@@ -23,6 +24,7 @@ import {
   recoilOffset,
 } from './vfx/hazard-motion';
 import { botIndexOf } from '../sim/parts/from-effect';
+import { partAt } from '../sim/parts/tables';
 import { prefersReducedMotion } from './reduced-motion';
 
 const BOT_COLORS = [
@@ -493,6 +495,11 @@ export async function createArenaRenderer(
       }
       const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
         weaponScale: ARENA_WEAPON_SCALE,
+        // Not awaited here. `createArenaRenderer` runs when a battle beat mounts, and a battle
+        // that waited on a download before drawing would be a black screen with a BEGIN button
+        // over it. By this point loading started long ago; if it somehow has not finished, the
+        // bots are drawn in flat colour, which is exactly how they looked last week.
+        texture: armourTexture(partAt('armour', build.armour).id),
       });
       const scale = bot.body.radius / drawing.radius;
       drawing.view.scale.set(scale);

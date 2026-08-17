@@ -1,7 +1,8 @@
-import { Application, Container, Graphics } from 'pixi.js';
+import { Application, Container, Graphics, type FillInput, type Texture } from 'pixi.js';
 import type { BotBuild } from '../sim/parts/assemble';
 import { partAt } from '../sim/parts/tables';
 import { destroyOnce } from './destroy-once';
+import { armourTexture, loadMaterials } from './materials';
 
 /**
  * Draws an assembled bot's portrait — the first time a league member sees the machine
@@ -202,19 +203,41 @@ function chassisRadiusFor(chassisId: string): number {
   return chassisId === 'chassis-tower' ? CHASSIS_BASE_RADIUS * 0.75 : CHASSIS_BASE_RADIUS;
 }
 
-function fillShape(g: Graphics, shape: ChassisShape, colour: number): void {
+/**
+ * The fill for a chassis body: the member's colour, optionally with a material through it.
+ *
+ * `textureSpace: 'local'` is what makes this a two-line change rather than a matrix exercise —
+ * it stretches the texture to each shape's own bounds, so all six chassis silhouettes are
+ * covered edge to edge without anybody computing a UV transform per shape.
+ *
+ * `color` alongside `texture` MULTIPLIES the two, which is precisely the intent: the material
+ * supplies the surface and the member's colour supplies the identity. It is also why every
+ * texture in `src/render/textures/` is deliberately light — multiplying can only darken, and a
+ * dark material would swallow the one thing that says whose bot this is.
+ */
+function bodyFill(colour: number, texture: Texture | null): number | FillInput {
+  return texture === null ? colour : { texture, color: colour, textureSpace: 'local' };
+}
+
+function fillShape(
+  g: Graphics,
+  shape: ChassisShape,
+  colour: number,
+  texture: Texture | null = null,
+): void {
+  const fill = bodyFill(colour, texture);
   switch (shape.kind) {
     case 'poly':
-      g.poly(flatten(shape.points)).fill(colour);
+      g.poly(flatten(shape.points)).fill(fill);
       return;
     case 'circle':
-      g.circle(0, 0, shape.radius).fill(colour);
+      g.circle(0, 0, shape.radius).fill(fill);
       return;
     case 'roundRect':
-      g.roundRect(shape.x, shape.y, shape.width, shape.height, shape.radius).fill(colour);
+      g.roundRect(shape.x, shape.y, shape.width, shape.height, shape.radius).fill(fill);
       return;
     case 'regularPoly':
-      g.regularPoly(0, 0, shape.radius, shape.sides, shape.rotation).fill(colour);
+      g.regularPoly(0, 0, shape.radius, shape.sides, shape.rotation).fill(fill);
       return;
   }
 }
@@ -630,6 +653,16 @@ export interface BotPortraitOptions {
    * reveal, where the bot is 600px tall and the weapon already reads, exactly as it was.
    */
   weaponScale?: number;
+
+  /**
+   * The material to draw the chassis body in. Omitted or null draws flat colour.
+   *
+   * Passed in already-loaded rather than looked up here, because this function is synchronous
+   * and textures are not. That also keeps the decision at the call site: the arena and the
+   * build reveal can each choose, and a caller that has no textures (the "What to expect" demo
+   * loop, every test, any environment without a GPU) simply does not pass one.
+   */
+  texture?: Texture | null;
 }
 
 export function drawBotPortrait(
@@ -652,7 +685,11 @@ export function drawBotPortrait(
     : { width: 3, color: 0x0b0f16, alpha: 0.85 };
 
   const body = new Graphics();
-  fillShape(body, shape, colour);
+  // The armour's material, on the chassis body rather than the armour rim. The rim is 2-10px
+  // wide and a texture on it would be invisible at any scale; the body is the only surface big
+  // enough to say what the machine is made of. The rim keeps its own distinct treatment on top,
+  // which is what carries the material at silhouette level.
+  fillShape(body, shape, colour, options.texture ?? null);
   strokeShape(body, shape, outline);
   drawChassisDetail(body, chassisPart.id, shape, r, colour);
   view.addChild(body);
@@ -757,6 +794,12 @@ export async function mountBotPortraitStage(
   colour: number,
   size = 420,
 ): Promise<BotPortraitStage> {
+  // Awaited here, and only here. This function is already async and the reveal is the screen
+  // where the material is actually studied, so it is worth being certain rather than merely
+  // likely. Loading began at boot, ten beats earlier, so in practice this resolves instantly --
+  // and if it somehow has not, the fallback draws flat colour rather than waiting forever.
+  await loadMaterials();
+
   const app = new Application();
   await app.init({
     width: size,
@@ -769,7 +812,9 @@ export async function mountBotPortraitStage(
   });
   parent.appendChild(app.canvas);
 
-  const drawing = drawBotPortrait(build, colour);
+  const drawing = drawBotPortrait(build, colour, {
+    texture: armourTexture(partAt('armour', build.armour).id),
+  });
   drawing.view.x = size / 2;
   drawing.view.y = size / 2;
 
