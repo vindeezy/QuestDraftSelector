@@ -4,7 +4,7 @@ import {
 import { TileState } from '../sim/arena/tiles';
 import { destroyOnce } from './destroy-once';
 import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
-import { isActive } from '../sim/arena/activation';
+import { Activation, isActive } from '../sim/arena/activation';
 import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
 import { drawBotPortrait, type BotPortraitWeapon } from './bot-portrait';
 import type { BotBuild } from '../sim/parts/assemble';
@@ -14,7 +14,13 @@ import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
-import { HAZARD_JET_EVERY, crusherScale, muzzleFlash, recoilOffset } from './vfx/hazard-motion';
+import {
+  HAZARD_JET_EVERY,
+  RECOIL_TICKS,
+  crusherScale,
+  muzzleFlash,
+  recoilOffset,
+} from './vfx/hazard-motion';
 import { botIndexOf } from '../sim/parts/from-effect';
 import { prefersReducedMotion } from './reduced-motion';
 
@@ -439,7 +445,10 @@ export async function createArenaRenderer(
   }
 
   /** Per emitter: its gun, and the tick it last fired, which drives recoil and flash. */
-  const emitterArt = new Map<string, { art: HazardArt; firedAt: number; x: number; y: number; heading: number }>();
+  const emitterArt = new Map<
+    string,
+    { art: HazardArt; firedAt: number; x: number; y: number; heading: number; triggered: boolean }
+  >();
   for (const emitter of match.arena.emitters) {
     // Sized against the shot rather than picked: a gun visibly narrower than its own
     // cannonball is the kind of detail that reads as wrong without being identifiable.
@@ -448,7 +457,15 @@ export async function createArenaRenderer(
     const heading = (emitter.heading / ANGLE_STEPS) * Math.PI * 2;
     art.view.rotation = heading;
     hazardLayer.addChild(art.view);
-    emitterArt.set(emitter.id, { art, firedAt: -999, x: emitter.x, y: emitter.y, heading });
+    art.view.visible = emitter.activation.mode !== Activation.Triggered;
+    emitterArt.set(emitter.id, {
+      art,
+      firedAt: -9999,
+      x: emitter.x,
+      y: emitter.y,
+      heading,
+      triggered: emitter.activation.mode === Activation.Triggered,
+    });
   }
 
   const silhouetteLayer = new Container();
@@ -717,11 +734,19 @@ export async function createArenaRenderer(
       const since = tick - entry.changedAt;
       const { art } = entry;
 
+      // A TRIGGERED hazard is a trap: hidden until a bot rolls over the plate that springs it.
+      // A cycling or always-on one is a fixed installation, and its rhythm is the warning --
+      // for those, being able to see the machine between firings is the point.
+      //
+      // The Crossfire is built entirely from the first kind: all four saws, all sixteen flame
+      // jets and all four cannons are on plates. Drawing them permanently laid the whole trap
+      // layout out in advance, which is the opposite of what that arena is for.
+      const permanent = zone.activation.mode !== Activation.Triggered;
+      art.view.visible = permanent || active;
+      if (!art.view.visible) continue;
+
       switch (art.family) {
         case 'saw':
-          // Always drawn. A saw's activation is `always()`, and even if it were not, a blade
-          // that blinked out of existence when idle would read as a rendering fault rather
-          // than as a hazard switching off.
           if (art.spin) art.spin.rotation = spinAngle(tick, SAW_SPIN_PER_TICK);
           break;
 
@@ -746,6 +771,10 @@ export async function createArenaRenderer(
           break;
 
         case 'crusher':
+          // A sprung crusher gets its slam for free: it becomes visible on the frame it
+          // activates, when `since` is 0 and the plate is at the top of its travel, and drops
+          // to the floor over the next three ticks. It arrives from above rather than
+          // appearing already landed.
           if (art.plate) art.plate.scale.set(crusherScale(active, since));
           // Dust on the frame it lands, not every frame it is down.
           if (active && since === 0 && !calm) {
@@ -762,6 +791,12 @@ export async function createArenaRenderer(
 
     for (const gun of emitterArt.values()) {
       const since = tick - gun.firedAt;
+      // Same rule as the zones, with one adjustment: an emitter's active window is a single
+      // tick (that is how it fires exactly one shot per period), so "visible while active"
+      // would be a gun that flickers for one frame. A sprung cannon is instead shown for as
+      // long as it is visibly recoiling -- it appears, kicks, and withdraws.
+      gun.art.view.visible = !gun.triggered || since < RECOIL_TICKS;
+      if (!gun.art.view.visible) continue;
       // The barrel drives back into the carriage; the carriage stays put.
       if (gun.art.plate) gun.art.plate.x = -recoilOffset(since);
       if (gun.art.flash) {

@@ -99,11 +99,14 @@ export function drawSawBlade(g: Graphics, reach: number): void {
 /**
  * A flame jet's nozzle, pointing along +x.
  *
- * Drawn whether or not the jet is burning, and that is deliberate: a flame that only exists
- * while it is firing gives no warning, and the arena's jets are on a cycle precisely so that
- * knowing where they are is worth something. The fire itself is not drawn here at all — it is
- * particles, the same `jet` the flamethrower weapon uses, because the whole point is that the
- * two should look like the same fire.
+ * Drawn separately from the fire, so a jet on a CYCLE can show its hardware between firings:
+ * that kind is a fixed installation whose rhythm is the warning, and hiding it would remove
+ * the only thing that makes the rhythm useful. A jet on a plate is the opposite -- a trap, and
+ * the renderer hides those entirely until they are sprung. This function does not decide
+ * which; it only draws the housing.
+ *
+ * The fire itself is not drawn here at all — it is particles, the same `jet` the flamethrower
+ * weapon uses, because the whole point is that the two should look like the same fire.
  */
 export function drawFlameNozzle(g: Graphics, size: number): void {
   const body = size * 0.55;
