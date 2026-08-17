@@ -50,6 +50,46 @@ describe('the armour to material mapping', () => {
   });
 });
 
+describe('every material that is downloaded is actually drawn', () => {
+  it('has a consumer for each one — nothing ships as dead weight', () => {
+    // The guard for a real mistake. `weapon-steel` was generated, added to the load list, and
+    // then never wired to anything: 35 KB downloaded on every visit to draw precisely nothing.
+    // Nothing failed, because an unused asset is invisible to a type checker and to every other
+    // test here.
+    //
+    // A material earns its download by being either an armour material or the weapon metal. Add
+    // a ninth texture with no consumer and this fails.
+    const armourMaterials = new Set(
+      partsFor('armour').map((part) => materialForArmour(part.id)).filter((m) => m !== null),
+    );
+    const orphans = MATERIAL_NAMES.filter((m) => m !== 'weapon' && !armourMaterials.has(m));
+    expect(orphans, `downloaded but never drawn: ${orphans.join(', ')}`).toEqual([]);
+  });
+});
+
+describe('the weapon metal', () => {
+  /** The weapon layer of a freshly drawn portrait. */
+  function weaponOf(build: BotBuild, weaponTexture: null | undefined) {
+    return drawBotPortrait(build, 0xff8844, { weaponTexture }).weapon.node as Graphics;
+  }
+
+  it('draws every weapon with no texture loaded', () => {
+    for (let weapon = 0; weapon < partsFor('weapon').length; weapon++) {
+      const g = weaponOf({ ...BASE, weapon }, null);
+      expect(g.context.instructions.length, `weapon ${weapon}`).toBeGreaterThan(0);
+    }
+  });
+
+  it('is unchanged by passing null versus omitting the option', () => {
+    for (let weapon = 0; weapon < partsFor('weapon').length; weapon++) {
+      const omitted = weaponOf({ ...BASE, weapon }, undefined);
+      const explicit = weaponOf({ ...BASE, weapon }, null);
+      expect(explicit.context.instructions.length, `weapon ${weapon}`)
+        .toBe(omitted.context.instructions.length);
+    }
+  });
+});
+
 describe('before anything has loaded', () => {
   it('reports no texture rather than throwing', () => {
     // This is the state every test runs in, and the state the real site is in for the first few

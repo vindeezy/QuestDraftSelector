@@ -2,7 +2,7 @@ import { Application, Container, Graphics, type FillInput, type Texture } from '
 import type { BotBuild } from '../sim/parts/assemble';
 import { partAt } from '../sim/parts/tables';
 import { destroyOnce } from './destroy-once';
-import { armourTexture, loadMaterials } from './materials';
+import { armourTexture, loadMaterials, textureFor } from './materials';
 
 /**
  * Draws an assembled bot's portrait — the first time a league member sees the machine
@@ -217,6 +217,18 @@ function chassisRadiusFor(chassisId: string): number {
  */
 function bodyFill(colour: number, texture: Texture | null): number | FillInput {
   return texture === null ? colour : { texture, color: colour, textureSpace: 'local' };
+}
+
+/**
+ * The fill for a weapon's bright metal.
+ *
+ * Tinted with `WEAPON_METAL` rather than the member's colour: a weapon is not a place to carry
+ * identity — that is the chassis's job — and colouring the blade would make ten bots' weapons
+ * ten different colours, which is a decoration rather than a machine.
+ */
+function weaponFill(texture: Texture | null | undefined): number | FillInput {
+  if (!texture) return WEAPON_METAL;
+  return { texture, color: WEAPON_METAL, textureSpace: 'local' };
 }
 
 function fillShape(
@@ -456,11 +468,12 @@ function drawWeapon(
   head: Graphics,
   weaponId: string,
   frontX: number,
+  metal: number | FillInput = WEAPON_METAL,
 ): WeaponDrawing {
   switch (weaponId) {
     case 'weapon-vertical-spinner': {
       const cx = frontX + 14;
-      g.ellipse(cx, 0, 10, 26).fill(WEAPON_METAL);
+      g.ellipse(cx, 0, 10, 26).fill(metal);
       g.ellipse(cx, 0, 10, 26).stroke({ width: 2, color: WEAPON_DARK, alpha: 0.85 });
       g.moveTo(cx, -22)
         .lineTo(cx, 22)
@@ -475,7 +488,7 @@ function drawWeapon(
       g.moveTo(rootX, 0)
         .lineTo(headX - 10, 0)
         .stroke({ width: 6, color: WEAPON_DARK });
-      head.poly([-11, -20, 11, -14, 11, 14, -11, 20]).fill(WEAPON_METAL);
+      head.poly([-11, -20, 11, -14, 11, 14, -11, 20]).fill(metal);
       // Pivots at the haft's root, where an arm would hold it, so it swings rather than
       // orbiting the bot.
       return {
@@ -492,7 +505,7 @@ function drawWeapon(
       const cx = frontX + 12;
       const teeth = WEAPON_SAW_TEETH;
       const outer = 20;
-      g.star(cx, 0, teeth, outer, 12).fill(WEAPON_METAL);
+      g.star(cx, 0, teeth, outer, 12).fill(metal);
       g.circle(cx, 0, 5).fill(WEAPON_DARK);
       // `star`'s own first vertex sits at the top (angle -90 deg), stepping every
       // `180 / teeth` degrees and alternating outer/inner radius — with `teeth = 10`
@@ -509,12 +522,12 @@ function drawWeapon(
     }
     case 'weapon-spinning-bar': {
       const cx = frontX + 4;
-      g.rect(cx - 4, -30, 8, 60).fill(WEAPON_METAL);
+      g.rect(cx - 4, -30, 8, 60).fill(metal);
       g.circle(cx, 0, 6).fill(WEAPON_DARK);
       return { tip: { x: cx, y: -30 }, pivot: { x: cx, y: 0 }, motion: 'spin' };
     }
     case 'weapon-ram-plate': {
-      g.roundRect(frontX - 4, -26, 16, 52, 3).fill(WEAPON_METAL);
+      g.roundRect(frontX - 4, -26, 16, 52, 3).fill(metal);
       g.roundRect(frontX - 4, -26, 16, 52, 3).stroke({ width: 2, color: WEAPON_DARK, alpha: 0.85 });
       return { tip: { x: frontX + 12, y: 0 }, pivot: { x: frontX, y: 0 }, motion: 'none' };
     }
@@ -663,6 +676,15 @@ export interface BotPortraitOptions {
    * loop, every test, any environment without a GPU) simply does not pass one.
    */
   texture?: Texture | null;
+
+  /**
+   * The metal to draw the weapon's bright parts in. Omitted or null draws flat colour.
+   *
+   * Separate from `texture` because the two answer different questions: the chassis carries the
+   * armour material a member was dealt, while every weapon is machined from the same steel. One
+   * option could not express that without pretending the weapon's metal is a build property.
+   */
+  weaponTexture?: Texture | null;
 }
 
 export function drawBotPortrait(
@@ -701,7 +723,10 @@ export function drawBotPortrait(
   const weaponGfx = new Graphics();
   const weaponHead = new Graphics();
   const frontX = extentX(shape, 1);
-  const drawn = drawWeapon(weaponGfx, weaponHead, weaponPart.id, frontX);
+  // The weapon's own steel, shared by all six weapons — they are all machined parts off the
+  // same bench, unlike the armour, whose whole point is that the seven materials differ.
+  const weaponMetal = weaponFill(options.weaponTexture);
+  const drawn = drawWeapon(weaponGfx, weaponHead, weaponPart.id, frontX, weaponMetal);
   const weaponAnchor = drawn.tip;
   const weaponScale = options.weaponScale ?? 1;
 
@@ -814,6 +839,7 @@ export async function mountBotPortraitStage(
 
   const drawing = drawBotPortrait(build, colour, {
     texture: armourTexture(partAt('armour', build.armour).id),
+    weaponTexture: textureFor('weapon'),
   });
   drawing.view.x = size / 2;
   drawing.view.y = size / 2;

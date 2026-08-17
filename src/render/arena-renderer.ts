@@ -15,7 +15,7 @@ import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
 import { OIL_COLOR, OIL_SHEEN, isOiled } from './floor-state';
-import { armourTexture } from './materials';
+import { armourTexture, textureFor } from './materials';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
@@ -500,6 +500,7 @@ export async function createArenaRenderer(
         // over it. By this point loading started long ago; if it somehow has not finished, the
         // bots are drawn in flat colour, which is exactly how they looked last week.
         texture: armourTexture(partAt('armour', build.armour).id),
+        weaponTexture: textureFor('weapon'),
       });
       const scale = bot.body.radius / drawing.radius;
       drawing.view.scale.set(scale);
