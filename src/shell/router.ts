@@ -8,6 +8,7 @@ import {
 } from './progress';
 import { SCREENS } from './screens';
 import type { ScreenContext } from './screens/types';
+import { playTransition } from './transitions';
 
 /**
  * The screen-per-beat router: shows the screen for whatever beat a member is on, and
@@ -47,6 +48,36 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
 
   let currentBeat: BeatId = FIRST_BEAT;
   let teardown: (() => void) | null = null;
+
+  /**
+   * The screen transition state.
+   *
+   * `navigate` stops being instantaneous once an outgoing screen has to animate away, and
+   * three things follow from that which are easy to get wrong.
+   *
+   * `currentBeat` still updates SYNCHRONOUSLY -- only the DOM swap waits. A caller that
+   * navigates and immediately asks where it is gets the truthful answer, and every existing
+   * test that does exactly that keeps passing.
+   *
+   * `pending` rather than a captured argument, because a viewer can click twice. The second
+   * navigation replaces the destination and lets the animation already in flight deliver it,
+   * instead of starting a second exit on a screen that is halfway gone.
+   *
+   * `destroyed` because an animation's completion is a callback into a router that may no
+   * longer exist. Rendering a beat into a detached container is silent and would only show up
+   * as a screen that never appeared.
+   */
+  let screenAnimation: Animation | null = null;
+  let exiting = false;
+  let pending: BeatId | null = null;
+  let destroyed = false;
+
+  /** Plays one transition on the container, replacing any still running. */
+  function play(beat: BeatId, phase: 'enter' | 'exit'): Animation | null {
+    screenAnimation?.cancel();
+    screenAnimation = playTransition(container, beat, phase);
+    return screenAnimation;
+  }
 
   /**
    * Runs the current screen's teardown, and never lets it stop the walkthrough.
@@ -100,6 +131,10 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     teardown = SCREENS[beat].render(ctx) ?? null;
     if (left.root) container.appendChild(left.root);
     renderBeatNav(beat, state);
+
+    // Fire and forget: nothing waits on an entrance, because the content is already there and
+    // already correct. Only the exit is on the critical path.
+    play(beat, 'enter');
   }
 
   /**
@@ -195,13 +230,46 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     container.appendChild(right);
   }
 
+  /** Renders whatever destination is outstanding. */
+  function flush(): void {
+    const beat = pending;
+    pending = null;
+    if (beat !== null && !destroyed) renderBeat(beat);
+  }
+
   function go(beat: BeatId): void {
     const state = loadProgress(seed, storage);
     if (!canNavigateToBeat(state, beat)) return;
 
     recordBeatReached(seed, beat, storage);
+    // Captured before `currentBeat` moves: the exit belongs to the screen being LEFT, and it is
+    // the outgoing beat that decides how it leaves.
+    const leaving = currentBeat;
     currentBeat = beat;
-    renderBeat(beat);
+    pending = beat;
+
+    // An exit is already playing. It will deliver the new destination when it lands.
+    if (exiting) return;
+
+    const exit = play(leaving, 'exit');
+    if (exit === null) {
+      // No Web Animations API, or the viewer asked for less motion. Behaves exactly as it did
+      // before transitions existed, which is what keeps this change backward-compatible.
+      flush();
+      return;
+    }
+
+    exiting = true;
+    const done = (): void => {
+      exiting = false;
+      // Releases the forwards fill BEFORE the swap, so the container is back at full opacity
+      // when the next screen lands in it rather than being left transparent.
+      exit.cancel();
+      flush();
+    };
+    // Both paths, because a cancelled animation rejects. A rejected exit must still change the
+    // screen -- a viewer stuck on the previous beat is the worst outcome available here.
+    exit.finished.then(done, done);
   }
 
   const initialBeat = loadProgress(seed, storage).furthestBeat;
@@ -218,6 +286,10 @@ export function mountRouter(options: MountRouterOptions): RouterHandle {
     },
     navigate: go,
     destroy: () => {
+      destroyed = true;
+      pending = null;
+      screenAnimation?.cancel();
+      screenAnimation = null;
       runTeardown();
       teardown = null;
     },
