@@ -47,30 +47,35 @@ could not compete for CPU), Chrome, 2.5x device pixel ratio, sound and particles
 
 | | The Gauntlet | The Crossfire | budget |
 |---|---|---|---|
-| Frame work, median | 1.0 ms | 1.8 ms | — |
-| Frame work, p99 | 3.2 ms | 4.0 ms | — |
-| **Frame work, worst** | **7.7 ms** | **6.7 ms** | **16.7 ms** |
+| Frame work, median | 1.3 ms | 1.5 ms | — |
+| Frame work, p99 | 3.6 ms | 4.0 ms | — |
+| **Frame work, worst** | **5.2 ms** | **6.9 ms** | **16.7 ms** |
 | Frames over 8 ms | 0 | 0 | — |
-| **Dropped frames (delta > 33 ms)** | **0 of 8,158** | **1 of 6,966** | — |
+| **Dropped frames (delta > 33 ms)** | **1 of 8,155** | **0 of 7,006** | — |
 | Peak particles alive | 519 | 764 | 1,100 (the pool) |
 
 **Under half the budget at the worst moment, and no frame anywhere went over 8 ms** across
 15,000 frames of two battles. Both held 60 fps throughout.
 
-**Textures cost something, and it lands entirely in the tail.** Against the same measurement
-taken before them, on the same arenas:
+**Textures cost something, and it lands in the tail rather than the median.** Against the same
+measurement taken before them, on the same arenas:
 
 | | Gauntlet before → after | Crossfire before → after |
 |---|---|---|
-| median | 1.0 → 1.0 ms | 1.3 → 1.8 ms |
-| p99 | 2.1 → 3.2 ms | 2.7 → 4.0 ms |
-| worst | 3.2 → 7.7 ms | 3.7 → 6.7 ms |
+| median | 1.0 → 1.3 ms | 1.3 → 1.5 ms |
+| p99 | 2.1 → 3.6 ms | 2.7 → 4.0 ms |
+| worst | 3.2 → 5.2 ms | 3.7 → 6.9 ms |
 
-The Gauntlet's median did not move at all, which is the interesting part: this is not a uniform
-per-frame cost. **It is the floor rebuild.** The floor used to be 192 flat rectangles redrawn
-every frame — always cheap. It is now a cached layer rebuilt only when a tile changes, which is
-usually free and occasionally expensive, and during a spiral collapse tiles change often enough
-to trigger repeated full textured rebuilds. Steady state got no worse; the spikes did.
+**It is the floor rebuild**, not a uniform per-frame cost. The floor used to be 192 flat
+rectangles redrawn every frame — always cheap. It is now a cached layer rebuilt only when a tile
+changes, which is usually free and occasionally expensive, and during a spiral collapse tiles
+change often enough to trigger repeated rebuilds. Steady state barely moved; the spikes did.
+
+**How the floor texture is mapped turned out to matter more than that it exists.** An
+intermediate version mapped a texture per tile and measured a worst frame of **7.7 ms** on The
+Gauntlet. Replacing 192 per-tile mappings with a single arena-wide one — done to remove the
+visible tiling, not for speed — brought the same measurement down to **5.2 ms**. The buttons and
+the oil splats added on top of that cost nothing measurable.
 
 That trade was accepted rather than stumbled into: the alternative was 192 textured fills every
 frame, which is worse in every percentile rather than just the tail. If the tail ever needs
