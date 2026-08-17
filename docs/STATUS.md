@@ -41,29 +41,41 @@ npm run distribution -- 400        # Plinko slot distribution and per-ball fairn
 
 ## Performance baseline
 
-Re-measured **17 August**, after weapons were given motion and hazards were drawn as
-machines. Production build (`npm run preview`, not the dev server, which was stopped so it
+Re-measured **17 August**, after the material textures went on the bots, the weapons and the
+arena floor. Production build (`npm run preview`, not the dev server, which was stopped so it
 could not compete for CPU), Chrome, 2.5x device pixel ratio, sound and particles live.
 
 | | The Gauntlet | The Crossfire | budget |
 |---|---|---|---|
-| Frame work, median | 1.0 ms | 1.3 ms | — |
-| Frame work, p99 | 2.1 ms | 2.7 ms | — |
-| **Frame work, worst** | **3.2 ms** | **3.7 ms** | **16.7 ms** |
+| Frame work, median | 1.0 ms | 1.8 ms | — |
+| Frame work, p99 | 3.2 ms | 4.0 ms | — |
+| **Frame work, worst** | **7.7 ms** | **6.7 ms** | **16.7 ms** |
 | Frames over 8 ms | 0 | 0 | — |
-| Frame delta, p99 | 16.8 ms | 16.8 ms | — |
-| **Dropped frames (delta > 33 ms)** | **0 of 6,847** | **1 of 6,826** | — |
+| **Dropped frames (delta > 33 ms)** | **0 of 8,158** | **1 of 6,966** | — |
 | Peak particles alive | 519 | 764 | 1,100 (the pool) |
 
-**A fifth of the budget at the worst moment on the heaviest arena.** Both battles held 60 fps
-throughout. The numbers are recorded so a future change that slows this down has something to
-fail against rather than a feeling to argue with.
+**Under half the budget at the worst moment, and no frame anywhere went over 8 ms** across
+15,000 frames of two battles. Both held 60 fps throughout.
 
-**It got faster, not slower.** Against the 15 August baseline on the same arena with sound
-live, worst-case work halved — 5.6 ms to 2.7 ms per callback — while peak particles went from
-293 to 764. Building hazard geometry once and only transforming it per frame more than paid
-for 2.6x the particles, which is what `hazard-art.ts` claims and is now measured rather than
-asserted.
+**Textures cost something, and it lands entirely in the tail.** Against the same measurement
+taken before them, on the same arenas:
+
+| | Gauntlet before → after | Crossfire before → after |
+|---|---|---|
+| median | 1.0 → 1.0 ms | 1.3 → 1.8 ms |
+| p99 | 2.1 → 3.2 ms | 2.7 → 4.0 ms |
+| worst | 3.2 → 7.7 ms | 3.7 → 6.7 ms |
+
+The Gauntlet's median did not move at all, which is the interesting part: this is not a uniform
+per-frame cost. **It is the floor rebuild.** The floor used to be 192 flat rectangles redrawn
+every frame — always cheap. It is now a cached layer rebuilt only when a tile changes, which is
+usually free and occasionally expensive, and during a spiral collapse tiles change often enough
+to trigger repeated full textured rebuilds. Steady state got no worse; the spikes did.
+
+That trade was accepted rather than stumbled into: the alternative was 192 textured fills every
+frame, which is worse in every percentile rather than just the tail. If the tail ever needs
+reclaiming, the lever is batching tile changes so several collapse together into one rebuild,
+at the cost of a frame or two of latency on the collapse warning.
 
 Four things worth knowing before trusting these numbers again:
 

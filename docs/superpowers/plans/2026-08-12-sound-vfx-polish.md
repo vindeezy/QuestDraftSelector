@@ -513,10 +513,10 @@ lines and no texture has to be seamlessly tileable.
 - [x] **Step 4b: Only ship textures for surfaces an arena places.** Gravel and the four
 conveyors were generated and are NOT shipped: no arena places either, so they would have been
 downloaded on every visit to draw nothing. Guarded in both directions by test.
-- [ ] **Step 5: Re-measure.** Bundle size done: 1102 KB to 1142 KB. FRAME WORK STILL
-OUTSTANDING — the browser pane was not displayed, so the page was not compositing and any
-figure taken would have been a throttled loop rather than the floor. Must be done with the pane
-visible, against the 17 August baseline in `docs/STATUS.md`. The floor is drawn every frame across the whole viewport, which makes it the
+- [x] **Step 5: Re-measure.** Bundle 1102 KB to 1142 KB. Frame work measured on both heavy
+arenas with the pane displayed: worst frame 7.7 ms of 16.7 ms, no frame over 8 ms across 15,000
+frames, 60 fps held. Textures cost roughly double in the TAIL and nothing in the median — see
+the baseline in `docs/STATUS.md` for why that is the floor rebuild rather than a per-frame cost. The floor is drawn every frame across the whole viewport, which makes it the
 one texture change with a plausible route to costing something.
 - [ ] **Step 6: WATCH GATE** — the owner watches all three arenas.
 - [ ] **Step 7: Commit** — `feat(render): material textures on the arena floor`
