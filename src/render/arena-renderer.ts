@@ -1,5 +1,6 @@
 import {
-  Application, BitmapText, Container, Graphics, Particle, ParticleContainer, Rectangle, Text,
+  Application, BitmapText, Container, Graphics, Matrix, Particle, ParticleContainer, Rectangle,
+  Text,
 } from 'pixi.js';
 import { TileState } from '../sim/arena/tiles';
 import { destroyOnce } from './destroy-once';
@@ -13,12 +14,19 @@ import type { Effect } from '../sim/arena/effects';
 import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
-import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
+import {
+  createEmitterArt,
+  createZoneArt,
+  drawButton,
+  drawCannonball,
+  type HazardArt,
+} from './hazard-art';
 import { FLOOR_TEXTURE_LIFT, OIL_COLOR, OIL_SHEEN, brighten, isOiled } from './floor-state';
 import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
+  buttonGlow,
   crusherScale,
   muzzleFlash,
   recoilOffset,
@@ -192,7 +200,10 @@ const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
   // Dark and viscous, and — deliberately — nowhere near the WARNING pulse's orange-brown
   // range so a tarred tile is never mistaken for a tile about to drop.
   [Surface.Tar]: 0x241a10,
-  [Surface.Ice]: 0xcdeefb,
+  // Deeper and more saturated than the near-white it was, so ice reads as cold and slippery
+  // rather than as "a pale tile". It also has to stay clearly apart from the plain floor, which
+  // is being lightened -- two pale greys next to each other would say nothing at all.
+  [Surface.Ice]: 0x7fc4e8,
   [Surface.Gravel]: 0x7c7161,
   [Surface.ConveyorN]: 0x2c3f52,
   [Surface.ConveyorS]: 0x2c3f52,
@@ -200,9 +211,25 @@ const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
   [Surface.ConveyorW]: 0x2c3f52,
 };
 
-/** The colour of a tile with no surface of its own. Named because the textured path needs it
- *  too, and an inline literal in two places is a divergence waiting to happen. */
-const PLAIN_FLOOR_COLOR = 0x161d27;
+/**
+ * The colour of a tile with no surface of its own.
+ *
+ * Lightened from the near-black `0x161d27` it started as, and the reasons compound. Pits are
+ * lethal and used to read as "slightly darker floor"; oil, tar and tyre marks are all dark and
+ * had almost nothing to sit against; and the floor texture itself was nearly invisible, because
+ * a texture MULTIPLIES and a surface at luminance 28 has no range to vary within.
+ *
+ * Not taken all the way to the texture's own light grey, though it was tempting. Ten member
+ * colours have to stay apart on top of this, and while a bright floor rescues Tommy's black it
+ * costs the white, silver and yellow bots the contrast they currently have. This is roughly two
+ * and a half times brighter, which is enough for the dark things to show and short of the point
+ * where the light bots start to dissolve.
+ */
+const PLAIN_FLOOR_COLOR = 0x454f5c;
+
+/** The pixel size the floor textures ship at. Needed to scale one across the arena; not read
+ *  from the texture itself, because a failed load has no size to read. */
+const TILE_TEXTURE_SIZE = 512;
 
 /**
  * Radians a hazard saw turns per tick.
@@ -213,9 +240,6 @@ const PLAIN_FLOOR_COLOR = 0x161d27;
  * and its edge travels faster, because an arena saw is half again as wide.
  */
 export const SAW_SPIN_PER_TICK = 0.24;
-
-const BUTTON_IDLE = 0x2c3646;
-const BUTTON_PRESSED = 0xffe45c;
 
 /**
  * The one colour fire is, wherever it comes from.
@@ -520,6 +544,27 @@ export async function createArenaRenderer(
     });
   }
 
+  /**
+   * One pre-built plate per button, and the tick each last disarmed.
+   *
+   * Buttons never move and never change shape, so like every other hazard here they are drawn
+   * once and afterwards only their rim's alpha changes.
+   */
+  const buttonArt = new Map<string, { rim: Graphics; disarmedAt: number; wasArmed: boolean }>();
+  for (const button of match.arena.buttons.values()) {
+    const view = new Container();
+    view.position.set(button.x, button.y);
+    const base = new Graphics();
+    const rim = new Graphics();
+    drawButton(base, rim, button.radius);
+    // Rim under the plate, so the glow spills out around it rather than washing over the
+    // tread -- a lit rim reads as the same button armed, a lit face reads as a different button.
+    view.addChild(rim);
+    view.addChild(base);
+    hazardLayer.addChild(view);
+    buttonArt.set(button.id, { rim, disarmedAt: -9999, wasArmed: false });
+  }
+
   const silhouetteLayer = new Container();
   world.addChild(silhouetteLayer);
   const silhouettes: (Container | null)[] = [];
@@ -719,6 +764,32 @@ export async function createArenaRenderer(
     return { container, dot, text };
   });
 
+  /**
+   * One texture laid across the WHOLE arena, with the tiles cut out of it.
+   *
+   * This is what `textureSpace: 'global'` exists for, and it took two wrong turns to get here.
+   * Mapping a texture per tile with `'local'` gives 192 identical copies, which reads as tiling
+   * exactly as loudly as the grid lines did. Rotating and flipping each tile to break that up
+   * removes the repetition and replaces it with a PATCHWORK: every tile still shows the whole
+   * image, so each ends up with its own bright and dark corners and the grid comes straight
+   * back, irregular instead of regular.
+   *
+   * Stretching one image over the entire floor has neither problem. There is no repetition
+   * because nothing repeats, and no seams because there are no edges -- a tile is a window onto
+   * a floor that was already there, which is precisely how a floor behaves.
+   *
+   * The cost is sharpness: 512 pixels across a 960-unit arena is a soft image. That is the
+   * right thing to trade. The floor is the background the entire fight happens on, and broad
+   * tonal variation is what makes it read as a surface; fine grain at this scale would be noise
+   * competing with ten bots that are twenty pixels across.
+   */
+  const arenaTextureMatrix = ((): Matrix => {
+    const scale = match.arena.grid.width / TILE_TEXTURE_SIZE;
+    const m = new Matrix();
+    m.scale(scale, scale);
+    return m;
+  })();
+
   /** True when the floor differs from what `floorBase` was last built from. */
   const floorStale = (current: Match, textured: boolean): boolean => {
     const tiles = current.arena.grid.tiles;
@@ -755,15 +826,28 @@ export async function createArenaRenderer(
         const surface = surfaceAt(grid, current.arena.surfaces, cx, cy);
         const oiled = isOiled(baseSurfaces, current.arena.surfaces, index);
 
-        const x = col * size + 1;
-        const y = row * size + 1;
-        const w = size - 2;
+        // Edge to edge, with no inset. The one-pixel gap that used to separate every tile was
+        // what drew the grid, and a grid is the opposite of a floor: it says "this arena is made
+        // of squares" when the tiles are an implementation detail of collapse, not something
+        // anyone watching needs to see.
+        const x = col * size;
+        const y = row * size;
+        const w = size;
 
         if (oiled) {
           const oil = oilTexture();
           floorBase.rect(x, y, w, w).fill(
             // Untinted when a texture exists: `0xffffff` multiplies to exactly the texture.
-            oil === null ? OIL_COLOR : { texture: oil, color: 0xffffff, textureSpace: 'local' },
+            oil === null
+              ? OIL_COLOR
+              : {
+                  texture: oil,
+                  color: 0xffffff,
+                  // Oil takes the same arena-wide mapping, so two adjacent slicks read as one
+                  // spreading pool rather than two identical stamps.
+                  textureSpace: 'global',
+                  matrix: arenaTextureMatrix,
+                },
           );
           if (oil === null) {
             // The hand-drawn slick, kept for the case where the texture never arrives. Two
@@ -783,7 +867,12 @@ export async function createArenaRenderer(
               : {
                   texture,
                   color: brighten(colour, FLOOR_TEXTURE_LIFT).colour,
-                  textureSpace: 'local',
+                  // GLOBAL rather than local, purely so a matrix can be supplied. Local space
+                  // stretches the texture to each tile identically, which removes the gaps and
+                  // leaves the repetition -- 192 copies of one image, which reads as tiling just
+                  // as loudly as the lines did.
+                  textureSpace: 'global',
+                  matrix: arenaTextureMatrix,
                 },
           );
         }
@@ -839,7 +928,7 @@ export async function createArenaRenderer(
     for (let row = 0; row < grid.rows; row++) {
       for (let col = 0; col < grid.cols; col++) {
         if (grid.tiles[row * grid.cols + col] !== TileState.Warning) continue;
-        floor.rect(col * size + 1, row * size + 1, size - 2, size - 2).fill(warningColor(tick));
+        floor.rect(col * size, row * size, size, size).fill(warningColor(tick));
       }
     }
   };
@@ -938,10 +1027,19 @@ export async function createArenaRenderer(
     }
 
     for (const button of current.arena.buttons.values()) {
-      dynamic
-        .circle(button.x, button.y, button.radius)
-        .fill({ color: button.pressed ? BUTTON_PRESSED : BUTTON_IDLE, alpha: button.pressed ? 0.9 : 0.6 });
-      dynamic.circle(button.x, button.y, button.radius).stroke({ width: 2, color: 0x0b0f16, alpha: 0.8 });
+      const art = buttonArt.get(button.id);
+      if (!art) continue;
+      // ARMED rather than pressed. Pressed means a bot is standing on it; armed means the trap
+      // is live, which outlasts the bot by `latchTicks` and is the window in which hazards
+      // actually fire. Lighting the plate for the wrong one of those would show the cause and
+      // hide the effect.
+      const armed = tick < button.armedUntil;
+      if (!armed && art.wasArmed) art.disarmedAt = tick;
+      art.wasArmed = armed;
+
+      const glow = buttonGlow(armed, tick - art.disarmedAt);
+      art.rim.visible = glow > 0;
+      art.rim.alpha = glow;
     }
 
     for (const shot of current.projectiles) {

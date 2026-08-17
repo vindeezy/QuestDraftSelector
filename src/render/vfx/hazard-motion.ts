@@ -93,3 +93,20 @@ export function muzzleFlash(ticksSinceFire: number): number {
  * costs against the real recorded event.
  */
 export const HAZARD_JET_EVERY = 2;
+
+/**
+ * How brightly an armed floor plate's rim burns, 0-1.
+ *
+ * Snaps to full the instant it arms and fades once it disarms, rather than easing in both
+ * directions. Arming is an event -- a bot has just triggered something -- and an event that
+ * ramps up reads as a slow dial rather than a trigger. Coming down is the opposite: a hard
+ * cut-off looks like a rendering glitch, and the fade is what says the window has closed.
+ */
+export const BUTTON_FADE_TICKS = 18;
+
+export function buttonGlow(armed: boolean, ticksSinceDisarmed: number): number {
+  if (armed) return 1;
+  if (!Number.isFinite(ticksSinceDisarmed) || ticksSinceDisarmed < 0) return 0;
+  const remaining = 1 - ticksSinceDisarmed / BUTTON_FADE_TICKS;
+  return remaining > 0 ? remaining : 0;
+}

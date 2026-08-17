@@ -53,6 +53,11 @@ const HOUSING_DARK = 0x2c3540;
 const RUST = 0x8a5a3c;
 const SHADOW = 0x05080c;
 
+/** The armed rim. Neon red, well clear of every other colour on the floor -- the collapse
+ *  warning is orange-brown and tar is nearly black, so nothing else competes with it. */
+const BUTTON_GLOW = 0xff2436;
+const BUTTON_GLOW_CORE = 0xff8a92;
+
 /**
  * A blade.
  *
@@ -166,6 +171,53 @@ export function drawCrusherPlate(g: Graphics, reach: number): void {
   ] as const) {
     g.circle(rx, ry, reach * 0.075).fill(STEEL_DARK);
   }
+}
+
+/**
+ * A floor plate, in two pieces: the housing that never changes, and the rim that lights.
+ *
+ * Buttons were flat discs, and in The Crossfire that is a real omission rather than a cosmetic
+ * one: every hazard in that arena is on a plate, so the plate is the causal link between a bot
+ * driving somewhere and a trap firing. If the plate does not visibly fire, traps appear to go
+ * off at random.
+ *
+ * The rim is drawn separately so it can be revealed by alpha rather than redrawn, and so the
+ * glow sits OUTSIDE the tread plate instead of tinting it -- a button that changes colour reads
+ * as a different button, where a button that lights up reads as the same one, armed.
+ */
+export function drawButton(base: Graphics, rim: Graphics, radius: number): void {
+  // The sunken housing the plate sits in.
+  base.circle(0, 0, radius).fill(HOUSING_DARK);
+  base.circle(0, 0, radius).stroke({ width: 2, color: 0x0b0f16, alpha: 0.9 });
+
+  // The tread plate itself, inset so the housing reads as a recess rather than an outline.
+  base.circle(0, 0, radius * 0.78).fill(HOUSING);
+  base.circle(0, 0, radius * 0.78).stroke({ width: 1.5, color: STEEL_DARK, alpha: 0.8 });
+
+  // Four bolts. The detail that stops it reading as a UI element and starts it reading as
+  // something bolted to a floor.
+  const inset = radius * 0.52 * 0.7071;
+  for (const [bx, by] of [
+    [-inset, -inset],
+    [inset, -inset],
+    [inset, inset],
+    [-inset, inset],
+  ] as const) {
+    base.circle(bx, by, radius * 0.09).fill(STEEL_DARK);
+  }
+
+  // A grip cross, so the plate looks like something meant to be driven over.
+  base.moveTo(-radius * 0.4, 0).lineTo(radius * 0.4, 0)
+    .stroke({ width: 1.5, color: STEEL_DARK, alpha: 0.55 });
+  base.moveTo(0, -radius * 0.4).lineTo(0, radius * 0.4)
+    .stroke({ width: 1.5, color: STEEL_DARK, alpha: 0.55 });
+
+  // The armed rim: a hot core with a wider, softer halo outside it. Built at full brightness
+  // once and revealed by alpha, so arming costs no tessellation.
+  rim.circle(0, 0, radius * 1.28).fill({ color: BUTTON_GLOW, alpha: 0.18 });
+  rim.circle(0, 0, radius * 1.1).stroke({ width: 3, color: BUTTON_GLOW, alpha: 0.55 });
+  rim.circle(0, 0, radius * 0.94).stroke({ width: 2.5, color: BUTTON_GLOW_CORE, alpha: 0.95 });
+  rim.visible = false;
 }
 
 /**

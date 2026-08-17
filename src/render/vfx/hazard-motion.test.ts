@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
+  BUTTON_FADE_TICKS,
   CRUSHER_DROP_TICKS,
   CRUSHER_RAISE_TICKS,
   FLASH_TICKS,
   RECOIL_TICKS,
+  buttonGlow,
   crusherHeight,
   crusherScale,
   muzzleFlash,
@@ -89,5 +91,37 @@ describe('the muzzle flash', () => {
   it('stays a flash, not a lamp', () => {
     // Long enough and it stops reading as an event and starts reading as a light that is on.
     expect(FLASH_TICKS).toBeLessThanOrEqual(6);
+  });
+});
+
+describe('the armed plate rim', () => {
+  it('is full brightness the instant it arms', () => {
+    // Arming is an event -- a bot has just triggered something. An event that ramps up reads as
+    // a dial being turned rather than a trigger being hit.
+    expect(buttonGlow(true, 0)).toBe(1);
+    expect(buttonGlow(true, 999)).toBe(1);
+  });
+
+  it('fades out once the window closes rather than cutting', () => {
+    // A hard cut-off looks like a rendering glitch. The fade is what says the trap window has
+    // expired, which is information the viewer needs and nothing else on screen carries.
+    expect(buttonGlow(false, 0)).toBeCloseTo(1, 2);
+    expect(buttonGlow(false, BUTTON_FADE_TICKS / 2)).toBeCloseTo(0.5, 2);
+    expect(buttonGlow(false, BUTTON_FADE_TICKS)).toBe(0);
+  });
+
+  it('never goes negative or lingers forever', () => {
+    for (const t of [-5, 0, 30, 5000, Number.NaN]) {
+      const glow = buttonGlow(false, t);
+      expect(glow, String(t)).toBeGreaterThanOrEqual(0);
+      expect(glow, String(t)).toBeLessThanOrEqual(1);
+    }
+    expect(buttonGlow(false, BUTTON_FADE_TICKS * 10)).toBe(0);
+  });
+
+  it('fades fast enough to track a rapid sequence of triggers', () => {
+    // The Crossfire fires plates constantly. A glow outlasting its own trap would leave the
+    // floor permanently lit and say nothing.
+    expect(BUTTON_FADE_TICKS).toBeLessThanOrEqual(30);
   });
 });
