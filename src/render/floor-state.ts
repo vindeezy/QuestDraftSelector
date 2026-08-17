@@ -24,6 +24,7 @@
  */
 
 import { Surface, type SurfaceValue } from '../sim/arena/surface';
+import { TileState } from '../sim/arena/tiles';
 
 /**
  * Whether tile `index` has been oiled since the match began.
@@ -170,3 +171,82 @@ export function oilSplatPoints(
  * cover the corners of tiles nobody oiled.
  */
 export const OIL_SPLAT_RADIUS = 0.58;
+
+/** Which sides of a pit tile have solid floor beside them. */
+export interface PitEdges {
+  north: boolean;
+  south: boolean;
+  east: boolean;
+  west: boolean;
+}
+
+/**
+ * Where a pit meets the floor.
+ *
+ * A pit is drawn as nothing at all — the tile is skipped and whatever is behind the arena shows
+ * through — which is why a hole in this game reads as a flat dark square rather than as
+ * somewhere you could fall. Depth has to be drawn, and the only place it can be drawn is the
+ * boundary: the lit lip of broken floor, and the wall dropping away just inside it.
+ *
+ * Interior tiles of a large pit have no floor beside them at all and get nothing, which is
+ * exactly right — the middle of a bottomless pit is not lit by anything. It also means several
+ * collapsed tiles read as ONE hole with one continuous rim, rather than as a row of squares,
+ * for the same reason the floor is one texture rather than 192.
+ *
+ * Out of bounds counts as not-floor. A pit at the arena's edge is an opening in the wall, and
+ * the wall is drawn separately.
+ */
+export function pitEdges(
+  tiles: Readonly<Uint8Array>,
+  cols: number,
+  rows: number,
+  index: number,
+): PitEdges {
+  const col = index % cols;
+  const row = Math.floor(index / cols);
+  const solid = (c: number, r: number): boolean =>
+    c >= 0 && c < cols && r >= 0 && r < rows && tiles[r * cols + c] !== TileState.Gone;
+  return {
+    north: solid(col, row - 1),
+    south: solid(col, row + 1),
+    east: solid(col + 1, row),
+    west: solid(col - 1, row),
+  };
+}
+
+/**
+ * The void a pit is filled with.
+ *
+ * Darker than the page behind the arena on purpose. A hole that matches its surroundings reads
+ * as a gap in the drawing; one that is darker than everything else on screen reads as a hole.
+ */
+export const PIT_VOID = 0x04060a;
+
+/** The wall just below the lip, catching what light reaches it. */
+export const PIT_WALL = 0x3b4552;
+
+/**
+ * The broken edge of the floor.
+ *
+ * The single most valuable mark in this whole effect, and it is a colour illusion rather than
+ * geometry: a bright line immediately against black makes the black read as far deeper than the
+ * same black with a soft edge. Simultaneous contrast doing the work that a shadow gradient
+ * alone cannot.
+ */
+export const PIT_LIP = 0x9fb0c4;
+
+/** How far down the wall is visible, as a fraction of a tile, and in how many steps. */
+export const PIT_WALL_DEPTH = 0.42;
+export const PIT_WALL_BANDS = 5;
+
+/**
+ * How lit the wall is at band `i` of `bands`, from the lip downward.
+ *
+ * Falls away fast rather than linearly, because light down a shaft does: a linear ramp reads as
+ * a grey bevel, which is a raised edge, not a hole.
+ */
+export function pitWallAlpha(band: number, bands = PIT_WALL_BANDS): number {
+  if (!Number.isFinite(band) || band < 0 || bands <= 0) return 0;
+  const t = Math.min(1, band / bands);
+  return 0.95 * Math.pow(1 - t, 1.7);
+}

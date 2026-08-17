@@ -26,7 +26,14 @@ import {
   OIL_COLOR,
   OIL_SHEEN,
   OIL_TINT,
+  PIT_LIP,
+  PIT_VOID,
+  PIT_WALL,
+  PIT_WALL_BANDS,
+  PIT_WALL_DEPTH,
   brighten,
+  pitEdges,
+  pitWallAlpha,
   isOiled,
   oilSplatPoints,
 } from './floor-state';
@@ -922,12 +929,75 @@ export async function createArenaRenderer(
       }
     }
 
+    drawPits(current);
+
     for (const seg of current.arena.segments) {
       floorBase.moveTo(seg.x1, seg.y1).lineTo(seg.x2, seg.y2).stroke({ width: 4, color: 0x35424f });
     }
 
     builtTiles = Uint8Array.from(current.arena.grid.tiles);
     builtSurfaces = Uint8Array.from(current.arena.surfaces);
+  };
+
+  /**
+   * Depth, drawn onto the holes.
+   *
+   * A pit was previously the absence of a tile -- nothing was drawn and the page behind the
+   * arena showed through -- so a hole read as a flat dark square rather than as somewhere a bot
+   * could disappear. Three marks fix that, and they are drawn AFTER the floor so the lip lands
+   * on top of it:
+   *
+   * 1. The void, filled darker than anything else on screen. A hole that matches its
+   *    surroundings reads as a gap in the drawing; one that is darker reads as a hole.
+   * 2. The wall, in bands stepping down from the lip and fading fast to nothing. Fast rather
+   *    than linear, because a linear ramp reads as a grey bevel -- a RAISED edge, the exact
+   *    opposite of the intent.
+   * 3. The lip: a bright line on the broken floor edge. This is the one doing most of the work,
+   *    and it is a colour illusion rather than geometry -- bright immediately against black
+   *    makes the black read far deeper than the same black with a soft edge.
+   *
+   * Only edges that actually touch floor are drawn, so a run of collapsed tiles becomes one
+   * hole with one continuous rim instead of a row of squares -- the same reasoning that made
+   * the floor one texture rather than 192.
+   */
+  const drawPits = (current: Match): void => {
+    const grid = current.arena.grid;
+    const size = grid.tileSize;
+    const step = (size * PIT_WALL_DEPTH) / PIT_WALL_BANDS;
+
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        const index = row * grid.cols + col;
+        if (grid.tiles[index] !== TileState.Gone) continue;
+
+        const x = col * size;
+        const y = row * size;
+        floorBase.rect(x, y, size, size).fill(PIT_VOID);
+
+        const edges = pitEdges(grid.tiles, grid.cols, grid.rows, index);
+        for (let band = 0; band < PIT_WALL_BANDS; band++) {
+          const alpha = pitWallAlpha(band);
+          if (alpha <= 0) continue;
+          const near = band * step;
+          const style = { color: PIT_WALL, alpha };
+          // Each wall recedes INTO the tile, away from the floor it hangs off. Corners get two
+          // bands laid over each other and come out darker, which is correct -- a corner is
+          // further from the light than the middle of an edge.
+          if (edges.north) floorBase.rect(x, y + near, size, step).fill(style);
+          if (edges.south) floorBase.rect(x, y + size - near - step, size, step).fill(style);
+          if (edges.west) floorBase.rect(x + near, y, step, size).fill(style);
+          if (edges.east) floorBase.rect(x + size - near - step, y, step, size).fill(style);
+        }
+
+        // The lit break in the floor, straddling the boundary so half of it lands on solid
+        // ground and half over the drop.
+        const lip = { width: 2, color: PIT_LIP, alpha: 0.5 };
+        if (edges.north) floorBase.moveTo(x, y).lineTo(x + size, y).stroke(lip);
+        if (edges.south) floorBase.moveTo(x, y + size).lineTo(x + size, y + size).stroke(lip);
+        if (edges.west) floorBase.moveTo(x, y).lineTo(x, y + size).stroke(lip);
+        if (edges.east) floorBase.moveTo(x + size, y).lineTo(x + size, y + size).stroke(lip);
+      }
+    }
   };
 
   /**

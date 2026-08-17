@@ -1,11 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { Surface } from '../sim/arena/surface';
+import { TileState } from '../sim/arena/tiles';
 import {
   OIL_COLOR,
   OIL_SPLAT_RADIUS,
   isOiled,
   isTexturedSurface,
+  PIT_WALL_BANDS,
   oilSplatPoints,
+  pitEdges,
+  pitWallAlpha,
 } from './floor-state';
 
 /** A surface map of `n` tiles, all plain unless overridden. */
@@ -158,5 +162,67 @@ describe('the shape of a slick', () => {
     // half-diagonal and it routinely covers corners of tiles nobody oiled.
     expect(OIL_SPLAT_RADIUS).toBeGreaterThan(0.5);
     expect(OIL_SPLAT_RADIUS).toBeLessThan(0.707);
+  });
+});
+
+describe('where a pit meets the floor', () => {
+  /** A 4x4 grid, solid except for the indices given. */
+  const grid = (gone: number[]) => {
+    const t = new Uint8Array(16).fill(TileState.Solid);
+    for (const i of gone) t[i] = TileState.Gone;
+    return t;
+  };
+
+  it('finds floor on all four sides of a lone pit', () => {
+    expect(pitEdges(grid([5]), 4, 4, 5)).toEqual({ north: true, south: true, east: true, west: true });
+  });
+
+  it('reports no edge where the neighbour is also a pit', () => {
+    // The reason several collapsed tiles read as ONE hole with one rim rather than a row of
+    // squares. Interior tiles of a big pit get no wall and no lip, which is correct — nothing
+    // lights the middle of a hole.
+    const edges = pitEdges(grid([5, 6]), 4, 4, 5);
+    expect(edges.east).toBe(false);
+    expect(edges.west).toBe(true);
+    expect(edges.north).toBe(true);
+    expect(edges.south).toBe(true);
+  });
+
+  it('gives a fully enclosed pit tile no edges at all', () => {
+    // Index 5 surrounded on all four sides by other pit tiles.
+    expect(pitEdges(grid([1, 4, 5, 6, 9]), 4, 4, 5)).toEqual({
+      north: false, south: false, east: false, west: false,
+    });
+  });
+
+  it('treats the arena boundary as not-floor', () => {
+    // A pit on the edge is an opening in the wall, and the wall is drawn separately. Claiming
+    // floor out there would hang a lit lip on empty space.
+    const edges = pitEdges(grid([0]), 4, 4, 0);
+    expect(edges.north).toBe(false);
+    expect(edges.west).toBe(false);
+    expect(edges.south).toBe(true);
+    expect(edges.east).toBe(true);
+  });
+});
+
+describe('the pit wall falloff', () => {
+  it('is brightest at the lip and gone by the bottom', () => {
+    expect(pitWallAlpha(0)).toBeGreaterThan(0.9);
+    expect(pitWallAlpha(PIT_WALL_BANDS)).toBe(0);
+  });
+
+  it('falls away faster than linearly', () => {
+    // A linear ramp reads as a grey bevel, which is a RAISED edge — the exact opposite of a
+    // hole. Light down a shaft drops off fast, so the midpoint must sit well below half.
+    const mid = pitWallAlpha(PIT_WALL_BANDS / 2) / pitWallAlpha(0);
+    expect(mid).toBeLessThan(0.4);
+  });
+
+  it('never goes negative or above full', () => {
+    for (const b of [-3, 0, 2, 99, Number.NaN]) {
+      expect(pitWallAlpha(b), String(b)).toBeGreaterThanOrEqual(0);
+      expect(pitWallAlpha(b), String(b)).toBeLessThanOrEqual(1);
+    }
   });
 });
