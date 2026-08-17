@@ -21,7 +21,14 @@ import {
   drawCannonball,
   type HazardArt,
 } from './hazard-art';
-import { FLOOR_TEXTURE_LIFT, OIL_COLOR, OIL_SHEEN, brighten, isOiled } from './floor-state';
+import {
+  FLOOR_TEXTURE_LIFT,
+  OIL_COLOR,
+  OIL_SHEEN,
+  brighten,
+  isOiled,
+  oilSplatPoints,
+} from './floor-state';
 import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
 import {
   HAZARD_JET_EVERY,
@@ -836,7 +843,10 @@ export async function createArenaRenderer(
 
         if (oiled) {
           const oil = oilTexture();
-          floorBase.rect(x, y, w, w).fill(
+          // A wandering closed loop rather than the tile's square. The tile is what is
+          // slippery; the square is just how the simulation stores it.
+          const splat = oilSplatPoints(cx, cy, w, index);
+          floorBase.poly(splat).fill(
             // Untinted when a texture exists: `0xffffff` multiplies to exactly the texture.
             oil === null
               ? OIL_COLOR
@@ -850,7 +860,7 @@ export async function createArenaRenderer(
                 },
           );
           if (oil === null) {
-            // The hand-drawn slick, kept for the case where the texture never arrives. Two
+            // The hand-drawn sheen, kept for the case where the texture never arrives. Two
             // offset ellipses rather than a circle: a pool that spread, not a target painted
             // on the floor.
             floorBase.ellipse(cx - size * 0.08, cy - size * 0.04, size * 0.3, size * 0.22)

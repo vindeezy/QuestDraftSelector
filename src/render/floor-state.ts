@@ -97,3 +97,60 @@ export function brighten(colour: number, factor: number): { colour: number; appl
  * tone. Measured, not guessed: plain averages 0.58 of full brightness and tar 0.55.
  */
 export const FLOOR_TEXTURE_LIFT = 1.7;
+
+/**
+ * The outline of an oil slick, as a flat `[x, y, x, y, ...]` polygon.
+ *
+ * A slick used to be drawn as the tile it occupies: a hard-edged square, which is the one shape
+ * a spilled liquid never makes. This is a closed loop whose radius wanders with the angle,
+ * built from three sine terms at different frequencies so the wobble does not settle into an
+ * obvious rhythm the way a single term does.
+ *
+ * **Deterministic, from the tile index.** Not random, and this matters more than it looks: the
+ * site has a Replay button, and a spill that reshaped itself between two viewings of the same
+ * seed would quietly undermine the claim the whole event rests on. The same tile always gives
+ * the same splat.
+ *
+ * **Sized to roughly the tile it stands for.** It bulges past the edges in places and falls
+ * short in others, which is what makes it read as liquid — but the average is close to the
+ * tile, because the tile is exactly the area that is slippery. A small tidy puddle would look
+ * better and misinform about where it is safe to drive, which is the same objection that
+ * decided how far a flame jet is drawn.
+ *
+ * The overspill is a bonus rather than a defect: adjacent oiled tiles run into one another and
+ * read as one spreading pool rather than two stamps.
+ */
+export function oilSplatPoints(
+  centreX: number,
+  centreY: number,
+  size: number,
+  index: number,
+  steps = 32,
+): number[] {
+  // Three odd-ish multipliers so the terms do not share a period and repeat visibly.
+  const hash = (Math.abs(Math.trunc(index)) * 2654435761) >>> 0;
+  const phaseA = ((hash & 0xff) / 255) * Math.PI * 2;
+  const phaseB = (((hash >>> 8) & 0xff) / 255) * Math.PI * 2;
+  const phaseC = (((hash >>> 16) & 0xff) / 255) * Math.PI * 2;
+
+  const points: number[] = [];
+  for (let i = 0; i < steps; i++) {
+    const angle = (i / steps) * Math.PI * 2;
+    const wobble =
+      0.13 * Math.sin(angle * 2 + phaseA) +
+      0.08 * Math.sin(angle * 3 + phaseB) +
+      0.05 * Math.sin(angle * 5 + phaseC);
+    const radius = size * (OIL_SPLAT_RADIUS + wobble);
+    points.push(centreX + Math.cos(angle) * radius, centreY + Math.sin(angle) * radius);
+  }
+  return points;
+}
+
+/**
+ * The splat's mean radius, as a fraction of a tile.
+ *
+ * Above half, so the lobes reach the tile edges and beyond rather than leaving a visible ring
+ * of clean floor around every slick. Below the half-diagonal (0.707), so it does not routinely
+ * cover the corners of tiles nobody oiled.
+ */
+export const OIL_SPLAT_RADIUS = 0.58;

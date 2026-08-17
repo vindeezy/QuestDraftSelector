@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { Surface } from '../sim/arena/surface';
-import { OIL_COLOR, isOiled, isTexturedSurface } from './floor-state';
+import {
+  OIL_COLOR,
+  OIL_SPLAT_RADIUS,
+  isOiled,
+  isTexturedSurface,
+  oilSplatPoints,
+} from './floor-state';
 
 /** A surface map of `n` tiles, all plain unless overridden. */
 function surfaces(n: number, overrides: Record<number, number> = {}): Uint8Array {
@@ -79,5 +85,78 @@ describe('which surfaces want a texture', () => {
     for (const surface of [Surface.Tar, Surface.Ice, Surface.Gravel, Surface.ConveyorW]) {
       expect(isTexturedSurface(surface), String(surface)).toBe(true);
     }
+  });
+});
+
+describe('the shape of a slick', () => {
+  const SIZE = 60;
+
+  /** The radius of each point from the splat's centre. */
+  function radii(index: number): number[] {
+    const pts = oilSplatPoints(0, 0, SIZE, index);
+    const out: number[] = [];
+    for (let i = 0; i < pts.length; i += 2) out.push(Math.hypot(pts[i]!, pts[i + 1]!));
+    return out;
+  }
+
+  it('is not a circle — the radius has to wander or it is just a dot', () => {
+    const r = radii(7);
+    const spread = Math.max(...r) - Math.min(...r);
+    expect(spread).toBeGreaterThan(SIZE * 0.12);
+  });
+
+  it('covers roughly the tile it stands for', () => {
+    // The tile is what is slippery. A small tidy puddle would look better and misinform about
+    // where it is safe to drive — the same objection that decided how far a flame is drawn.
+    const r = radii(7);
+    const mean = r.reduce((a, b) => a + b, 0) / r.length;
+    expect(mean).toBeGreaterThan(SIZE * 0.45);
+    expect(mean).toBeLessThan(SIZE * 0.72);
+  });
+
+  it('never collapses to nothing or sprawls across the arena', () => {
+    for (const index of [0, 1, 5, 40, 191, 9999]) {
+      const r = radii(index);
+      expect(Math.min(...r), `index ${index}`).toBeGreaterThan(SIZE * 0.25);
+      expect(Math.max(...r), `index ${index}`).toBeLessThan(SIZE * 0.95);
+    }
+  });
+
+  it('gives the SAME tile the same shape every time', () => {
+    // The site has a Replay button. A spill that reshaped itself between two viewings of one
+    // seed would quietly undermine the claim the whole event rests on.
+    expect(oilSplatPoints(10, 20, SIZE, 42)).toEqual(oilSplatPoints(10, 20, SIZE, 42));
+  });
+
+  it('gives DIFFERENT tiles different shapes, including neighbours', () => {
+    // Adjacent indices are the case that matters: a hash that leaves neighbours similar would
+    // put a visible repeating rhythm across the floor.
+    const shapes = [40, 41, 42, 56].map((i) => JSON.stringify(radii(i).map((n) => n.toFixed(3))));
+    expect(new Set(shapes).size).toBe(shapes.length);
+  });
+
+  it('is centred where it is asked to be', () => {
+    const pts = oilSplatPoints(100, 250, SIZE, 3);
+    let sx = 0;
+    let sy = 0;
+    for (let i = 0; i < pts.length; i += 2) {
+      sx += pts[i]!;
+      sy += pts[i + 1]!;
+    }
+    expect(sx / (pts.length / 2)).toBeCloseTo(100, 0);
+    expect(sy / (pts.length / 2)).toBeCloseTo(250, 0);
+  });
+
+  it('returns a closed loop of x,y pairs', () => {
+    const pts = oilSplatPoints(0, 0, SIZE, 1);
+    expect(pts.length % 2).toBe(0);
+    expect(pts.length / 2).toBeGreaterThanOrEqual(16);
+  });
+
+  it('keeps its mean radius clear of both the tile edge and the corner', () => {
+    // Below half and every slick sits inside a visible ring of clean floor; above the
+    // half-diagonal and it routinely covers corners of tiles nobody oiled.
+    expect(OIL_SPLAT_RADIUS).toBeGreaterThan(0.5);
+    expect(OIL_SPLAT_RADIUS).toBeLessThan(0.707);
   });
 });
