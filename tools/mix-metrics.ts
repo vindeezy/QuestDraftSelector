@@ -24,6 +24,9 @@ import { toEventMembers } from '../src/config/roster';
 import { soundFor } from '../src/audio/classify';
 import { EXEMPT, GLOBAL_CAP, admit, emptyState, type VoiceRequest, type VoiceState } from '../src/audio/voices';
 import { PARTICLE_CAPACITY, burstCount, createParticleField } from '../src/render/vfx/particles';
+import { hazardFamily } from '../src/render/hazard-art';
+import { HAZARD_JET_EVERY } from '../src/render/vfx/hazard-motion';
+import { isActive } from '../src/sim/arena/activation';
 // The shipped record, so this measures the fight the league will actually watch rather than
 // whichever seed happened to be typed here.
 import officialRecord from '../data/official-event.json';
@@ -34,6 +37,8 @@ const MS_PER_TICK = 1000 / 60;
 interface Mix {
   /** Most particles alive at once, if every effect threw a burst. */
   peakParticles: number;
+  /** Most flame-jet hazards burning simultaneously. */
+  peakFlames: number;
   /** How many spawns the pool had to refuse a fresh slot for. */
   recycled: number;
   raw: number;
@@ -49,7 +54,7 @@ interface Mix {
 
 function newMix(): Mix {
   return {
-    raw: 0, played: 0, peak: 0, peakCapped: 0, worstRawSecond: 0, peakParticles: 0, recycled: 0,
+    raw: 0, played: 0, peak: 0, peakCapped: 0, worstRawSecond: 0, peakParticles: 0, peakFlames: 0, recycled: 0,
     requested: new Map(), kept: new Map(),
   };
 }
@@ -97,6 +102,7 @@ function report(label: string, mix: Mix, ticks: number): void {
     `peak particles ${mix.peakParticles} alive at once of ${PARTICLE_CAPACITY}` +
     ` (${Math.round((100 * mix.peakParticles) / PARTICLE_CAPACITY)}% of the pool)${full}`,
   );
+  console.log(`peak flames  ${mix.peakFlames} hazard jets burning at once`);
 
   const top = [...mix.requested.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (top.length > 0) {
@@ -150,6 +156,23 @@ for (let index = 0; index < result.battles.length; index++) {
       if (wanted > free) mix.recycled++;
       particles.burst({ x: effect.x, y: effect.y, intensity: effect.intensity, tint: 0xffffff });
     }
+
+    // Hazard flame jets, which the effect bus never mentions: they burn on an activation
+    // cycle whether or not they are touching anybody, so counting effects misses them
+    // entirely. They are also, by a wide margin, the biggest particle consumer in the show --
+    // the gauntlet arena places 24 of them and a third of them are alight at any moment.
+    let burning = 0;
+    for (const zone of match.arena.zones) {
+      if (hazardFamily(zone.id) !== 'flame') continue;
+      if (!isActive(zone.activation, match.world.tick, match.arena.buttons)) continue;
+      burning++;
+      if (match.world.tick % HAZARD_JET_EVERY !== 0) continue;
+      particles.jet({
+        x: zone.x, y: zone.y, intensity: 0.85, tint: 0xff9a3c,
+        angle: 0, spread: 0.24, reach: zone.reach,
+      });
+    }
+    mix.peakFlames = Math.max(mix.peakFlames, burning);
     particles.advance(MS_PER_TICK / 1000);
     mix.peakParticles = Math.max(
       mix.peakParticles,

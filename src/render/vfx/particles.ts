@@ -28,16 +28,43 @@
 /**
  * How many particles may exist at once.
  *
- * Sized against the measured worst case rather than guessed: the busiest second of the real
- * recorded event asks for 66 effects, and a heavy burst is about 18 particles, so a bad second
- * wants roughly 1,200 spawns. They do not all live at once — most are gone inside 400ms — and
- * 900 leaves room for the peak while staying small enough to update every frame without
- * thinking about it.
+ * Sized against the measured worst case rather than guessed. `npm run mix` runs the real
+ * recorded event and reports the peak; raising the cap far above demand and watching whether
+ * the peak moves is what says whether the pool is actually starving, because a full pool
+ * recycles silently rather than erroring.
+ *
+ * Measured on the shipped event, worst battle (The Crossfire): demand peaks at 764 live. It
+ * was 293 before the hazards were drawn properly — the difference is almost entirely flame
+ * jets, which unlike everything else here burn on a cycle whether or not anyone is near them,
+ * so they are a permanent floor rather than a spike. 900 held that without visible starvation
+ * (raising the cap to 1600 moved the peak by nine) but left only 15% of headroom over a worst
+ * case that is itself a floor now. 1,100 restores the margin. The cost of a spare slot is one
+ * skipped branch per frame.
  */
-export const PARTICLE_CAPACITY = 900;
+export const PARTICLE_CAPACITY = 1100;
 
 /** Gravity, in units per second squared. Gentle: sparks arc, they do not fall like rocks. */
 const GRAVITY = 260;
+
+/** Per-second velocity retention for flame. Thick: fire slows fast, it does not fly. */
+const JET_DRAG = 0.22;
+
+/** How far a flamethrower's own jet carries when the caller does not say. */
+const WEAPON_JET_REACH = 52;
+
+/**
+ * The launch speed a particle needs to travel `reach` in `life` seconds under `drag`.
+ *
+ * Velocity decays as `drag^t`, so distance is its integral over the particle's life:
+ * `v0 * (drag^life - 1) / ln(drag)`. Solving that for `v0` is the difference between a flame
+ * that fills its zone and one that is tuned by eye until it looks about right and then stops
+ * looking right the moment the zone changes size.
+ */
+export function speedForReach(reach: number, life: number, drag: number): number {
+  if (!(reach > 0) || !(life > 0) || !(drag > 0) || drag >= 1) return 0;
+  const carry = (Math.pow(drag, life) - 1) / Math.log(drag);
+  return carry > 0 ? reach / carry : 0;
+}
 
 export interface Particle {
   active: boolean;
@@ -65,6 +92,16 @@ export interface SpawnOptions {
   /** 0-1 from the effect bus. Drives count, speed and life. */
   intensity: number;
   tint: number;
+  /**
+   * Multiplies each particle's size and how long it lasts. Defaults to 1.
+   *
+   * One knob rather than two, because the case it exists for always wants both: a smaller
+   * version of an effect that also clears faster. A cannonball's smoke is the example --
+   * `puff` is tuned for collision dust, which is meant to be fat and to hang, and a shot
+   * crossing the arena in a second leaves that dust behind as a row of evenly spaced beads
+   * bigger than the ball that made them. Scaled down it is smoke again.
+   */
+  scale?: number;
 }
 
 export interface ParticleField {
@@ -95,6 +132,16 @@ export interface JetOptions extends SpawnOptions {
   angle: number;
   /** Radians of half-spread either side of `angle`. */
   spread: number;
+  /**
+   * How far the flame should carry, in world units. Defaults to a flamethrower's reach.
+   *
+   * A length, not a speed, because the caller knows the former and not the latter. A hazard
+   * flame jet is a 110-unit cone and a weapon's is about half that; asking each to supply a
+   * muzzle velocity means working backwards through the drag integral by hand, getting it
+   * roughly right, and having the flame stop short of the zone that is actually burning bots.
+   * `speedForReach` does that arithmetic exactly instead.
+   */
+  reach?: number;
 }
 
 export interface FieldOptions {
@@ -184,9 +231,10 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
     p.y = o.y;
     p.vx = Math.cos(angle) * speed;
     p.vy = Math.sin(angle) * speed;
-    p.life = life;
-    p.maxLife = life;
-    p.size = size;
+    const scale = Number.isFinite(o.scale) && (o.scale ?? 1) > 0 ? o.scale! : 1;
+    p.life = life * scale;
+    p.maxLife = p.life;
+    p.size = size * scale;
     p.tint = o.tint;
     p.drag = drag;
     p.weight = weight;
@@ -248,16 +296,21 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
     jet(o) {
       const force = clamp01(o.intensity);
       const count = jetCount(o.intensity);
+      const reach = Number.isFinite(o.reach) && (o.reach ?? 0) > 0 ? o.reach! : WEAPON_JET_REACH;
       for (let i = 0; i < count; i++) {
-        // Speed varies across the cone so the flame has depth rather than arriving as a
-        // solid front, and the slower particles fall behind into a tail.
+        // Speed varies across the cone so the flame has depth rather than arriving as a solid
+        // front, and the slower particles fall behind into a tail. Each particle's speed is
+        // solved from its OWN life, so a short-lived one still travels its share of the reach
+        // instead of dying halfway up the cone.
+        const life = 0.16 + 0.2 * random();
+        const share = 0.5 + 0.5 * random();
         spawn(
           o,
-          130 + 190 * force * (0.45 + 0.55 * random()),
+          speedForReach(reach * share, life, JET_DRAG) * (0.6 + 0.4 * force),
           o.angle + (random() * 2 - 1) * o.spread,
-          0.16 + 0.2 * random(),
+          life,
           4 + 4.5 * random(),
-          0.22,
+          JET_DRAG,
           // Nearly weightless. Flame rises if anything; it certainly does not arc down like
           // a spark, and gravity on a jet reads as the bot spitting rather than burning.
           0.05,

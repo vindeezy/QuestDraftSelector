@@ -228,6 +228,42 @@ describe('clear', () => {
   });
 });
 
+describe('a jet reaches the length it was asked for', () => {
+  /** Runs a field forward and reports how far the furthest particle got from the origin. */
+  function carriedDistance(reach: number | undefined): number {
+    const f = field(fakeRandom([0.5]));
+    f.jet({ x: 0, y: 0, intensity: 1, tint: 0xffffff, angle: 0, spread: 0, reach });
+    // Long enough for every particle to have expired: the longest life is 0.36s.
+    for (let i = 0; i < 40; i++) f.advance(1 / 60);
+    let furthest = 0;
+    for (const p of f.particles) furthest = Math.max(furthest, Math.hypot(p.x, p.y));
+    return furthest;
+  }
+
+  it('carries roughly as far as the reach it is given', () => {
+    // The property that matters, and the reason `speedForReach` solves the drag integral
+    // instead of a constant being tuned by eye. A hazard flame jet is a 110-unit cone; before
+    // this it launched at a flamethrower's speed and died about 50 units out, drawing fire
+    // well short of the zone that was actually burning bots.
+    for (const reach of [40, 110, 260]) {
+      const got = carriedDistance(reach);
+      expect(got, `reach ${reach}`).toBeGreaterThan(reach * 0.55);
+      expect(got, `reach ${reach}`).toBeLessThan(reach * 1.15);
+    }
+  });
+
+  it('scales with the reach asked for, rather than being one fixed length', () => {
+    expect(carriedDistance(220)).toBeGreaterThan(carriedDistance(60) * 2);
+  });
+
+  it('still has a flamethrower-sized reach when none is given', () => {
+    // Callers that predate the option must not silently change length.
+    const got = carriedDistance(undefined);
+    expect(got).toBeGreaterThan(20);
+    expect(got).toBeLessThan(90);
+  });
+});
+
 describe('the jet', () => {
   it('throws everything within its cone, not in all directions', () => {
     // The whole point of the shape. A jet that radiates is a bot on fire rather than a bot

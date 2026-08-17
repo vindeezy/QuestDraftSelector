@@ -4,7 +4,6 @@ import {
 import { TileState } from '../sim/arena/tiles';
 import { destroyOnce } from './destroy-once';
 import { Surface, surfaceAt, effectOf, type SurfaceValue } from '../sim/arena/surface';
-import { ZoneShape } from '../sim/arena/zone';
 import { isActive } from '../sim/arena/activation';
 import { ANGLE_STEPS, cosOf, sinOf } from '../sim/trig';
 import { drawBotPortrait, type BotPortraitWeapon } from './bot-portrait';
@@ -14,6 +13,8 @@ import type { Effect } from '../sim/arena/effects';
 import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
+import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
+import { HAZARD_JET_EVERY, crusherScale, muzzleFlash, recoilOffset } from './vfx/hazard-motion';
 import { botIndexOf } from '../sim/parts/from-effect';
 import { prefersReducedMotion } from './reduced-motion';
 
@@ -190,20 +191,47 @@ const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
   [Surface.ConveyorW]: 0x2c3f52,
 };
 
-/** Fill and outline for an active zone, regardless of its shape. */
-const ZONE_FILL = 0xff3b30;
-const ZONE_STROKE = 0xff9a70;
-
-/** Angle steps a circular zone's rotation marker advances per tick. Driven by
- * `match.world.tick`, never wall-clock time, so a saw spins identically on every
- * replay of the same seed. */
-const ZONE_SPIN_STEPS_PER_TICK = 48;
+/**
+ * Radians a hazard saw turns per tick.
+ *
+ * Held below `pi / SAW_TEETH`, the rate past which an eleven-toothed blade sampled once a
+ * frame becomes ambiguous and then reads as turning backwards. Slower than a bot's blade in
+ * radians and about the same in teeth-per-second, which is the thing an eye actually tracks --
+ * and its edge travels faster, because an arena saw is half again as wide.
+ */
+export const SAW_SPIN_PER_TICK = 0.24;
 
 const BUTTON_IDLE = 0x2c3646;
 const BUTTON_PRESSED = 0xffe45c;
 
-const PROJECTILE_COLOR = 0xffffff;
-const PROJECTILE_GLOW = 0xfff3a0;
+/**
+ * The one colour fire is, wherever it comes from.
+ *
+ * Shared by the flamethrower weapon and the flame-jet hazard on purpose. They are the same
+ * substance and the request was explicitly that they look it; two nearly-equal oranges is the
+ * kind of difference nobody can name but everybody can see.
+ */
+const FLAME_TINT = 0xff9a3c;
+
+/**
+ * How hard a hazard jet burns, against a weapon's 0.75.
+ *
+ * Higher, because an arena flame jet is a fixed installation with a supply line and a bot is
+ * carrying its fuel. It also has to fill a 110-unit cone rather than a 50-unit one, and the
+ * same density spread over four times the area would read as a jet running out.
+ */
+const FLAME_HAZARD_INTENSITY = 0.85;
+
+/**
+ * How much bigger than its physics radius a cannonball is drawn.
+ *
+ * The same argument as `ARENA_WEAPON_SCALE`, and the same disclaimer: this changes nothing
+ * about what the shot HITS, which lives in the simulation. A cannonball is 6 units against a
+ * bot's 14-20, which on a 600-pixel-wide arena is about four pixels -- too small to carry the
+ * lit edge that makes it read as an iron sphere rather than as a dot, and small enough that
+ * its own smoke was outsizing it.
+ */
+const CANNONBALL_SCALE = 1.7;
 
 /** One frame at the fixed sixty-per-second the whole show is built around. */
 const FRAME_SECONDS = 1 / 60;
@@ -232,10 +260,16 @@ const SHAKE_PIXELS = 4;
  * quietly undermine the thing the whole site is built on.
  *
  * Deliberately not the real rpm. A blade turning at anything like its true speed under a 60Hz
- * sampler is a stroboscope: it reads as stationary, or as slowly turning backwards. This is
- * the fastest it can go while still obviously spinning forwards.
+ * sampler is a stroboscope: it reads as stationary, or as slowly turning backwards.
+ *
+ * The limit is not a matter of taste and it is tighter than it looks. A saw blade is not one
+ * shape rotating, it is a shape with ten-fold rotational symmetry, so it becomes ambiguous
+ * once it advances HALF A TOOTH between frames -- `pi / teeth`, or 0.314 for a ten-toothed
+ * blade, not `pi`. This sat at 0.42 and was quietly rendering every saw in the show turning
+ * backwards. A spinning bar has only two-fold symmetry and was never at risk; it is slower now
+ * for the blade's sake, which costs nothing since both read as "turning fast" either way.
  */
-const SPIN_PER_TICK = 0.42;
+export const SPIN_PER_TICK = 0.26;
 
 /**
  * Ticks a hammer takes to rear up, smash down and settle.
@@ -342,6 +376,10 @@ export async function createArenaRenderer(
   app.stage.addChild(world);
   const floor = new Graphics();
   world.addChild(floor);
+  // Below `dynamic` and below the bots: a hazard is scenery bots stand on, and one drawn
+  // over a bot reads as the bot being underneath the floor.
+  const hazardLayer = new Container();
+  world.addChild(hazardLayer);
   const dynamic = new Graphics();
   world.addChild(dynamic);
 
@@ -361,6 +399,58 @@ export async function createArenaRenderer(
    * armour geometry inside the portrait is sized in absolute units against the chassis
    * extent, so scaling the whole container is the only way to keep those proportions.
    */
+  /**
+   * One pre-built machine per hazard, keyed by id.
+   *
+   * Built once for the same reason the silhouettes are: the gauntlet arena places 24 flame
+   * jets and 9 saws, and re-tessellating a 14-toothed blade for each of them 60 times a
+   * second to draw a shape that only ROTATED is work for nothing.
+   *
+   * `wasActive`/`changedAt` are what let a hazard animate its transitions rather than
+   * snapping between two states -- a crusher needs to know how long it has been falling, and
+   * `isActive` only says whether it is.
+   */
+  interface HazardEntry {
+    art: HazardArt;
+    reach: number;
+    heading: number;
+    x: number;
+    y: number;
+    wasActive: boolean;
+    changedAt: number;
+  }
+
+  const hazardEntries = new Map<string, HazardEntry>();
+  for (const zone of match.arena.zones) {
+    const art = createZoneArt(zone.id, zone.reach);
+    art.view.position.set(zone.x, zone.y);
+    const heading = (zone.heading / ANGLE_STEPS) * Math.PI * 2;
+    art.view.rotation = heading;
+    hazardLayer.addChild(art.view);
+    hazardEntries.set(zone.id, {
+      art,
+      reach: zone.reach,
+      heading,
+      x: zone.x,
+      y: zone.y,
+      wasActive: false,
+      changedAt: 0,
+    });
+  }
+
+  /** Per emitter: its gun, and the tick it last fired, which drives recoil and flash. */
+  const emitterArt = new Map<string, { art: HazardArt; firedAt: number; x: number; y: number; heading: number }>();
+  for (const emitter of match.arena.emitters) {
+    // Sized against the shot rather than picked: a gun visibly narrower than its own
+    // cannonball is the kind of detail that reads as wrong without being identifiable.
+    const art = createEmitterArt(Math.max(13, emitter.radius * 2.4));
+    art.view.position.set(emitter.x, emitter.y);
+    const heading = (emitter.heading / ANGLE_STEPS) * Math.PI * 2;
+    art.view.rotation = heading;
+    hazardLayer.addChild(art.view);
+    emitterArt.set(emitter.id, { art, firedAt: -999, x: emitter.x, y: emitter.y, heading });
+  }
+
   const silhouetteLayer = new Container();
   world.addChild(silhouetteLayer);
   const silhouettes: (Container | null)[] = [];
@@ -617,40 +707,67 @@ export async function createArenaRenderer(
     const tick = current.world.tick;
 
     for (const zone of current.arena.zones) {
-      if (!isActive(zone.activation, tick, current.arena.buttons)) continue;
+      const entry = hazardEntries.get(zone.id);
+      if (!entry) continue;
+      const active = isActive(zone.activation, tick, current.arena.buttons);
+      if (active !== entry.wasActive) {
+        entry.wasActive = active;
+        entry.changedAt = tick;
+      }
+      const since = tick - entry.changedAt;
+      const { art } = entry;
 
-      if (zone.shape === ZoneShape.Circle) {
-        dynamic.circle(zone.x, zone.y, zone.reach).fill({ color: ZONE_FILL, alpha: 0.32 });
-        dynamic.circle(zone.x, zone.y, zone.reach).stroke({ width: 2, color: ZONE_STROKE, alpha: 0.9 });
+      switch (art.family) {
+        case 'saw':
+          // Always drawn. A saw's activation is `always()`, and even if it were not, a blade
+          // that blinked out of existence when idle would read as a rendering fault rather
+          // than as a hazard switching off.
+          if (art.spin) art.spin.rotation = spinAngle(tick, SAW_SPIN_PER_TICK);
+          break;
 
-        // A spinning marker, not a decoration: it is what tells a saw apart from a
-        // static damage floor like a spike strip at a glance. Angle comes entirely
-        // from `match.world.tick`, so two replays of one seed spin in lockstep.
-        const base = tick * ZONE_SPIN_STEPS_PER_TICK;
-        for (let i = 0; i < 4; i++) {
-          const angle = base + i * (ANGLE_STEPS / 4);
-          const hx = cosOf(angle);
-          const hy = sinOf(angle);
-          dynamic
-            .moveTo(zone.x, zone.y)
-            .lineTo(zone.x + hx * zone.reach, zone.y + hy * zone.reach)
-            .stroke({ width: 3, color: 0xffffff, alpha: 0.55 });
-        }
-      } else {
-        const ax = cosOf(zone.heading);
-        const ay = sinOf(zone.heading);
-        const nx = -ay;
-        const ny = ax;
-        const tipX = zone.x + ax * zone.reach;
-        const tipY = zone.y + ay * zone.reach;
-        const leftX = zone.x + nx * zone.halfWidth;
-        const leftY = zone.y + ny * zone.halfWidth;
-        const rightX = zone.x - nx * zone.halfWidth;
-        const rightY = zone.y - ny * zone.halfWidth;
-        dynamic.poly([leftX, leftY, tipX, tipY, rightX, rightY]).fill({ color: ZONE_FILL, alpha: 0.38 });
-        dynamic
-          .poly([leftX, leftY, tipX, tipY, rightX, rightY])
-          .stroke({ width: 2, color: ZONE_STROKE, alpha: 0.9 });
+        case 'flame':
+          // The nozzle is permanent; the fire is not. Particles rather than a drawn cone, and
+          // the SAME `jet` the flamethrower weapon uses -- one fire in the whole event, so a
+          // hazard jet and a bot's jet are recognisably the same substance.
+          if (active && !calm && tick % HAZARD_JET_EVERY === 0) {
+            field.jet({
+              x: entry.x,
+              y: entry.y,
+              intensity: FLAME_HAZARD_INTENSITY,
+              tint: FLAME_TINT,
+              angle: entry.heading,
+              spread: FLAME_SPREAD,
+              // Its own zone's reach, so the fire ends where the damage does. A flame drawn
+              // shorter than the zone burning bots is worse than no flame: it actively
+              // misinforms about where it is safe to stand.
+              reach: entry.reach,
+            });
+          }
+          break;
+
+        case 'crusher':
+          if (art.plate) art.plate.scale.set(crusherScale(active, since));
+          // Dust on the frame it lands, not every frame it is down.
+          if (active && since === 0 && !calm) {
+            field.puff({ x: entry.x, y: entry.y, intensity: 0.9, tint: 0x9aa7b4 });
+          }
+          break;
+
+        default:
+          // An unrecognised hazard keeps the old greybox behaviour, including only being
+          // visible while it is live.
+          art.view.visible = active;
+      }
+    }
+
+    for (const gun of emitterArt.values()) {
+      const since = tick - gun.firedAt;
+      // The barrel drives back into the carriage; the carriage stays put.
+      if (gun.art.plate) gun.art.plate.x = -recoilOffset(since);
+      if (gun.art.flash) {
+        const brightness = muzzleFlash(since);
+        gun.art.flash.visible = brightness > 0;
+        gun.art.flash.alpha = brightness;
       }
     }
 
@@ -662,8 +779,16 @@ export async function createArenaRenderer(
     }
 
     for (const shot of current.projectiles) {
-      dynamic.circle(shot.x, shot.y, shot.radius + 3).fill({ color: PROJECTILE_GLOW, alpha: 0.35 });
-      dynamic.circle(shot.x, shot.y, shot.radius).fill({ color: PROJECTILE_COLOR, alpha: 1 });
+      drawCannonball(dynamic, shot.x, shot.y, shot.radius * CANNONBALL_SCALE);
+      // A thin smoke trail, thrown backwards along the flight path. Every third tick rather
+      // than every one: a shot crosses the arena in under two seconds and a continuous ribbon
+      // of smoke reads as a laser, which is a different hazard on the same table.
+      if (!calm && tick % 3 === 0) {
+        const speed = Math.hypot(shot.vx, shot.vy);
+        const backX = speed > 0 ? -(shot.vx / speed) * shot.radius * 1.5 : 0;
+        const backY = speed > 0 ? -(shot.vy / speed) * shot.radius * 1.5 : 0;
+        field.puff({ x: shot.x + backX, y: shot.y + backY, intensity: 0.12, tint: 0x6b7683, scale: 0.35 });
+      }
     }
   };
 
@@ -697,7 +822,7 @@ export async function createArenaRenderer(
    * frame rather than one late. At sixty frames a second a one-frame delay on a hit is not
    * consciously noticed but it is felt, and it costs nothing to avoid.
    */
-  const consume = (effects: readonly Effect[]): void => {
+  const consume = (effects: readonly Effect[], tick: number): void => {
     for (const effect of effects) {
       const visual = visualFor(effect, builds ?? []);
 
@@ -719,6 +844,13 @@ export async function createArenaRenderer(
       if (visual.flash) {
         const index = botIndexOf(effect.botId);
         if (index !== null && index < flash.length) flash[index] = 1;
+      }
+
+      // A gun recoils and flashes when IT fires, which is the one hazard event that happens
+      // somewhere other than where a bot is standing.
+      if (effect.kind === 'cannonFire' && effect.source) {
+        const gun = emitterArt.get(effect.source);
+        if (gun) gun.firedAt = tick;
       }
 
       // Flame belongs to the ATTACKER, which `source` names. The victim gets the flash and
@@ -774,7 +906,10 @@ export async function createArenaRenderer(
   };
 
   const draw = (current: Match, effects: readonly Effect[] = current.effects): void => {
-    consume(effects);
+    // The tick goes in because recoil is counted in ticks, not in frames: a gun's kick has to
+    // look the same on a replay as it did live, and frames are not guaranteed to line up
+    // one-for-one with simulation steps.
+    consume(effects, current.world.tick);
     flashLayer.clear();
     drawFloor(current);
     dynamic.clear();

@@ -405,6 +405,10 @@ const WEAPON_DARK = 0x393f4a;
  */
 export type WeaponMotion = 'spin' | 'edge' | 'swing' | 'jet' | 'none';
 
+/** Teeth on a bot's saw blade. Exported because the arena's spin rate has to stay below the
+ *  rate at which this many teeth alias — see the aliasing test in `weapon-motion.test.ts`. */
+export const WEAPON_SAW_TEETH = 10;
+
 export interface WeaponDrawing {
   /** Where a leader line should land — the tip, as before. */
   tip: Point2;
@@ -463,7 +467,7 @@ function drawWeapon(
     }
     case 'weapon-saw-blade': {
       const cx = frontX + 12;
-      const teeth = 10;
+      const teeth = WEAPON_SAW_TEETH;
       const outer = 20;
       g.star(cx, 0, teeth, outer, 12).fill(WEAPON_METAL);
       g.circle(cx, 0, 5).fill(WEAPON_DARK);

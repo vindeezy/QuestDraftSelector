@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './weapon-motion';
+import { SAW_SPIN_PER_TICK, SPIN_PER_TICK } from '../arena-renderer';
+import { SAW_TEETH } from '../hazard-art';
+import { WEAPON_SAW_TEETH } from '../bot-portrait';
 
 /**
  * The shape of each motion, asserted rather than eyeballed.
@@ -136,6 +139,41 @@ describe('spin', () => {
 
   it('survives nonsense rather than rotating a weapon to NaN', () => {
     expect(spinAngle(Number.NaN, 0.4)).toBe(0);
+  });
+});
+
+describe('no blade turns fast enough to alias', () => {
+  /**
+   * The wagon-wheel limit, and the bug it exists to prevent.
+   *
+   * A saw blade is not one shape rotating. It is a shape with N-fold rotational symmetry, so
+   * a viewer cannot tell a turn of `theta` from a turn of `theta - 2*pi/N`. Sampled once per
+   * frame, it becomes ambiguous at half a tooth per frame and past that the nearest reading is
+   * BACKWARDS. The naive limit -- half a revolution per frame -- is N times too generous, and
+   * believing it is how every saw in this show came to be turning the wrong way.
+   */
+  const limit = (teeth: number) => Math.PI / teeth;
+
+  it("keeps a bot's saw blade turning forwards", () => {
+    expect(SPIN_PER_TICK).toBeLessThan(limit(WEAPON_SAW_TEETH));
+  });
+
+  it('keeps an arena saw turning forwards', () => {
+    expect(SAW_SPIN_PER_TICK).toBeLessThan(limit(SAW_TEETH));
+  });
+
+  it('still turns them fast enough to look dangerous', () => {
+    // The other half of the constraint. Slow enough to be unambiguous is easy; the rates also
+    // have to clear roughly a revolution a second or a saw looks like it is winding down.
+    for (const [rate, teeth] of [
+      [SPIN_PER_TICK, WEAPON_SAW_TEETH],
+      [SAW_SPIN_PER_TICK, SAW_TEETH],
+    ] as const) {
+      expect(rate * 60).toBeGreaterThan(Math.PI * 2);
+      // And comfortably clear of the limit, not shaved to it -- at the boundary the motion is
+      // ambiguous rather than merely slow.
+      expect(rate).toBeLessThan(limit(teeth) * 0.95);
+    }
   });
 });
 
