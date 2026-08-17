@@ -14,6 +14,7 @@ import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
+import { OIL_COLOR, OIL_SHEEN, isOiled } from './floor-state';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
@@ -426,6 +427,16 @@ export async function createArenaRenderer(
     changedAt: number;
   }
 
+  /**
+   * The surface map as the match began.
+   *
+   * The only way to know an Oil Slick has been fired. Mid-match the surfaces array has exactly
+   * two writers -- the ability, which sets Ice, and floor collapse, which sets Plain -- so a
+   * tile holding Ice that did not hold it at mount was oiled. Copied rather than referenced,
+   * for the obvious reason.
+   */
+  const baseSurfaces = Uint8Array.from(match.arena.surfaces);
+
   const hazardEntries = new Map<string, HazardEntry>();
   for (const zone of match.arena.zones) {
     const art = createZoneArt(zone.id, zone.reach);
@@ -677,13 +688,31 @@ export async function createArenaRenderer(
 
         const cx = col * size + size / 2;
         const cy = row * size + size / 2;
+        const index = row * grid.cols + col;
         const surface = surfaceAt(grid, current.arena.surfaces, cx, cy);
+        // An oiled tile IS an ice tile as far as the physics is concerned -- see
+        // `floor-state.ts` for why the renderer has to work this out for itself.
+        const oiled = isOiled(baseSurfaces, current.arena.surfaces, index);
 
         // A tile about to collapse always reads as WARNING first -- surface tint would
         // just compete with the one signal that actually matters right now.
         const color =
-          state === TileState.Warning ? warningColor(tick) : (SURFACE_COLOR[surface] ?? 0x161d27);
+          state === TileState.Warning
+            ? warningColor(tick)
+            : oiled
+              ? OIL_COLOR
+              : (SURFACE_COLOR[surface] ?? 0x161d27);
         floor.rect(col * size + 1, row * size + 1, size - 2, size - 2).fill(color);
+
+        // The sheen, drawn only on oil and only when the tile is not screaming about
+        // collapsing. Two offset ellipses rather than a circle: a pool that spread rather than
+        // a target painted on the floor.
+        if (oiled && state !== TileState.Warning) {
+          floor.ellipse(cx - size * 0.08, cy - size * 0.04, size * 0.3, size * 0.22)
+            .fill({ color: OIL_SHEEN, alpha: 0.5 });
+          floor.ellipse(cx + size * 0.14, cy + size * 0.12, size * 0.16, size * 0.11)
+            .fill({ color: OIL_SHEEN, alpha: 0.35 });
+        }
 
         if (state !== TileState.Warning) {
           const push = effectOf(surface);

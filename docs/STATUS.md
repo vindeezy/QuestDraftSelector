@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-16
+Last updated: 2026-08-17
 
 **Deadline: end of August 2026.** The league needs a working draft-order experience.
 
@@ -41,7 +41,7 @@ npm run distribution -- 400        # Plinko slot distribution and per-ball fairn
 
 ## Performance baseline
 
-Re-measured **16 August**, after weapons were given motion and hazards were drawn as
+Re-measured **17 August**, after weapons were given motion and hazards were drawn as
 machines. Production build (`npm run preview`, not the dev server, which was stopped so it
 could not compete for CPU), Chrome, 2.5x device pixel ratio, sound and particles live.
 

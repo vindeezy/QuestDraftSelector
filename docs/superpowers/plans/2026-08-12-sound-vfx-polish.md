@@ -436,19 +436,41 @@ down has a baseline to fail against.
 
 ---
 
-## POL 1: Motion and the polish pass — WATCH GATE
+## Ordering change, 17 August
 
-**Files:** Modify `src/shell/shell.css`, `src/shell/router.ts`, screen modules
+**The polish pass now runs LAST, after every material change.** POL 1 was written as one unit
+and has been split, because the second half of it cannot be done honestly before the materials
+land.
 
-- [ ] **Step 1: Add exit animation support to the router** — the one small
+The reason is specific. `docs/polish-notes.md` asks whether Tommy's black bot disappears
+against the slate floor, and whether gold separates from silver at battle size. Those are
+questions about contrast between a bot and the floor it stands on — and *both* of those
+surfaces are about to be replaced by textures. Answering now means answering against a floor
+that is being thrown away, then answering again. Worse, any colour or contrast fix made now
+gets invalidated by the texture that follows it, so the work is not merely repeated, it is
+actively misleading while it sits in the codebase.
+
+Textures also darken. `tint` multiplies, so every textured surface is darker and lower in
+contrast than the flat colour it replaces. A contrast judgement made before that is a
+judgement about a different picture.
+
+So: **POL 1a → MAT 1 → MAT 2 → POL 1b.** The transitions were safe to do early, since nothing
+about them depends on what the bots are made of.
+
+---
+
+## POL 1a: Beat transitions — DONE
+
+**Files:** Modify `src/shell/router.ts`; add `src/shell/transitions.ts`
+
+- [x] **Step 1: Add exit animation support to the router** — the one small
 backward-compatible change `docs/polish-notes.md` already identifies.
-- [ ] **Step 2: Entrance and exit transitions per beat**, additive so a screen without them
+- [x] **Step 2: Entrance and exit transitions per beat**, additive so a screen without them
 still works.
-- [ ] **Step 3: Work `docs/polish-notes.md` top to bottom** — copy, layout, wording.
-- [ ] **Step 4: Run `impeccable`'s `critique` and `polish`** over the changed screens.
-- [ ] **Step 5: Verify** — full suite, lint, types, build.
-- [ ] **Step 6: WATCH GATE** — the owner walks all nineteen beats.
-- [ ] **Step 7: Commit** — `feat(shell): beat transitions and the polish pass`
+- [x] **Step 3: Verify** — full suite, lint, types, build, plus browser confirmation that the
+animations actually run, since the feature gate means tests can only prove they are correctly
+disabled.
+- [x] **Step 4: Commit** — `feat(shell): beat transitions`
 
 ---
 
@@ -467,6 +489,50 @@ the site exactly as it ships today. Test that fallback explicitly.
 - [ ] **Step 5: Verify** — full suite, plus bundle size before and after.
 - [ ] **Step 6: WATCH GATE** — the owner checks the arena and the build reveal.
 - [ ] **Step 7: Commit** — `feat(render): material textures on armour and chassis`
+
+---
+
+## MAT 2: The arena floor and the oil slick — WATCH GATE
+
+**Files:** Add `src/render/textures/floor-*.png`; modify `src/render/arena-renderer.ts`
+
+Added 17 August. Not in the original plan, and pulled in front of the polish pass for the
+reason recorded above: the floor is the surface every contrast judgement is made against.
+
+- [ ] **Step 1: The owner generates** six floor textures — see `docs/texture-prompts.md`,
+tier 2. Specified quieter and lower-contrast than the bot textures on purpose: the floor is the
+largest thing on screen and the bots are ~20px against it, so a dramatic floor costs exactly
+the legibility the battles depend on.
+- [ ] **Step 2: Draw the oil slick as oil.** It needs no artwork and can go first. The ability
+converts a tile to `Surface.Ice`, so a slick currently renders as ice — mid-match, nothing else
+creates an Ice tile, so diffing against the surface map captured at mount identifies oiled
+tiles exactly, with no simulation change and no effect plumbing.
+- [ ] **Step 3: Texture the tiles**, one texture per tile so seams land on the existing grid
+lines and no texture has to be seamlessly tileable.
+- [ ] **Step 4: Fall back to flat colour** per surface when a texture is missing. Tested.
+- [ ] **Step 5: Re-measure.** Frame work and bundle size, against the 17 August baseline in
+`docs/STATUS.md`. The floor is drawn every frame across the whole viewport, which makes it the
+one texture change with a plausible route to costing something.
+- [ ] **Step 6: WATCH GATE** — the owner watches all three arenas.
+- [ ] **Step 7: Commit** — `feat(render): material textures on the arena floor`
+
+---
+
+## POL 1b: The polish pass — WATCH GATE
+
+**Files:** Modify `src/shell/shell.css`, screen modules
+
+Runs after MAT 1 and MAT 2, so every judgement in it is made against the finished picture.
+**Stops on 26 August** regardless of what is left, per `docs/polish-notes.md`.
+
+- [ ] **Step 1: Answer the three open questions in `docs/polish-notes.md`** now that the bots
+and floor are final — the member colours at battle size, in-watch back navigation, and the
+uneven scoreboard rhythm.
+- [ ] **Step 2: Work `docs/polish-notes.md` top to bottom** — copy, layout, wording.
+- [ ] **Step 3: Run `impeccable`'s `critique` and `polish`** over the changed screens.
+- [ ] **Step 4: Verify** — full suite, lint, types, build.
+- [ ] **Step 5: WATCH GATE** — the owner walks all nineteen beats.
+- [ ] **Step 6: Commit** — `feat(shell): the polish pass`
 
 ---
 
