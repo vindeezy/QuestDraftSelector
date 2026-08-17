@@ -9,8 +9,11 @@ import {
   armourTexture,
   materialForArmour,
   resetMaterialsForTest,
+  surfaceMaterial,
   textureFor,
 } from './materials';
+import { ARENA_VARIANTS } from '../sim/event/arenas';
+import { Surface, type SurfaceValue } from '../sim/arena/surface';
 
 const BASE: BotBuild = { chassis: 0, drive: 0, weapon: 0, armour: 0, ability: 0, personality: 0 };
 
@@ -59,11 +62,44 @@ describe('every material that is downloaded is actually drawn', () => {
     //
     // A material earns its download by being either an armour material or the weapon metal. Add
     // a ninth texture with no consumer and this fails.
-    const armourMaterials = new Set(
-      partsFor('armour').map((part) => materialForArmour(part.id)).filter((m) => m !== null),
-    );
-    const orphans = MATERIAL_NAMES.filter((m) => m !== 'weapon' && !armourMaterials.has(m));
+    const consumed = new Set<string>(['weapon', 'floorOil']);
+    for (const part of partsFor('armour')) {
+      const m = materialForArmour(part.id);
+      if (m !== null) consumed.add(m);
+    }
+    for (const surface of Object.values(Surface)) {
+      const m = surfaceMaterial(surface as SurfaceValue);
+      if (m !== null) consumed.add(m);
+    }
+    const orphans = MATERIAL_NAMES.filter((m) => !consumed.has(m));
     expect(orphans, `downloaded but never drawn: ${orphans.join(', ')}`).toEqual([]);
+  });
+
+  it('ships a floor texture only for surfaces an arena actually places', () => {
+    // The second half of the same rule, and the reason gravel and the four conveyors are NOT
+    // shipped despite having been generated: no arena places either, so they would download on
+    // every visit to draw nothing. A surface mapped here but never placed is dead weight that
+    // the orphan check above cannot see, because the mapping itself would make it look consumed.
+    const placed = new Set<number>([Surface.Plain]);
+    for (const arena of ARENA_VARIANTS) {
+      for (const [, , surface] of arena.surfaces) placed.add(surface);
+    }
+    const mappedButUnplaced = Object.values(Surface)
+      .filter((s) => surfaceMaterial(s as SurfaceValue) !== null)
+      .filter((s) => !placed.has(s as number));
+    expect(mappedButUnplaced, `mapped but no arena places it: ${mappedButUnplaced.join(', ')}`)
+      .toEqual([]);
+  });
+
+  it('still covers every surface the arenas DO place', () => {
+    // The other direction. A surface placed in an arena with no texture falls back to flat
+    // colour, which is correct but silent -- this makes the omission visible.
+    const placed = new Set<number>([Surface.Plain]);
+    for (const arena of ARENA_VARIANTS) {
+      for (const [, , surface] of arena.surfaces) placed.add(surface);
+    }
+    const untextured = [...placed].filter((s) => surfaceMaterial(s as SurfaceValue) === null);
+    expect(untextured, `placed but untextured: ${untextured.join(', ')}`).toEqual([]);
   });
 });
 

@@ -25,6 +25,7 @@
  */
 
 import { Assets, type Texture } from 'pixi.js';
+import { Surface, type SurfaceValue } from '../sim/arena/surface';
 
 // Imported rather than referenced by path, so Vite hashes them for cache-busting and applies
 // the `/QuestDraftSelector/` base prefix the GitHub Pages build needs. A hardcoded string would
@@ -37,6 +38,10 @@ import steelUrl from './textures/armour-hardened-steel.jpg';
 import compositeUrl from './textures/armour-spiked-composite.jpg';
 import titaniumUrl from './textures/armour-titanium.jpg';
 import weaponSteelUrl from './textures/weapon-steel.jpg';
+import floorPlainUrl from './textures/floor-plain.jpg';
+import floorTarUrl from './textures/floor-tar.jpg';
+import floorIceUrl from './textures/floor-ice.jpg';
+import floorOilUrl from './textures/floor-oil.jpg';
 
 /** A material's name. One per armour part, plus the shared weapon metal. */
 export type MaterialName =
@@ -47,7 +52,11 @@ export type MaterialName =
   | 'steel'
   | 'composite'
   | 'titanium'
-  | 'weapon';
+  | 'weapon'
+  | 'floorPlain'
+  | 'floorTar'
+  | 'floorIce'
+  | 'floorOil';
 
 const URLS: Record<MaterialName, string> = {
   alloy: alloyUrl,
@@ -58,6 +67,10 @@ const URLS: Record<MaterialName, string> = {
   composite: compositeUrl,
   titanium: titaniumUrl,
   weapon: weaponSteelUrl,
+  floorPlain: floorPlainUrl,
+  floorTar: floorTarUrl,
+  floorIce: floorIceUrl,
+  floorOil: floorOilUrl,
 };
 
 /**
@@ -128,6 +141,43 @@ export function materialForArmour(partId: string): MaterialName | null {
 export function textureFor(material: MaterialName | null): Texture | null {
   if (material === null) return null;
   return loaded.get(material) ?? null;
+}
+
+/**
+ * Which floor surface is made of what.
+ *
+ * Only the surfaces the three arenas actually place. Gravel and the four conveyors have
+ * textures generated for them and are deliberately NOT shipped: no arena places either, so they
+ * would download on every visit and draw nothing -- the exact mistake `weapon-steel` made, and
+ * the one the orphan test now guards. They are kept in `ChatGPT Graphics/Arena/` for whenever an
+ * arena wants them. An unmapped surface falls back to flat colour, which is how they look today.
+ */
+const SURFACE_MATERIAL: Partial<Record<SurfaceValue, MaterialName>> = {
+  [Surface.Plain]: 'floorPlain',
+  [Surface.Tar]: 'floorTar',
+  [Surface.Ice]: 'floorIce',
+};
+
+/** The material a floor surface is made of, or null for one with no texture shipped. */
+export function surfaceMaterial(surface: SurfaceValue): MaterialName | null {
+  return SURFACE_MATERIAL[surface] ?? null;
+}
+
+/** The texture a floor surface wears. */
+export function surfaceTexture(surface: SurfaceValue): Texture | null {
+  return textureFor(surfaceMaterial(surface));
+}
+
+/**
+ * The texture for an oil slick.
+ *
+ * Its own material rather than a surface's, because an oiled tile IS an ice tile as far as the
+ * simulation is concerned -- see `floor-state.ts`. It is also the one texture drawn untinted,
+ * since oil's identity is its colour: dark with an iridescent film, neither of which survives
+ * being multiplied by anything.
+ */
+export function oilTexture(): Texture | null {
+  return textureFor('floorOil');
 }
 
 /** The texture an armour part wears, going straight from part id to texture. */

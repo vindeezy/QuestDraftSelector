@@ -499,19 +499,24 @@ the site exactly as it ships today. Test that fallback explicitly.
 Added 17 August. Not in the original plan, and pulled in front of the polish pass for the
 reason recorded above: the floor is the surface every contrast judgement is made against.
 
-- [ ] **Step 1: The owner generates** six floor textures — see `docs/texture-prompts.md`,
+- [x] **Step 1: The owner generates** six floor textures — see `docs/texture-prompts.md`,
 tier 2. Specified quieter and lower-contrast than the bot textures on purpose: the floor is the
 largest thing on screen and the bots are ~20px against it, so a dramatic floor costs exactly
 the legibility the battles depend on.
-- [ ] **Step 2: Draw the oil slick as oil.** It needs no artwork and can go first. The ability
+- [x] **Step 2: Draw the oil slick as oil.** It needs no artwork and can go first. The ability
 converts a tile to `Surface.Ice`, so a slick currently renders as ice — mid-match, nothing else
 creates an Ice tile, so diffing against the surface map captured at mount identifies oiled
 tiles exactly, with no simulation change and no effect plumbing.
-- [ ] **Step 3: Texture the tiles**, one texture per tile so seams land on the existing grid
+- [x] **Step 3: Texture the tiles**, one texture per tile so seams land on the existing grid
 lines and no texture has to be seamlessly tileable.
-- [ ] **Step 4: Fall back to flat colour** per surface when a texture is missing. Tested.
-- [ ] **Step 5: Re-measure.** Frame work and bundle size, against the 17 August baseline in
-`docs/STATUS.md`. The floor is drawn every frame across the whole viewport, which makes it the
+- [x] **Step 4: Fall back to flat colour** per surface when a texture is missing. Tested.
+- [x] **Step 4b: Only ship textures for surfaces an arena places.** Gravel and the four
+conveyors were generated and are NOT shipped: no arena places either, so they would have been
+downloaded on every visit to draw nothing. Guarded in both directions by test.
+- [ ] **Step 5: Re-measure.** Bundle size done: 1102 KB to 1142 KB. FRAME WORK STILL
+OUTSTANDING — the browser pane was not displayed, so the page was not compositing and any
+figure taken would have been a throttled loop rather than the floor. Must be done with the pane
+visible, against the 17 August baseline in `docs/STATUS.md`. The floor is drawn every frame across the whole viewport, which makes it the
 one texture change with a plausible route to costing something.
 - [ ] **Step 6: WATCH GATE** — the owner watches all three arenas.
 - [ ] **Step 7: Commit** — `feat(render): material textures on the arena floor`

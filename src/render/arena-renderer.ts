@@ -14,8 +14,8 @@ import { createParticleField } from './vfx/particles';
 import { SHAKE_CEILING, visualFor } from './vfx';
 import { edgeScale, hammerPose, hammerProgress, spinAngle } from './vfx/weapon-motion';
 import { createEmitterArt, createZoneArt, drawCannonball, type HazardArt } from './hazard-art';
-import { OIL_COLOR, OIL_SHEEN, isOiled } from './floor-state';
-import { armourTexture, textureFor } from './materials';
+import { FLOOR_TEXTURE_LIFT, OIL_COLOR, OIL_SHEEN, brighten, isOiled } from './floor-state';
+import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
@@ -200,6 +200,10 @@ const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
   [Surface.ConveyorW]: 0x2c3f52,
 };
 
+/** The colour of a tile with no surface of its own. Named because the textured path needs it
+ *  too, and an inline literal in two places is a divergence waiting to happen. */
+const PLAIN_FLOOR_COLOR = 0x161d27;
+
 /**
  * Radians a hazard saw turns per tick.
  *
@@ -360,6 +364,18 @@ export async function createArenaRenderer(
   botVisuals?: readonly ArenaBotVisual[],
   builds?: readonly BotBuild[],
 ): Promise<ArenaRenderer> {
+  // Awaited before anything is built, and this is load-bearing rather than tidy.
+  //
+  // The floor is cached: it is rebuilt only when a tile changes, which is exactly right during a
+  // battle and exactly wrong before one. The pre-battle screen draws ONCE, so a texture that
+  // arrived a moment later had nothing to trigger a rebuild and the floor stayed flat until the
+  // viewer pressed BEGIN. That is the state most of the screen time on that beat is spent in.
+  //
+  // Costs nothing in practice -- loading started at boot, ten beats earlier -- and if it somehow
+  // has not finished, every texture lookup returns null and the floor draws flat, exactly as it
+  // did before MAT 2.
+  await loadMaterials();
+
   const { width, height } = match.arena.grid;
   const canvasWidth = width + KILL_FEED_WIDTH;
 
@@ -383,8 +399,31 @@ export async function createArenaRenderer(
   // people are reading it.
   const world = new Container();
   app.stage.addChild(world);
+  /**
+   * The floor, in two layers.
+   *
+   * `floorBase` holds every settled tile and is rebuilt only when something about the floor
+   * actually changes -- a tile collapsing, a slick being laid, or the textures finishing their
+   * download. `floor` above it holds only the handful of tiles pulsing a collapse warning, and
+   * is the sole part redrawn every frame.
+   *
+   * That split is what makes a textured floor affordable. There are 192 tiles, and until now
+   * every one of them was re-tessellated sixty times a second to draw a shape that had not
+   * changed. Flat rectangles made that cheap enough not to matter; textured fills would not
+   * have. Same move as the hazard art and the bot silhouettes, and for the same reason.
+   */
+  const floorBase = new Graphics();
+  world.addChild(floorBase);
   const floor = new Graphics();
   world.addChild(floor);
+
+  /** Copies of what the base layer was last built from, so a rebuild happens exactly when the
+   *  floor changed rather than on a guess. 192 bytes each; comparing them costs nothing. */
+  let builtTiles: Uint8Array | null = null;
+  let builtSurfaces: Uint8Array | null = null;
+  /** Whether the last build had textures. They arrive mid-walkthrough, and a floor built before
+   *  they landed has to be rebuilt once when they do, or it stays flat for the whole event. */
+  let builtTextured = false;
   // Below `dynamic` and below the bots: a hazard is scenery bots stand on, and one drawn
   // over a bot reads as the bot being underneath the floor.
   const hazardLayer = new Container();
@@ -495,10 +534,6 @@ export async function createArenaRenderer(
       }
       const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
         weaponScale: ARENA_WEAPON_SCALE,
-        // Not awaited here. `createArenaRenderer` runs when a battle beat mounts, and a battle
-        // that waited on a download before drawing would be a black screen with a BEGIN button
-        // over it. By this point loading started long ago; if it somehow has not finished, the
-        // bots are drawn in flat colour, which is exactly how they looked last week.
         texture: armourTexture(partAt('armour', build.armour).id),
         weaponTexture: textureFor('weapon'),
       });
@@ -684,69 +719,128 @@ export async function createArenaRenderer(
     return { container, dot, text };
   });
 
+  /** True when the floor differs from what `floorBase` was last built from. */
+  const floorStale = (current: Match, textured: boolean): boolean => {
+    const tiles = current.arena.grid.tiles;
+    const surfaces = current.arena.surfaces;
+    if (builtTiles === null || builtSurfaces === null) return true;
+    if (builtTextured !== textured) return true;
+    if (builtTiles.length !== tiles.length || builtSurfaces.length !== surfaces.length) return true;
+    for (let i = 0; i < tiles.length; i++) if (builtTiles[i] !== tiles[i]) return true;
+    for (let i = 0; i < surfaces.length; i++) if (builtSurfaces[i] !== surfaces[i]) return true;
+    return false;
+  };
+
+  /**
+   * Everything on the floor that is not currently flashing a collapse warning.
+   *
+   * The surface texture is multiplied by the surface's colour, so the material supplies the
+   * grain and the colour supplies the tone -- the same arrangement the bots use. Oil is the one
+   * exception and is drawn untinted, because unlike every other surface here its identity IS its
+   * colour: dark, with an iridescent film that no multiply can produce.
+   */
+  const buildFloorBase = (current: Match): void => {
+    floorBase.clear();
+    const grid = current.arena.grid;
+    const size = grid.tileSize;
+
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        const index = row * grid.cols + col;
+        const state = grid.tiles[index];
+        if (state === TileState.Gone || state === TileState.Warning) continue;
+
+        const cx = col * size + size / 2;
+        const cy = row * size + size / 2;
+        const surface = surfaceAt(grid, current.arena.surfaces, cx, cy);
+        const oiled = isOiled(baseSurfaces, current.arena.surfaces, index);
+
+        const x = col * size + 1;
+        const y = row * size + 1;
+        const w = size - 2;
+
+        if (oiled) {
+          const oil = oilTexture();
+          floorBase.rect(x, y, w, w).fill(
+            // Untinted when a texture exists: `0xffffff` multiplies to exactly the texture.
+            oil === null ? OIL_COLOR : { texture: oil, color: 0xffffff, textureSpace: 'local' },
+          );
+          if (oil === null) {
+            // The hand-drawn slick, kept for the case where the texture never arrives. Two
+            // offset ellipses rather than a circle: a pool that spread, not a target painted
+            // on the floor.
+            floorBase.ellipse(cx - size * 0.08, cy - size * 0.04, size * 0.3, size * 0.22)
+              .fill({ color: OIL_SHEEN, alpha: 0.5 });
+            floorBase.ellipse(cx + size * 0.14, cy + size * 0.12, size * 0.16, size * 0.11)
+              .fill({ color: OIL_SHEEN, alpha: 0.35 });
+          }
+        } else {
+          const colour = SURFACE_COLOR[surface] ?? PLAIN_FLOOR_COLOR;
+          const texture = surfaceTexture(surface);
+          floorBase.rect(x, y, w, w).fill(
+            texture === null
+              ? colour
+              : {
+                  texture,
+                  color: brighten(colour, FLOOR_TEXTURE_LIFT).colour,
+                  textureSpace: 'local',
+                },
+          );
+        }
+
+        const push = effectOf(surface);
+        if (push.pushX !== 0 || push.pushY !== 0) {
+          // Conveyors are otherwise indistinguishable from each other, so the push
+          // direction is the whole point of drawing a chevron at all.
+          const plen = Math.sqrt(push.pushX * push.pushX + push.pushY * push.pushY);
+          const dx = push.pushX / plen;
+          const dy = push.pushY / plen;
+          const px = -dy;
+          const py = dx;
+          const tipX = cx + dx * size * 0.28;
+          const tipY = cy + dy * size * 0.28;
+          const backX = cx - dx * size * 0.14;
+          const backY = cy - dy * size * 0.14;
+          floorBase
+            .moveTo(backX + px * size * 0.2, backY + py * size * 0.2)
+            .lineTo(tipX, tipY)
+            .lineTo(backX - px * size * 0.2, backY - py * size * 0.2)
+            .stroke({ width: 3, color: 0xdfe9f2, alpha: 0.8 });
+        }
+      }
+    }
+
+    for (const seg of current.arena.segments) {
+      floorBase.moveTo(seg.x1, seg.y1).lineTo(seg.x2, seg.y2).stroke({ width: 4, color: 0x35424f });
+    }
+
+    builtTiles = Uint8Array.from(current.arena.grid.tiles);
+    builtSurfaces = Uint8Array.from(current.arena.surfaces);
+  };
+
+  /**
+   * The floor: a cached base, plus the tiles currently pulsing a warning.
+   *
+   * A tile about to collapse always reads as WARNING first -- surface texture and tint would
+   * just compete with the one signal that actually matters right now -- so warning tiles are
+   * drawn flat, on top, and are the only thing this touches per frame.
+   */
   const drawFloor = (current: Match): void => {
+    const textured = surfaceTexture(Surface.Plain) !== null;
+    if (floorStale(current, textured)) {
+      builtTextured = textured;
+      buildFloorBase(current);
+    }
+
     floor.clear();
     const grid = current.arena.grid;
     const size = grid.tileSize;
     const tick = current.world.tick;
     for (let row = 0; row < grid.rows; row++) {
       for (let col = 0; col < grid.cols; col++) {
-        const state = grid.tiles[row * grid.cols + col];
-        if (state === TileState.Gone) continue;
-
-        const cx = col * size + size / 2;
-        const cy = row * size + size / 2;
-        const index = row * grid.cols + col;
-        const surface = surfaceAt(grid, current.arena.surfaces, cx, cy);
-        // An oiled tile IS an ice tile as far as the physics is concerned -- see
-        // `floor-state.ts` for why the renderer has to work this out for itself.
-        const oiled = isOiled(baseSurfaces, current.arena.surfaces, index);
-
-        // A tile about to collapse always reads as WARNING first -- surface tint would
-        // just compete with the one signal that actually matters right now.
-        const color =
-          state === TileState.Warning
-            ? warningColor(tick)
-            : oiled
-              ? OIL_COLOR
-              : (SURFACE_COLOR[surface] ?? 0x161d27);
-        floor.rect(col * size + 1, row * size + 1, size - 2, size - 2).fill(color);
-
-        // The sheen, drawn only on oil and only when the tile is not screaming about
-        // collapsing. Two offset ellipses rather than a circle: a pool that spread rather than
-        // a target painted on the floor.
-        if (oiled && state !== TileState.Warning) {
-          floor.ellipse(cx - size * 0.08, cy - size * 0.04, size * 0.3, size * 0.22)
-            .fill({ color: OIL_SHEEN, alpha: 0.5 });
-          floor.ellipse(cx + size * 0.14, cy + size * 0.12, size * 0.16, size * 0.11)
-            .fill({ color: OIL_SHEEN, alpha: 0.35 });
-        }
-
-        if (state !== TileState.Warning) {
-          const push = effectOf(surface);
-          if (push.pushX !== 0 || push.pushY !== 0) {
-            // Conveyors are otherwise indistinguishable from each other, so the push
-            // direction is the whole point of drawing a chevron at all.
-            const plen = Math.sqrt(push.pushX * push.pushX + push.pushY * push.pushY);
-            const dx = push.pushX / plen;
-            const dy = push.pushY / plen;
-            const px = -dy;
-            const py = dx;
-            const tipX = cx + dx * size * 0.28;
-            const tipY = cy + dy * size * 0.28;
-            const backX = cx - dx * size * 0.14;
-            const backY = cy - dy * size * 0.14;
-            floor
-              .moveTo(backX + px * size * 0.2, backY + py * size * 0.2)
-              .lineTo(tipX, tipY)
-              .lineTo(backX - px * size * 0.2, backY - py * size * 0.2)
-              .stroke({ width: 3, color: 0xdfe9f2, alpha: 0.8 });
-          }
-        }
+        if (grid.tiles[row * grid.cols + col] !== TileState.Warning) continue;
+        floor.rect(col * size + 1, row * size + 1, size - 2, size - 2).fill(warningColor(tick));
       }
-    }
-    for (const seg of current.arena.segments) {
-      floor.moveTo(seg.x1, seg.y1).lineTo(seg.x2, seg.y2).stroke({ width: 4, color: 0x35424f });
     }
   };
 
