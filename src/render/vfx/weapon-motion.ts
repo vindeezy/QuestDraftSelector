@@ -24,11 +24,17 @@ function clamp01(n: number): number {
  * across the screen — the head goes up, toward the camera, and comes back down. What a viewer
  * can actually see is the projection of that:
  *
- * - **Reach shortens as it lifts.** A haft rotating up out of the floor plane is foreshortened,
- *   so the head appears to draw back toward the bot. At the top of the swing it is at its
- *   shortest, not its longest.
+ * - **Reach shortens as it lifts, almost to nothing.** A haft rotating up out of the floor
+ *   plane is foreshortened, and a haft standing straight up projects to a POINT. So the arm
+ *   does not merely shorten, it very nearly vanishes — and the head, which sits at the end of
+ *   it, slides back over the pivot and hides what is left. The arm going away is not a trick
+ *   layered on top of the projection; it is what the projection says happens.
  * - **The head grows as it lifts.** It is nearer the camera. This is the cue that actually
  *   sells "up" — foreshortening alone reads as the hammer retracting.
+ *
+ * Which means the two have to be drawn as separate pieces. Scale them together and
+ * foreshortening shrinks the HEAD too, so a hammer rearing up reads as a hammer getting
+ * smaller and further away — the exact opposite of the intent.
  * - **Both reverse fast on the way down**, because a crush is not symmetrical: the lift is a
  *   wind-up and the fall is a drop.
  * - **It squashes on landing**, briefly smaller than rest, which is what makes the bottom of
@@ -48,11 +54,17 @@ const LIFT_END = 0.45;
 /** Where the head lands. Between `LIFT_END` and here, it is falling. */
 const IMPACT = 0.62;
 
-/** How far the head draws back at the top of the lift. */
-const FORESHORTEN = 0.42;
+/**
+ * How far the arm foreshortens at the top of the lift.
+ *
+ * `1 - 0.86` leaves an eighth of the arm showing, which is a couple of pixels at arena scale
+ * and sits entirely underneath the head. Not 1.0 exactly: a zero scale is a degenerate
+ * transform, and there is nothing to gain from one when the remainder is already invisible.
+ */
+const FORESHORTEN = 0.86;
 
 /** How much bigger the head looks at the top, being nearer the camera. */
-const RISE_SCALE = 0.34;
+const RISE_SCALE = 0.42;
 
 /** How far it squashes on landing. */
 const SQUASH = 0.14;

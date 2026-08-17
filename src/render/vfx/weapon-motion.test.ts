@@ -22,12 +22,14 @@ describe('the hammer crush', () => {
     }
   });
 
-  it('draws the head BACK as it lifts, because a raised haft is foreshortened', () => {
-    // The counter-intuitive half of the projection. Seen from above, a hammer rearing up
-    // gets shorter, not longer -- extending it would read as a thrust.
+  it('collapses the arm almost to nothing at the top, so the head can hide it', () => {
+    // The counter-intuitive half of the projection. Seen from above, a hammer rearing up gets
+    // shorter, not longer -- and a haft standing straight up projects to a POINT. Leaving the
+    // arm at, say, 60% would keep it sticking out from under the head the whole way up, which
+    // is what made the first attempt read as a shrug rather than a swing.
     const poses = stroke();
     const shortest = Math.min(...poses.map((p) => p.reach));
-    expect(shortest).toBeLessThan(0.7);
+    expect(shortest).toBeLessThan(0.2);
   });
 
   it('makes the head bigger at the top, which is the cue that sells "up"', () => {

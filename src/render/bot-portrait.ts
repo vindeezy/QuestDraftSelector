@@ -54,6 +54,13 @@ export interface BotPortraitAnchors {
 export interface BotPortraitWeapon {
   /** The moving part. Rotate or scale this; the mount around it keeps it attached. */
   node: Container;
+  /** A hammer's head, separate from its arm so it can slide along it. Null for everything
+   *  else, whose weapon is a single rigid piece. */
+  head: Container | null;
+  /** Where `head` sits at rest, measured along +x from the pivot. Zero when there is no head. */
+  headOffset: number;
+  /** The pivot, in the same local units as `headOffset` — the head slides between the two. */
+  pivotX: number;
   motion: WeaponMotion;
   /** The nozzle or contact point, in the portrait's own local units — the arena scales it. */
   muzzle: Point2;
@@ -404,9 +411,25 @@ export interface WeaponDrawing {
   /** The point the weapon moves about: a blade's centre, a haft's root, a nozzle's mouth. */
   pivot: Point2;
   motion: WeaponMotion;
+  /**
+   * Set only when the weapon drew a separate head into `head`: how far along +x from the
+   * pivot that head sits at rest.
+   *
+   * Only the hammer uses it, and it is the difference between a crush that reads and one that
+   * does not. Drawn as one piece, foreshortening the weapon shrinks the HEAD too, so a hammer
+   * rearing up looks like a hammer getting smaller. Drawn as two, the arm collapses toward the
+   * pivot while the head slides back along it and grows — and the head, being on top, covers
+   * the arm exactly as it would if you were standing over the machine looking down.
+   */
+  headOffset?: number;
 }
 
-function drawWeapon(g: Graphics, weaponId: string, frontX: number): WeaponDrawing {
+function drawWeapon(
+  g: Graphics,
+  head: Graphics,
+  weaponId: string,
+  frontX: number,
+): WeaponDrawing {
   switch (weaponId) {
     case 'weapon-vertical-spinner': {
       const cx = frontX + 14;
@@ -419,13 +442,24 @@ function drawWeapon(g: Graphics, weaponId: string, frontX: number): WeaponDrawin
     }
     case 'weapon-hammer': {
       const headX = frontX + 22;
-      g.moveTo(frontX - 6, 0)
+      const rootX = frontX - 6;
+      // The arm, into the moving layer. The head goes into its own, drawn about its OWN
+      // centre so it can be slid along the arm and scaled without dragging the arm with it.
+      g.moveTo(rootX, 0)
         .lineTo(headX - 10, 0)
         .stroke({ width: 6, color: WEAPON_DARK });
-      g.poly([headX - 12, -20, headX + 10, -14, headX + 10, 14, headX - 12, 20]).fill(WEAPON_METAL);
+      head.poly([-11, -20, 11, -14, 11, 14, -11, 20]).fill(WEAPON_METAL);
       // Pivots at the haft's root, where an arm would hold it, so it swings rather than
       // orbiting the bot.
-      return { tip: { x: headX + 10, y: 0 }, pivot: { x: frontX - 6, y: 0 }, motion: 'swing' };
+      return {
+        tip: { x: headX + 10, y: 0 },
+        pivot: { x: rootX, y: 0 },
+        motion: 'swing',
+        // The head's centre: the poly spans headX-12 to headX+10, so it is a pixel back of
+        // `headX`. Measured rather than assumed, because it decides where the head sits at
+        // rest and the reveal draws the hammer standing still.
+        headOffset: headX - 1 - rootX,
+      };
     }
     case 'weapon-saw-blade': {
       const cx = frontX + 12;
@@ -624,8 +658,9 @@ export function drawBotPortrait(
   view.addChild(armourGfx);
 
   const weaponGfx = new Graphics();
+  const weaponHead = new Graphics();
   const frontX = extentX(shape, 1);
-  const drawn = drawWeapon(weaponGfx, weaponPart.id, frontX);
+  const drawn = drawWeapon(weaponGfx, weaponHead, weaponPart.id, frontX);
   const weaponAnchor = drawn.tip;
   const weaponScale = options.weaponScale ?? 1;
 
@@ -642,6 +677,13 @@ export function drawBotPortrait(
   weaponGfx.pivot.set(drawn.pivot.x, drawn.pivot.y);
   weaponGfx.position.set(drawn.pivot.x, drawn.pivot.y);
   weaponMount.addChild(weaponGfx);
+
+  // Added AFTER the arm, so it draws over it. That z-order is the occlusion.
+  const head = drawn.headOffset === undefined ? null : weaponHead;
+  if (head) {
+    head.position.set(drawn.pivot.x + drawn.headOffset!, drawn.pivot.y);
+    weaponMount.addChild(head);
+  }
   view.addChild(weaponMount);
 
   const chassisAnchor: Point2 = { x: extentX(shape, -1), y: 0 };
@@ -650,6 +692,9 @@ export function drawBotPortrait(
     view,
     weapon: {
       node: weaponGfx,
+      head,
+      headOffset: drawn.headOffset ?? 0,
+      pivotX: drawn.pivot.x,
       motion: drawn.motion,
       muzzle: { x: drawn.tip.x, y: drawn.tip.y },
     },

@@ -854,10 +854,20 @@ export async function createArenaRenderer(
               const pose = hammerPose(
                 hammerProgress(bot.nextAttackTick - current.world.tick, SWING_TICKS),
               );
-              // `reach` runs along the haft and `size` scales the whole weapon, and the mount
-              // pivots at the haft's root -- so the head draws back toward the chassis and
-              // swells, rather than the weapon sliding off the bot.
-              weapon.node.scale.set(pose.reach * pose.size, pose.size);
+              // The arm foreshortens toward its root and all but disappears at the top of the
+              // lift. Only along its length: a haft seen from above gets shorter as it rises,
+              // not thinner.
+              weapon.node.scale.set(pose.reach, 1);
+              if (weapon.head) {
+                // The head rides the end of the arm, so it slides back over the pivot as the
+                // arm collapses -- and being drawn on top, it covers what is left. That is
+                // where the swing actually comes from: the arm vanishing UNDER the head, and
+                // reappearing from beneath it on the way down.
+                weapon.head.x = weapon.pivotX + weapon.headOffset * pose.reach;
+                // Scaled on its own, never with the arm. `size` is distance from the camera,
+                // and the head is the part that travels.
+                weapon.head.scale.set(pose.size);
+              }
               break;
             }
 

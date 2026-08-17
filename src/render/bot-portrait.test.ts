@@ -129,6 +129,40 @@ describe('drawBotPortrait — weapon attachments', () => {
       expect(drawInstructions(weaponLayer).length).toBeGreaterThan(0);
     });
   });
+
+  const hammerSlot = weaponParts.findIndex((part) => part.id === 'weapon-hammer');
+
+  it('splits the hammer, and only the hammer, into an arm and a head', () => {
+    // Everything else is one rigid piece and is animated as one. The hammer cannot be: its
+    // arm has to collapse to nothing while its head grows, and a single transform cannot do
+    // both. See `hammerPose`.
+    expect(hammerSlot).toBeGreaterThanOrEqual(0);
+    weaponParts.forEach((_, slot) => {
+      const { drawing } = layersOf({ ...BASE_BUILD, weapon: slot });
+      if (slot === hammerSlot) expect(drawing.weapon.head).not.toBeNull();
+      else expect(drawing.weapon.head, `weapon ${slot}`).toBeNull();
+    });
+  });
+
+  it('rests the hammer head at the far end of its arm, out past the pivot', () => {
+    // The rest pose has to be exactly what the one-piece drawing produced, because the build
+    // reveal shows the hammer standing still and must not change.
+    const { drawing } = layersOf({ ...BASE_BUILD, weapon: hammerSlot });
+    const { head, headOffset, pivotX } = drawing.weapon;
+    expect(headOffset).toBeGreaterThan(0);
+    expect(head!.x).toBeCloseTo(pivotX + headOffset, 5);
+  });
+
+  it('draws the hammer head after the arm, so the head covers it as the arm collapses', () => {
+    // Z-order IS the occlusion. Add the head first and the arm stays visible through the
+    // whole lift, which is exactly the thing that made the swing unconvincing.
+    const { drawing } = layersOf({ ...BASE_BUILD, weapon: hammerSlot });
+    const mount = drawing.weapon.node.parent!;
+    expect(mount).not.toBeNull();
+    expect(mount.getChildIndex(drawing.weapon.head!)).toBeGreaterThan(
+      mount.getChildIndex(drawing.weapon.node),
+    );
+  });
 });
 
 describe('drawBotPortrait — armour rim treatments', () => {
