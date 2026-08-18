@@ -10,6 +10,7 @@ Last updated: 2026-08-17
 |---|---|
 | Deterministic sim core | Done. Seeded PRNG, fixed-tick physics, collision, checksums, lint-enforced determinism. |
 | Bot Forge (Plinko) | Done. Six boards, one per category, fair, replays byte-identically from a seed. |
+| Member colours | Done. Chosen by search, not by eye: worst pair 34.0 in CIELAB, up from 17.3 once textures compressed the palette. |
 | Bot categories | Done. Six categories, ~74,000 distinct builds, assembled into real stat blocks. |
 | Arena | Done. Vehicle movement, directional combat, per-bot armour profiles, seven personalities, launched state, spiral collapse. |
 | Hazards | Done. Surfaces, zones, holes, projectiles, buttons, and trapdoors. |
@@ -19,7 +20,7 @@ Last updated: 2026-08-17
 | **Arena 1 — The Grinder** | **Done and locked.** Built to spec, measured, balanced. |
 | **Arenas 2 and 3** | The Gauntlet and The Crossfire. Playable and recorded against; not rebuilt to spec. |
 | Website | **Done end to end.** Landing through Forge, build reveal, three battles, scoreboards, draft order. |
-| Official event | **Recorded and deployed.** Seed `43000236`, checksum `2e92efe2`. |
+| Official event | **Recorded and deployed.** Seed `43000236`, checksum `b2e672a8`. Re-recorded 17 August when six member colours changed — the checksum folds in each member's id, name and colour by design, so a roster edit moves it. The draft order and every point total were verified byte-identical across that change. |
 | Sound | Done. 23 synthesised voices, level-matched by measurement, mixed with per-sound and global voice caps. |
 | VFX | Done. Pooled particles, per-weapon/ability/hazard visuals, bot flash, screen shake, reduced-motion support. |
 | Weapon motion | Done. Blades spin, vertical spinners present edge then face, flamethrowers jet, hammers crush — the lift and smash projected for a top-down camera and timed off `nextAttackTick` so the blow lands on the beat. |
