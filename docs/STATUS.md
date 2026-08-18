@@ -224,6 +224,23 @@ Recorded because each one cost hours and none is obvious from the code.
   speed are coupled**: rear vulnerability is what makes speed valuable, so tuning either
   one moves the other.
 
+- **A number in a test can be taste rather than a constraint, and only measuring tells you
+  which.** The 120-character blurb cap read like a layout limit and was not: its own comment
+  called it "the chosen sane maximum", picked to sit above the longest blurb written at the
+  time. Rewritten copy ran through it at 143–182, and the honest question was whether the
+  reveal cards could take it. Measured with every card holding the longest blurb of its own
+  category: nothing clips at 1280, 1120, 1024 or 799 wide. The tightest case is just above
+  the 1100px stacking breakpoint, where the column narrows to 158px and 182 characters wrap
+  to eight lines — the card grows, and `overflow: hidden` never bites. The cap became 190
+  and its comment now records the measurement instead of a preference. **Before cutting good
+  work to satisfy a threshold, check whether the threshold was ever measured.**
+- **A green summary line is not a passing suite, and this cost a bad commit.** `799db58`
+  went in with `tables.test.ts` already failing — the rewritten ability blurbs broke the
+  120-character cap above — and the suite was reported as passing. This is the same family
+  as the earlier `&&` chain that gated on `tail`'s exit code instead of the build's: in both
+  cases a real failure was sitting in output that got summarised rather than read. **Capture
+  the exit code into a variable and print it.** `npm test 2>&1 | tail -5` returns the exit
+  status of `tail`, which is always 0.
 - **Watch the sample size.** Omni Wheels appears ~217 times per 200-match run, so its win
   count is single digits and the standard deviation is about 2.7 wins. A ratio between two
   small counts is not a signal. Compare each part against fair value in standard deviations
