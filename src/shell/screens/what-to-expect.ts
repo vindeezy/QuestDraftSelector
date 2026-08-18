@@ -254,11 +254,12 @@ export const whatToExpectScreen: Screen = {
         <div class="expect-row">
           <div class="expect-text">
             <h2>The scoring</h2>
-            <p>Placement pays the most — 25 points for first, down to 1 for last. A kill
-              adds ${KILL_POINTS}: enough to sharpen where you land, never enough to flip
-              it. <strong class="expect-highlight">Survive to score, fight to score
-              more.</strong> Three battles, one running total — and the total decides who
-              picks first.</p>
+            <p>Where you finish is what pays: ${PLACEMENT_POINTS[0]} points for first,
+              ${PLACEMENT_POINTS[PLACEMENT_POINTS.length - 1]} for last. A kill adds
+              ${KILL_POINTS} — enough to reward picking a fight, not quite enough to outrun a
+              bad placement. <strong class="expect-highlight">Survive to score, fight to score
+              more.</strong> Three battles, one running total, and the total decides the draft
+              order.</p>
           </div>
           <div class="expect-visual" data-panel="scoring"></div>
         </div>

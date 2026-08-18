@@ -394,35 +394,40 @@ const ABILITY: readonly Part[] = [
     id: 'ability-emp',
     label: 'EMP Pulse',
     category: 'ability',
-    blurb: "Freezes everyone nearby for two seconds when you take a beating — they can't even brace for the shove.",
+    blurb:
+      "Seizes every machine near you for two full seconds, enough time to escape or attack. Fires when you've lost enough health to be angry about it.",
     ability: 'emp',
   },
   {
     id: 'ability-nitro',
     label: 'Nitro Boost',
     category: 'ability',
-    blurb: 'Every real hit earns you a burst at almost double speed for a second and a half.',
+    blurb:
+      'Nearly double speed for a second and a half. It triggers on damage, so it arrives exactly when running is the smart idea.',
     ability: 'nitro',
   },
   {
     id: 'ability-oil-slick',
     label: 'Oil Slick',
     category: 'ability',
-    blurb: "Leaves an ice patch behind you every time you're hurt — hope whoever's chasing enjoys it.",
+    blurb:
+      "Dumps a slick on the floor a car's length behind you. Whatever's chasing hits it at speed and stops being able to steer.",
     ability: 'oilSlick',
   },
   {
     id: 'ability-shockwave',
     label: 'Shockwave',
     category: 'ability',
-    blurb: 'No damage at all — just a hard shove in every direction, right when you need the room.',
+    blurb:
+      'No damage dealt — just four tiles of hard shove in every direction. Creates room, exactly when you have none.',
     ability: 'shockwave',
   },
   {
     id: 'ability-repair',
     label: 'Repair System',
     category: 'ability',
-    blurb: "Heals you, but only once nobody's landed a hit for four seconds.",
+    blurb:
+      "Slowly regenerates health, but only after four full seconds without taking a hit. In a ten-bot brawl, that's the hard part.",
     ability: 'repair',
   },
   {
@@ -436,7 +441,8 @@ const ABILITY: readonly Part[] = [
     id: 'ability-smoke-screen',
     label: 'Smoke Screen',
     category: 'ability',
-    blurb: 'Take a real hit and vanish from every targeting system on the floor for two seconds.',
+    blurb:
+      'Deploys a blanket of smoke where nothing on the floor can target you for two seconds. Not invulnerable — just briefly not worth aiming at.',
     ability: 'smokeScreen',
   },
 ];
