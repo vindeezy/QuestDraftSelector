@@ -250,22 +250,29 @@ export const TEXTURE_STRENGTH = 0.55;
  * this pass with the member's colour as well would multiply the identity in twice, which is the
  * exact failure `TEXTURE_STRENGTH`'s comment describes.
  *
- * 0.4 is measured, the same way `TEXTURE_STRENGTH` was. The seven materials span 0.470 (depleted
- * uranium) to 0.837 (aluminium) in mean luminance, and what that spread is worth on screen was
- * checked in CIELAB against what it costs:
+ * 0.55 is measured, the same way `TEXTURE_STRENGTH` was — and is the same number, which is not
+ * a coincidence worth hiding: over a sprite normalised to the same brightness the vector body
+ * fills at, the material wants the same weight. The seven materials span 0.470 (depleted
+ * uranium) to 0.837 (aluminium) in mean luminance, checked in CIELAB against what it costs:
  *
  * | strength | uranium vs aluminium, same member | worst member pair, different materials |
  * |---|---|---|
- * | 0.25 | dE 3.9-4.5 — barely there | dE 14.7 |
- * | **0.40** | **dE 6.5-7.4 — plainly different** | **dE 13.7** |
- * | 0.55 | dE 9.1-10.4 | dE 12.6 |
+ * | 0.40 | dE 8.8-9.6 | dE 17.8 |
+ * | **0.55** | **dE 12.3-13.4 — plainly a different metal** | **dE 17.5** |
+ * | 0.70 | dE 15.8-17.3 | dE 16.6 |
  *
- * The useful part is the right-hand column barely moving: strength is nearly free on the
- * identity axis here, because it darkens every member by almost the same factor. So the choice
- * is made entirely on the left-hand column and on how much pattern the sprite can carry before
- * the two fight — which a probe at 1.0 settled by looking visibly muddy.
+ * The right-hand column barely moves, which is the useful part: strength is nearly free on the
+ * identity axis, because it darkens every member by close to the same factor. So the choice
+ * rests on the left column alone.
+ *
+ * It was 0.40 while the sprites were dark, and that was the wrong problem to solve. Multiply can
+ * only darken, so over art with a mean luminance of 106 the material had nowhere to go and read
+ * as a general dimming rather than as a surface — measured on Vin, whose #FFFFFF tint is 1.0 and
+ * therefore shows the sprite exactly: the material cost him 90 luminance down to 76. Normalising
+ * the sprites to 172 (see `tools/convert-sprites.py`) gave the same multiply room to be a
+ * pattern instead, and the strength could go up rather than the material being turned down.
  */
-export const SPRITE_TEXTURE_STRENGTH = 0.4;
+export const SPRITE_TEXTURE_STRENGTH = 0.55;
 
 function bodyFill(colour: number, texture: Texture | null): number | FillInput {
   return texture === null ? colour : { texture, color: colour, textureSpace: 'local' };

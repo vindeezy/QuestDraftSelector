@@ -46,14 +46,78 @@ SPRITES = ROOT / "src" / "render" / "sprites"
 ARCHIVE = ROOT / "ChatGPT Graphics" / "Chassis"
 LONG_EDGE = 768
 QUALITY = 90
+# Target mean luminance of the visible hull, 0-255.
+#
+# Generated chassis art comes back dark — the first five measured 106-117 — and that is a
+# problem twice over, because everything downstream can only make it darker. `tint` multiplies
+# by the member's colour and the armour material multiplies again, so the brightest possible
+# bot on the reveal is the sprite itself. Vin is #FFFFFF, the maximum, and his machine rendered
+# at a mean of 76 out of 255: a dark grey bot where the palette says white.
+#
+# Normalising here rather than asking the generator for brighter art, because "brighter" is not
+# a thing a prompt can hit repeatably, and a set whose members disagree on brightness looks
+# worse than one that is uniformly wrong.
+TARGET_LUMINANCE = 172
 # Anything below this is antialiasing at the hull's edge rather than art, and including it in
 # the crop would re-introduce the margin this is here to remove.
 ALPHA_FLOOR = 10
 
 
+def mean_luminance(im: Image.Image) -> float:
+    """Mean luminance of the pixels that are actually drawn, ignoring the transparent field."""
+    px = im.load()
+    w, h = im.size
+    total = 0.0
+    count = 0
+    for y in range(0, h, 3):
+        for x in range(0, w, 3):
+            r, g, b, a = px[x, y]
+            if a <= 128:
+                continue
+            total += 0.2126 * r + 0.7152 * g + 0.0722 * b
+            count += 1
+    return total / count if count else 0.0
+
+
+def normalise_brightness(im: Image.Image) -> Image.Image:
+    """Lift the hull to `TARGET_LUMINANCE` with a gamma curve, leaving alpha alone.
+
+    Gamma rather than a linear scale on purpose: scaling brightens by clipping, and the
+    highlights on brushed metal are the first thing to go: a bot whose armour has turned into a
+    flat white sheet has lost the surface the sprite was for. A gamma curve cannot clip, and it
+    lifts the midtones — the flat plate faces — hardest, which is exactly where the member's
+    colour needs room to show through.
+
+    Solved by bisection rather than derived, because the mean is taken over an irregular
+    silhouette and is not worth deriving in closed form.
+    """
+    current = mean_luminance(im)
+    if current <= 0 or abs(current - TARGET_LUMINANCE) < 1:
+        return im
+
+    lo, hi = 0.05, 1.0 if current > TARGET_LUMINANCE else 0.05
+    lo, hi = (1.0, 4.0) if current > TARGET_LUMINANCE else (0.05, 1.0)
+
+    best = im
+    for _ in range(18):
+        gamma = (lo + hi) / 2
+        table = [round(255 * ((i / 255) ** gamma)) for i in range(256)]
+        r, g, b, a = im.split()
+        trial = Image.merge("RGBA", (r.point(table), g.point(table), b.point(table), a))
+        got = mean_luminance(trial)
+        best = trial
+        if got < TARGET_LUMINANCE:
+            hi = gamma
+        else:
+            lo = gamma
+    return best
+
+
 def convert(png: Path) -> None:
     im = Image.open(png).convert("RGBA")
     before = png.stat().st_size
+
+    im = normalise_brightness(im)
 
     mask = im.getchannel("A").point(lambda v: 255 if v > ALPHA_FLOOR else 0)
     bbox = mask.getbbox()
@@ -83,6 +147,7 @@ def convert(png: Path) -> None:
         f"  {png.name} -> {out.name}  {im.size[0]}x{im.size[1]}  "
         f"{before / 1024:.0f} KB -> {after / 1024:.0f} KB "
         f"({100 * (1 - after / before):.1f}% smaller); "
+        f"luminance {mean_luminance(Image.open(out).convert('RGBA')):.0f}; "
         f"original kept in {ARCHIVE.relative_to(ROOT)}"
     )
 
