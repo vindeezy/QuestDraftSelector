@@ -456,6 +456,29 @@ export async function createArenaRenderer(
   // people are reading it.
   const world = new Container();
   app.stage.addChild(world);
+
+  /**
+   * Everything the world draws is clipped to the arena itself.
+   *
+   * The canvas is deliberately wider than the arena -- `width + KILL_FEED_WIDTH` -- so the kill
+   * feed has somewhere to live. That makes the two edges behave differently for free: The
+   * Grinder's saws sit at x=0 and x=960, each overhanging by its 28-unit reach, and the left
+   * one's overhang falls outside the canvas while the right one's lands on top of the kill feed.
+   * Same hazard, same geometry, one of them visibly spilling out of the arena.
+   *
+   * Fixed here rather than by nudging the saw inward, and that distinction matters: a hazard's
+   * position is simulation input. Moving it would change what the battles do, which changes the
+   * draft order, which means the recorded event is a different event. A renderer may not decide
+   * that. So the geometry stays exactly where the simulation puts it and the picture is trimmed
+   * to the arena, which also makes both saws read the same way -- half a blade at each edge.
+   *
+   * The mask is a child of the STAGE, not of `world`. Screen shake moves `world`, and a mask
+   * inside it would shake too, so the arena's edge would wander instead of holding still while
+   * the picture rattles inside it.
+   */
+  const worldClip = new Graphics().rect(0, 0, width, height).fill(0xffffff);
+  app.stage.addChild(worldClip);
+  world.mask = worldClip;
   /**
    * The floor, in two layers.
    *

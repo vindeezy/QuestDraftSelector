@@ -18,7 +18,7 @@ import { GRINDER_ARENA, GAUNTLET_ARENA, CROSSFIRE_ARENA, type ArenaConfig } from
 const GRINDER: ArenaConfig = GRINDER_ARENA;
 
 /**
- * Variant 2 — "The Gauntlet."
+ * Variant 2 — "Fire & Ice."
  *
  * Now `GAUNTLET_ARENA`: ice-soaked concentric bands built specifically to make the
  * `grip` stat matter, plus two crossed-wiring trapdoors. See the comment on
@@ -39,6 +39,6 @@ export const ARENA_VARIANTS: readonly ArenaConfig[] = [GRINDER, GAUNTLET, CROSSF
 
 export const ARENA_VARIANT_NAMES: readonly string[] = [
   'The Grinder',
-  'The Gauntlet',
+  'Fire & Ice',
   'The Crossfire',
 ];

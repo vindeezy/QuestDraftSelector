@@ -52,7 +52,7 @@ describe('battleIndexForBeat', () => {
 describe('battleLabelFor', () => {
   it('names the arena and which battle this is, matching the spec\'s own wording', () => {
     expect(battleLabelFor(0)).toBe('Battle 1 of 3 — The Grinder');
-    expect(battleLabelFor(1)).toBe('Battle 2 of 3 — The Gauntlet');
+    expect(battleLabelFor(1)).toBe('Battle 2 of 3 — Fire & Ice');
     expect(battleLabelFor(2)).toBe('Battle 3 of 3 — The Crossfire');
   });
 });

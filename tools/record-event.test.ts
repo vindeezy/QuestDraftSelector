@@ -116,6 +116,6 @@ describe('previewSeed', () => {
 
   it('prints battle lengths alongside the arena name for each battle', () => {
     const output = captureOutput(12345);
-    expect(output).toContain('battle lengths:  The Grinder 133s, The Gauntlet 169s, The Crossfire 148s');
+    expect(output).toContain('battle lengths:  The Grinder 133s, Fire & Ice 169s, The Crossfire 148s');
   });
 });

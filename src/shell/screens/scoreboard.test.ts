@@ -219,7 +219,7 @@ describe('scoreboardCopy', () => {
   it('names the arena on a battle-only board and points forward to the standings', () => {
     const copy = scoreboardCopy('battle-2-result', scoreboardConfigFor('battle-2-result')!);
     expect(copy.title).toBe('Battle 2 result');
-    expect(copy.subtitle).toContain('The Gauntlet');
+    expect(copy.subtitle).toContain('Fire & Ice');
     expect(copy.button).toBe('See the standings');
   });
 
@@ -278,7 +278,7 @@ describe('scoreboardScreen', () => {
     scoreboardScreen('standings-2').render(ctx);
 
     const groups = [...ctx.container.querySelectorAll('thead th.score-group')];
-    expect(groups.map((el) => el.textContent!.trim())).toEqual(['The Grinder', 'The Gauntlet']);
+    expect(groups.map((el) => el.textContent!.trim())).toEqual(['The Grinder', 'Fire & Ice']);
     expect(groups.every((el) => el.getAttribute('colspan') === '2')).toBe(true);
 
     const outerHeaders = [...ctx.container.querySelectorAll('thead th[rowspan="2"]')].map((el) =>

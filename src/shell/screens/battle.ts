@@ -13,7 +13,7 @@ import { getEventResult, memberBallVisuals } from './forge';
 import type { Screen, ScreenContext } from './types';
 
 /**
- * Beats 11, 13 and 16 — the three battles: The Grinder, The Gauntlet, The Crossfire.
+ * Beats 11, 13 and 16 — the three battles: The Grinder, Fire & Ice, The Crossfire.
  * The centrepiece of the whole site: replaying a recorded seed with the assembled builds,
  * live, tick by tick, so the league watches the exact fight that already decided their
  * draft order. See `docs/superpowers/specs/2026-08-11-website-design.md` §2 (rows 11, 13,
@@ -61,7 +61,7 @@ export function battleIndexForBeat(id: BeatId): number | null {
   return BATTLE_BEAT_INDEX.get(id) ?? null;
 }
 
-/** "Battle 2 of 3 — The Gauntlet", matching the wording the spec's own copy uses. */
+/** "Battle 2 of 3 — Fire & Ice", matching the wording the spec's own copy uses. */
 export function battleLabelFor(battleIndex: number): string {
   return `Battle ${battleIndex + 1} of 3 — ${ARENA_VARIANT_NAMES[battleIndex]}`;
 }
