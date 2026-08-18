@@ -155,6 +155,41 @@ export function spritesAbsent(): boolean {
   return URL_BY_CHASSIS.size === 0 && URL_BY_WEAPON.size === 0;
 }
 
+/**
+ * Whether sprites should also be drawn in the ARENA, not just on the build reveal.
+ *
+ * A prototype toggle, off unless `?battlesprites` is on the URL, and deliberately not a
+ * setting anybody could reach by accident on draft night.
+ *
+ * It exists because the technical cost is near zero — the arena already builds its machines
+ * with `drawBotPortrait`, the same function the reveal uses — while the VISUAL cost is
+ * measured and real, and those two facts point in opposite directions:
+ *
+ * - A bot is about 40px across in battle against roughly 380 on the reveal, 9.5x smaller, so
+ *   under 3% of a sprite's pixels reach the screen.
+ * - Sprites multiply every member's colour down, and the worst-separated pair of the ten falls
+ *   from dE 23.1 to 16.9 — a 27% loss, on the one screen where ten machines have to be told
+ *   apart at a glance, and landing on the pairs already fought over (Tommy/Nick Lenker and
+ *   Spencer/Rob).
+ * A third objection was raised and then MEASURED AWAY: ten masked containers add ten stencil
+ * operations a frame, which sounded like it should cost something. It does not. Frame work over
+ * a real battle came out at median 1.9ms / worst 13.7ms without sprites and median 1.7ms /
+ * worst 6.1ms with them — no difference beyond this machine's own run-to-run noise, and the
+ * cleaner tail belongs to the sprite run. Performance is not a reason to say no.
+ *
+ * The recommendation is still off, on the two reasons that survived. The toggle is here because
+ * those are an argument, and the owner watching a real battle both ways is evidence.
+ */
+export function battleSpritesEnabled(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    return new URL(window.location.href).searchParams.has('battlesprites');
+  } catch {
+    // A malformed URL is not a reason to fail to draw a battle.
+    return false;
+  }
+}
+
 /** Test seam: forgets what has loaded and allows loading to be started again. */
 export function resetChassisSpritesForTest(): void {
   loaded.clear();

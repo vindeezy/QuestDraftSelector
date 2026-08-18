@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, extname, join } from 'node:path';
 import { partsFor } from '../sim/parts/tables';
 import {
+  battleSpritesEnabled,
   chassisSprite,
   spritedChassisIds,
   spritedWeaponKeys,
@@ -85,6 +86,15 @@ describe('what actually ships', () => {
     for (const file of spriteFiles()) {
       expect(file.ext, `${file.name} — run: python tools/convert-sprites.py`).toBe('.webp');
     }
+  });
+});
+
+describe('the battle-sprite prototype toggle', () => {
+  it('is OFF wherever there is no window to read a flag from', () => {
+    // Vitest's node environment has no `window`, which is also what a headless render would
+    // hit. The prototype must never be the default, and "no URL to check" has to mean off
+    // rather than throwing on the way to drawing a battle.
+    expect(battleSpritesEnabled()).toBe(false);
   });
 });
 

@@ -40,6 +40,13 @@ import {
   oilSplatPoints,
 } from './floor-state';
 import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
+import {
+  battleSpritesEnabled,
+  chassisSprite,
+  loadChassisSprites,
+  spritesAbsent,
+  weaponSprite,
+} from './part-sprites';
 import { OIL_CARRY_TICKS, createTrackField, trackAlpha } from './vfx/tracks';
 import { createWaveField, waveAlpha, waveRadius, waveWidth } from './vfx/waves';
 import { tileIndexAt } from '../sim/arena/tiles';
@@ -418,6 +425,11 @@ export async function createArenaRenderer(
   // did before MAT 2.
   await loadMaterials();
 
+  // The `?battlesprites` prototype — see `battleSpritesEnabled`. Off by default, so the normal
+  // path neither loads nor draws any of this.
+  const useSprites = battleSpritesEnabled() && !spritesAbsent();
+  if (useSprites) await loadChassisSprites();
+
   const { width, height } = match.arena.grid;
   const canvasWidth = width + KILL_FEED_WIDTH;
 
@@ -645,10 +657,14 @@ export async function createArenaRenderer(
         silhouettes.push(null);
         return null;
       }
+      const weaponId = partAt('weapon', build.weapon).id;
       const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
         weaponScale: ARENA_WEAPON_SCALE,
         texture: armourTexture(partAt('armour', build.armour).id),
         weaponTexture: textureFor('weapon'),
+        chassisSprite: useSprites ? chassisSprite(partAt('chassis', build.chassis).id) : null,
+        weaponSprite: useSprites ? weaponSprite(weaponId) : null,
+        weaponHeadSprite: useSprites ? weaponSprite(`${weaponId}-head`) : null,
       });
       const scale = bot.body.radius / drawing.radius;
       drawing.view.scale.set(scale);
