@@ -548,17 +548,33 @@ the bigger risk. Still available if wanted.
 
 ---
 
-## SPR 1: Sprite trial — optional, timeboxed to one hour
+## SPR 1: Sprite trial — DONE, and kept
 
-**Files:** Modify `src/shell/screens/build-reveal.ts`
+**Files:** `src/render/chassis-sprites.ts`, `src/render/bot-portrait.ts`,
+`src/render/sprites/`, `tools/convert-sprites.py`, `docs/sprite-prompts.md`
 
-- [ ] **Step 1: The owner generates** two or three chassis sprites in ChatGPT — top-down,
-transparent background, neutral colour.
-- [ ] **Step 2: Draw one on the build reveal only**, behind the existing vector weapon and
-armour, at fixed rotation.
-- [ ] **Step 3: Look at it.** If it reads as a real machine, plan the rest. If it reads as AI
-robot soup, stop — the hour is the whole loss and the arena was never touched.
-- [ ] **Step 4: Commit or revert.** Both are acceptable outcomes.
+- [x] **Step 1: The owner generates.** Two rounds — Wedge, Diamond and Circle, then Tower and
+Square. Box was deliberately skipped: seed 43000236 rolls it for nobody, so a Box sprite
+could not be displayed on any screen.
+- [x] **Step 2: Drawn on the build reveal only**, over the vector body and under the armour
+rim and weapon, at fixed rotation. Confined by construction rather than by care —
+`mountBotPortraitStage` is the reveal's own helper and nothing else calls it.
+- [x] **Step 3: Looked at. It reads as real machines**, including Circle, which was chosen as
+the stress case because a disc has no silhouette to help it.
+- [x] **Step 4: Committed.** All five chassis in play are sprited, so all ten members get a
+machine rather than four keeping a flat vector shape next to six that do not.
+
+**What the trial cost beyond the hour, all of it found by measuring:** the art needed cropping
+to its opaque bounds, resizing and converting (6.5 MB to 435 KB for the first three); it had to
+be fitted to each chassis's real bounding box and clipped to its outline, because generated
+silhouettes do not match the polygons and cannot be made to; and the armour material had to be
+re-layered over the sprite, which had silently hidden it.
+
+**Still open — the owner's call, not a rendering decision.** `tint` multiplies, so a member's
+colour caps how bright their sprite can be. Every member lands at luminance 38.9 or better
+except Tommy, whose `#1C1F26` puts him at 13.9. A tint floor of 85 fixes it exactly and touches
+nobody else, but collapses his separation from Nick Lenker from dE 39.7 to 14.3, against the
+34.0 the palette pass was built to hold. Detail versus identity. See `docs/sprite-prompts.md`.
 
 ---
 
