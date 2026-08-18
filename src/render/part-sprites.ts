@@ -156,37 +156,35 @@ export function spritesAbsent(): boolean {
 }
 
 /**
- * Whether sprites should also be drawn in the ARENA, not just on the build reveal.
+ * Whether the arena draws sprited machines. On, unless `?vectorbots` says otherwise.
  *
- * A prototype toggle, off unless `?battlesprites` is on the URL, and deliberately not a
- * setting anybody could reach by accident on draft night.
+ * This shipped after being prototyped behind a flag and watched both ways, and the flag has
+ * been inverted rather than deleted so there is still a way back on the night if anything
+ * about the sprited arena ever looks wrong in the room.
  *
- * It exists because the technical cost is near zero — the arena already builds its machines
- * with `drawBotPortrait`, the same function the reveal uses — while the VISUAL cost is
- * measured and real, and those two facts point in opposite directions:
+ * **What it cost, measured, and what was done about it.** Sprites multiply every member's
+ * colour down, and on the one screen where ten machines have to be told apart at a glance the
+ * worst-separated pair fell from dE 23.1 to 16.9 — a 27% loss, landing on the pairs already
+ * fought over (Tommy/Nick Lenker and Spencer/Rob). That was the real objection, and it is
+ * answered in `arena-renderer.ts` by dropping the armour GRAIN in the arena rather than by
+ * giving up the look: sprite without grain measures 22.3, within 3.5% of the vector arena, and
+ * the second-worst pair actually improves. The material still shows on the build reveal, which
+ * is the screen that asks what a machine is made of; at forty pixels the grain was invisible
+ * anyway, so the separation was being spent on texture nobody could resolve.
  *
- * - A bot is about 40px across in battle against roughly 380 on the reveal, 9.5x smaller, so
- *   under 3% of a sprite's pixels reach the screen.
- * - Sprites multiply every member's colour down, and the worst-separated pair of the ten falls
- *   from dE 23.1 to 16.9 — a 27% loss, on the one screen where ten machines have to be told
- *   apart at a glance, and landing on the pairs already fought over (Tommy/Nick Lenker and
- *   Spencer/Rob).
- * A third objection was raised and then MEASURED AWAY: ten masked containers add ten stencil
- * operations a frame, which sounded like it should cost something. It does not. Frame work over
- * a real battle came out at median 1.9ms / worst 13.7ms without sprites and median 1.7ms /
- * worst 6.1ms with them — no difference beyond this machine's own run-to-run noise, and the
- * cleaner tail belongs to the sprite run. Performance is not a reason to say no.
- *
- * The recommendation is still off, on the two reasons that survived. The toggle is here because
- * those are an argument, and the owner watching a real battle both ways is evidence.
+ * **What it did not cost.** Ten masked containers were supposed to add ten stencil operations a
+ * frame. Measured over a real battle: median 1.9ms / worst 13.7ms vector against median 1.7ms /
+ * worst 6.1ms sprited — no difference beyond this machine's run-to-run noise, with the cleaner
+ * tail belonging to the sprites. That objection did not survive a profiler and is recorded here
+ * so it does not get re-argued from memory.
  */
 export function battleSpritesEnabled(): boolean {
   try {
-    if (typeof window === 'undefined') return false;
-    return new URL(window.location.href).searchParams.has('battlesprites');
+    if (typeof window === 'undefined') return true;
+    return !new URL(window.location.href).searchParams.has('vectorbots');
   } catch {
-    // A malformed URL is not a reason to fail to draw a battle.
-    return false;
+    // A malformed URL is not a reason to draw a different battle than everyone else sees.
+    return true;
   }
 }
 

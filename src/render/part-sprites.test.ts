@@ -89,12 +89,12 @@ describe('what actually ships', () => {
   });
 });
 
-describe('the battle-sprite prototype toggle', () => {
-  it('is OFF wherever there is no window to read a flag from', () => {
-    // Vitest's node environment has no `window`, which is also what a headless render would
-    // hit. The prototype must never be the default, and "no URL to check" has to mean off
-    // rather than throwing on the way to drawing a battle.
-    expect(battleSpritesEnabled()).toBe(false);
+describe('the arena sprite switch', () => {
+  it('is ON wherever there is no URL to read, which is the shipped look', () => {
+    // Vitest's node environment has no `window`, and neither would a headless render. Sprited
+    // machines are what the arena ships with, so "no URL to check" has to mean ON — and it has
+    // to answer rather than throw on the way to drawing a battle.
+    expect(battleSpritesEnabled()).toBe(true);
   });
 });
 

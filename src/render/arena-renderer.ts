@@ -425,8 +425,7 @@ export async function createArenaRenderer(
   // did before MAT 2.
   await loadMaterials();
 
-  // The `?battlesprites` prototype — see `battleSpritesEnabled`. Off by default, so the normal
-  // path neither loads nor draws any of this.
+  // Sprited machines, unless `?vectorbots` — see `battleSpritesEnabled`.
   const useSprites = battleSpritesEnabled() && !spritesAbsent();
   if (useSprites) await loadChassisSprites();
 
@@ -660,7 +659,15 @@ export async function createArenaRenderer(
       const weaponId = partAt('weapon', build.weapon).id;
       const drawing = drawBotPortrait(build, resolveBotVisual(index, botVisuals).colour, {
         weaponScale: ARENA_WEAPON_SCALE,
-        texture: armourTexture(partAt('armour', build.armour).id),
+        // No armour grain on a sprited bot IN THE ARENA, and this is the trade that made
+        // sprites here affordable rather than a decoration bought with legibility. The grain
+        // multiplies a member's colour down a second time, and the worst-separated pair of the
+        // ten falls from dE 23.1 to 16.9 when it does — on the one screen whose whole job is
+        // telling ten machines apart at a glance. Without it: 22.3, within 3.5% of the vector
+        // arena. What is given up is a material texture that is invisible at forty pixels
+        // across, and which the build reveal still shows at nine times the size, where somebody
+        // is actually studying the machine. Legibility beats a texture nobody can resolve.
+        texture: useSprites ? null : armourTexture(partAt('armour', build.armour).id),
         weaponTexture: textureFor('weapon'),
         chassisSprite: useSprites ? chassisSprite(partAt('chassis', build.chassis).id) : null,
         weaponSprite: useSprites ? weaponSprite(weaponId) : null,
