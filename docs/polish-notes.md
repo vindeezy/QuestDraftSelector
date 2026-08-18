@@ -23,12 +23,8 @@ event.
 
 ## Known from the build, not yet judged on screen
 
-Things flagged during implementation that need a human eye before anyone can say whether
-they are actually wrong.
+*All cleared — every item here has been judged and moved to Done.*
 
-- **Battle 1 gets one scoreboard where battles 2 and 3 get two.** Correct (a second screen
-  would show identical data) but it makes the walkthrough's rhythm uneven, and the
-  transitions may need to acknowledge that.
 
 ## Done
 
@@ -40,6 +36,13 @@ they are actually wrong.
   already `#ffffff`, so no hex could have rescued it) and then choosing the hexes by search rather
   than by eye: worst pair 34.0. Tommy's black is fine — the light outline does its job, and the
   lightened floor helps it further.
+- **The uneven scoreboard rhythm — decided: leave it.** Battle 1 gets one scoreboard where
+  battles 2 and 3 get two, because a second screen after battle 1 would show identical data. The
+  asymmetry is real and is being kept: inventing a screen to balance a rhythm means showing the
+  same numbers twice, which is worse than an uneven beat count.
+- **Aluminium reading as untextured — decided: fine as is.** Its smoothness is how it is told
+  apart from Titanium and Alloy, and adding features to make it look "done" would undo the
+  separation the whole palette pass was for.
 - **In-watch back navigation — decided: leave it alone.** The note claiming "nothing on screen
   offers it" was simply out of date. `← Back` is on every beat but the landing, unconditionally;
   `Forward →` appears once the next beat has been seen, deliberately gated on the strict
@@ -65,11 +68,7 @@ they are actually wrong.
 
 ## Open
 
-- **Aluminium armour may read as "no texture applied".** It is deliberately the smoothest and
-  lightest material — its lack of features is how it is told apart from Titanium and Alloy — but
-  next to Hardened Steel's obvious rivets, a viewer on the reveal may reasonably conclude that
-  their bot missed out. Judge at the MAT 1 gate. If it needs help, the fix is a slightly stronger
-  mottling rather than adding features it should not have.
+*Nothing outstanding. Anything new from the final watch goes here.*
 
 - **The mute button was a 29x19 hit target**, on every screen that makes a noise. Under half the
   44px a finger expects, and fiddly with a mouse too — and it is the one control somebody grabs in

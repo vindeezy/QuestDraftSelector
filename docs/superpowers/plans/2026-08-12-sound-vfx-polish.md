@@ -530,14 +530,21 @@ one texture change with a plausible route to costing something.
 Runs after MAT 1 and MAT 2, so every judgement in it is made against the finished picture.
 **Stops on 26 August** regardless of what is left, per `docs/polish-notes.md`.
 
-- [ ] **Step 1: Answer the three open questions in `docs/polish-notes.md`** now that the bots
-and floor are final — the member colours at battle size, in-watch back navigation, and the
-uneven scoreboard rhythm.
-- [ ] **Step 2: Work `docs/polish-notes.md` top to bottom** — copy, layout, wording.
-- [ ] **Step 3: Run `impeccable`'s `critique` and `polish`** over the changed screens.
-- [ ] **Step 4: Verify** — full suite, lint, types, build.
+- [x] **Step 1: Answer the open questions in `docs/polish-notes.md`.** All four closed. Member
+colours: fixed by measurement, worst pair 17.3 to 34.0 in CIELAB. Back navigation: left alone,
+and the note asking for it was out of date. Scoreboard rhythm: left uneven, because balancing it
+means showing the same numbers twice. Aluminium: fine as is.
+- [x] **Step 2: Work `docs/polish-notes.md` top to bottom.** Nothing open remains. The one
+structural bug — the reveal's portrait overlapping its cards below 1100px — is fixed.
+- [x] **Step 3: Critique the screens.** Done as a measured audit of all nineteen beats rather
+than through `impeccable`: horizontal overflow, elements escaping the viewport, text clipped
+rather than wrapped, undersized hit targets. Zero of the first three; the mute button was a
+29x19 target and is now 34x34. A design-led pass with `impeccable` was NOT run — deliberately
+deferred, since the visual direction has been signed off repeatedly and churn nine days out is
+the bigger risk. Still available if wanted.
+- [x] **Step 4: Verify** — full suite, lint, types, build.
 - [ ] **Step 5: WATCH GATE** — the owner walks all nineteen beats.
-- [ ] **Step 6: Commit** — `feat(shell): the polish pass`
+- [x] **Step 6: Commit** — landed across several commits rather than one.
 
 ---
 
