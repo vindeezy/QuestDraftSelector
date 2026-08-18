@@ -99,7 +99,10 @@ These are not style preferences. Each one breaks something specific if ignored.
 
 ## Where to put them
 
-Save as PNG into:
+Generate as PNG, then convert (see
+[`src/render/sprites/README.md`](../src/render/sprites/README.md) — raw PNGs are ~2 MB each and
+must be cropped, resized to 768 and saved as WebP before committing). Both formats load, so you
+can look first and convert after. Save into:
 
 ```
 src/render/sprites/
@@ -108,14 +111,46 @@ src/render/sprites/
 with exactly these names — the loader matches on them, and anything else is ignored:
 
 ```
-chassis-wedge.png
-chassis-diamond.png
-chassis-circle.png
+chassis-wedge.webp
+chassis-diamond.webp
+chassis-circle.webp
 ```
 
 Nothing else needs doing. The loader picks up whichever files are present and falls back to
 the existing vector chassis for the ones that are not, so you can drop in one and look at it
 before generating the rest.
+
+---
+
+## What the first round actually found
+
+All three were generated and judged. **The technique works** — Circle passed the stress test,
+reading as a machine through concentric armour rings and panelling alone. Three things were
+learned that the prompts above do not prevent, and that the renderer now handles:
+
+- **The art's silhouette does not match the chassis polygon.** The Diamond came back a square
+  four-point diamond (aspect 1.009) where the game's Diamond is a wide rhombus (1.250), and the
+  Wedge came back with a broad square rear where the polygon narrows to 0.6r. The sprite is
+  therefore fitted to the chassis's bounding box AND clipped to its outline, so no art can
+  overhang the armour rim or leave the vector body showing through. Fidelity in the prompt is
+  nice to have rather than load-bearing.
+- **Generated files are ~2 MB each** and must be cropped and converted before committing.
+- **A near-black member loses the art entirely.** See below — this is the one open question.
+
+## The open question: Tommy
+
+`tint` multiplies, so a member's colour sets a ceiling on how bright the sprite can be. Against
+the sprites' mean luminance of 115, every member lands at 38.9 or above — except Tommy, whose
+`#1C1F26` puts him at **13.9**, which is black mush with the panel detail invisible.
+
+Lifting the tint's luminance to 85 fixes it exactly (13.9 -> 38.2) and affects nobody else,
+because the next-darkest colour, Colby's red, is already at 86.2. But it moves Tommy's tint to
+`#4D5569`, and his separation from Nick L's blue-grey **collapses from ΔE 39.7 to 14.3**,
+against the 34.0 floor the palette pass was built to hold.
+
+That is a trade between "Tommy's machine has visible detail" and "Tommy and Nick L stay
+plainly different colours", and it is the owner's call, not a rendering decision. Left as-is
+until then: Tommy is dark, which is what he was before sprites existed too.
 
 ---
 

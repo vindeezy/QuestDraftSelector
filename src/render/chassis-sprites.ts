@@ -25,21 +25,33 @@
 import { Assets, type Texture } from 'pixi.js';
 
 /**
- * Every PNG in `./sprites/`, as a URL, keyed by path.
+ * Every sprite in `./sprites/`, as a URL, keyed by path.
+ *
+ * **WebP, not PNG**, though both are accepted so a freshly generated file can be dropped in and
+ * looked at before it is converted. The three trial sprites arrived as 1254x1254 PNGs totalling
+ * 6.5 MB, against 321 KB for every armour and floor texture the site ships combined. Cropped to
+ * their opaque bounds, resized to 768 (which is the portrait's own size on a retina display, so
+ * nothing is thrown away that anybody could see) and saved as WebP at quality 90, the same three
+ * are 435 KB -- 93.5% smaller. Measured on visible pixels only, that quality setting costs 40.6 dB
+ * PSNR, or an RMSE of 2.4 on scuffed metal; measuring RGB across the transparent region as well
+ * makes it look far worse than it is, because the colour under a zero alpha is meaningless.
+ *
+ * They are also fetched at the build reveal rather than at boot, since `mountBotPortraitStage` is
+ * where the load is kicked off -- so this weight never delays the landing screen or the Forge.
  *
  * `query: '?url'` keeps this to a string per file rather than pulling the images into the
  * module graph, and `eager: true` resolves the map at build time — the set of files is known
  * statically even though the individual names are not.
  */
-const SPRITE_URLS = import.meta.glob<string>('./sprites/*.png', {
+const SPRITE_URLS = import.meta.glob<string>('./sprites/*.{png,webp}', {
   eager: true,
   query: '?url',
   import: 'default',
 });
 
-/** `./sprites/chassis-wedge.png` -> `chassis-wedge`, which is the part id the tables use. */
+/** `./sprites/chassis-wedge.webp` -> `chassis-wedge`, which is the part id the tables use. */
 function chassisIdFromPath(path: string): string {
-  return path.replace(/^.*\//, '').replace(/\.png$/i, '');
+  return path.replace(/^.*\//, '').replace(/\.(png|webp)$/i, '');
 }
 
 /** Chassis id -> sprite URL, for whatever happens to be in the folder. */

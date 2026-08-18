@@ -326,6 +326,42 @@ function extentX(shape: ChassisShape, dir: 1 | -1): number {
   }
 }
 
+/**
+ * The chassis's full bounding box in local space.
+ *
+ * `extentX` answers "how far forward/back", which is what the weapon mount needs. A sprite
+ * needs all four edges, and needs them because the chassis shapes are NOT square: Diamond
+ * spans 2.000r across and 1.600r deep (aspect 1.250), Wedge 1.850r by 1.700r (1.088), and
+ * only Circle is 1:1. Drawing every sprite into a 2r square therefore stretched two of the
+ * three and pushed them out past the armour rim that is drawn on top — visible on the reveal
+ * as art overhanging its own outline.
+ *
+ * Wedge also is not CENTRED: it runs from -0.850r to +1.000r, so its middle sits at +0.075r.
+ * Sizing without offsetting would centre the art on the origin and hang the prow over the
+ * front. Both facts are returned here so the sprite can be placed on the box rather than on
+ * an assumption about it.
+ */
+function shapeBounds(shape: ChassisShape): { minX: number; maxX: number; minY: number; maxY: number } {
+  switch (shape.kind) {
+    case 'circle':
+      return { minX: -shape.radius, maxX: shape.radius, minY: -shape.radius, maxY: shape.radius };
+    case 'roundRect':
+      return {
+        minX: shape.x,
+        maxX: shape.x + shape.width,
+        minY: shape.y,
+        maxY: shape.y + shape.height,
+      };
+    case 'poly':
+    case 'regularPoly': {
+      const points = shape.kind === 'poly' ? shape.points : regularPolyVertices(shape);
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+    }
+  }
+}
+
 /** Ray/segment intersection, ray from the origin along unit direction `(dx, dy)`
  *  against segment `a`-`b`. Returns the distance along the ray, or `null` if they don't
  *  meet in front of the ray or within the segment. Standard 2x2 linear solve; see the
@@ -764,11 +800,30 @@ export function drawBotPortrait(
   // `anchor 0.5` puts its centre on the bot's centre of rotation — a sprite offset by even a few
   // pixels reads as a wobble the moment the bot turns.
   if (options.chassisSprite) {
+    const bounds = shapeBounds(shape);
     const sprite = new Sprite(options.chassisSprite);
     sprite.anchor.set(0.5);
-    sprite.width = r * 2;
-    sprite.height = r * 2;
+    // Fitted to the chassis's OWN box, not to a 2r square. The art is cropped to its opaque
+    // bounds before it ships (see `chassis-sprites.ts`), so the texture's edges are the
+    // machine's edges and this lands the silhouette on the outline the armour rim strokes.
+    sprite.width = bounds.maxX - bounds.minX;
+    sprite.height = bounds.maxY - bounds.minY;
+    sprite.position.set((bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2);
     sprite.tint = colour;
+
+    // Clipped to the chassis outline, and this is what makes the trial robust rather than
+    // dependent on how faithfully each generated sprite matched its polygon. Fitting the
+    // bounding box gets the SIZE right and says nothing about the shape inside it: the wedge
+    // art has a broad square rear where the wedge polygon narrows to 0.6r, so unclipped it
+    // spilled past the armour rim on the flanks while leaving the vector body visible
+    // elsewhere. The mask guarantees no sprite can ever paint outside the machine, and the
+    // vector body underneath — already filled in the member's colour — covers anything the
+    // art leaves short. Every chassis then reads as one solid object whatever the art does.
+    const clip = new Graphics();
+    traceShape(clip, shape).fill(0xffffff);
+    view.addChild(clip);
+    sprite.mask = clip;
+
     view.addChild(sprite);
   }
 
