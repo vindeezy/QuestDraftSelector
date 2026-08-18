@@ -98,7 +98,16 @@ function isAnchoredCategory(category: CategoryName): category is keyof BotPortra
  * So the size is *chosen at mount* from the space actually available, then held. Anchors
  * stay exact because the canvas still renders at whatever size was picked.
  */
-export const PORTRAIT_MIN_SIZE = 380;
+/**
+ * The floor must not exceed what the layout actually guarantees, or the canvas overflows the
+ * track it sits in and covers the cards either side. That is what 380 did: `.reveal-arena`'s
+ * centre column is `minmax(280px, 620px)`, so between 280 and 380 the portrait was wider than
+ * its own track and simply spilled over — the exact failure the comment above warns about,
+ * reintroduced by the clamp meant to prevent it.
+ *
+ * 260 sits below the track's own minimum, so the two are genuinely in step now.
+ */
+export const PORTRAIT_MIN_SIZE = 260;
 export const PORTRAIT_MAX_SIZE = 600;
 
 /** How long `resize` has to stay quiet before the portrait is rebuilt. A fullscreen

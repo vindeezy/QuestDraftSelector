@@ -1382,6 +1382,49 @@ button {
   height: fit-content;
 }
 
+/* Below this the three-track arrangement stops being possible rather than merely tight. The
+   comment on `.screen-build-reveal` sets out the arithmetic: two ~400px cards plus a portrait
+   that can reach 640 needs about 1400px. At 1100 the side tracks are down to ~160px, and by 800
+   they collapse to about 48 — a column of single words beside a portrait spilling over them.
+
+   So below 1100 the layout stacks: portrait first, cards beneath it in as many columns as fit.
+   The leader lines go with it, because a line pointing sideways at a card that is now underneath
+   is worse than no line — it was drawing a relationship that has stopped being true. */
+@media (width < 1100px) {
+  .screen-build-reveal {
+    height: auto;
+    min-height: 100vh;
+    /* Horizontally clipped, NOT `visible`. The stage's glow pseudo-element is wider than the
+       stage it hangs off — 756px inside 600 — and the wide layout has always relied on this
+       screen clipping it. Releasing that here let the glow push the document 13px wider than
+       the viewport and raised a horizontal scrollbar on a screen whose whole contract is to
+       fit. Vertical is left alone so the stacked layout can grow and the page can scroll. */
+    overflow-x: hidden;
+  }
+
+  .reveal-arena {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  /* The machine above the words about it. Stacking in DOM order would put the left-hand cards
+     first and bury the thing the screen exists to show. */
+  .reveal-stage-wrap {
+    order: -1;
+  }
+
+  .reveal-cards {
+    height: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    align-content: start;
+  }
+
+  .reveal-leader-lines {
+    display: none;
+  }
+}
+
 /* --- Battle -------------------------------------------------------------------- */
 
 /* Same fit-the-viewport contract as `.screen-forge` — see the long comment there for why

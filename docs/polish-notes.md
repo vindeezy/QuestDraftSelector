@@ -26,10 +26,6 @@ event.
 Things flagged during implementation that need a human eye before anyone can say whether
 they are actually wrong.
 
-- **The ten member colours.** Fine as tiles on a dark screen; the real test is ten of them
-  moving at 40-unit bot size in a brawl. Watch for **Tommy's black** disappearing into the
-  dark slate floor (it is meant to carry a light outline), and whether **gold/yellow** and
-  **white/silver** separate. Arrives properly at the WEB 9 battle gate.
 - **No visible way to go back** during a first watch. `progress.ts` allows it — any
   already-seen beat is reachable — but nothing on screen offers it. `?reset` exists as the
   escape hatch. Whether members want in-watch back navigation is a real question.
@@ -39,18 +35,37 @@ they are actually wrong.
 
 ## Done
 
-*Nothing yet.*
+- **The ten member colours.** Answered, and the answer was worse than the question assumed. The
+  material textures MULTIPLY, so each bot was darkened by its own armour's brightness — putting
+  the armour on the same channel as the identity. Measured in CIELAB, the closest pair went from
+  30.8 apart to 7.5. White/silver and gold/yellow were both confirmed, and red/pink and
+  orange/gold turned out to be collisions too. Fixed by lowering the texture's strength (white is
+  already `#ffffff`, so no hex could have rescued it) and then choosing the hexes by search rather
+  than by eye: worst pair 34.0. Tommy's black is fine — the light outline does its job, and the
+  lightened floor helps it further.
+- **The build reveal's portrait overlaps its info cards on a narrow window.** Fixed. Two separate
+  faults. `portraitSizeFor` had a floor of 380 while `.reveal-arena`'s centre track can shrink to
+  280, so between those the canvas was wider than the track it sat in and simply spilled over —
+  the exact failure its own doc comment warned about, reintroduced by the clamp meant to prevent
+  it. And the side tracks are `minmax(0, 1fr)`, so by 800px they collapsed to ~48px: a column of
+  single words. Below 1100px the layout now stacks — machine above, cards beneath in as many
+  columns as fit — and the leader lines go with it, since a line pointing sideways at a card that
+  is now underneath draws a relationship that has stopped being true. Verified by measurement at
+  900 and 1600: zero overlap, zero horizontal overflow, and the wide layout unchanged.
 
 ## Open
 
-- **The build reveal's portrait overlaps its info cards on a narrow window.** Seen at roughly
-  800x1040 while checking MAT 1: the bot covers the card text on both sides, and the weapon
-  overlaps the member name in the header. Fine at 1600 wide, where the cards sit clear of it.
-  Not caused by the textures — the portrait scales off its own drawn bounds, which materials do
-  not change — so this predates them. Whether it matters depends on what the league watches on;
-  if anyone is on a laptop or a tablet in portrait, it does.
 - **Aluminium armour may read as "no texture applied".** It is deliberately the smoothest and
   lightest material — its lack of features is how it is told apart from Titanium and Alloy — but
   next to Hardened Steel's obvious rivets, a viewer on the reveal may reasonably conclude that
   their bot missed out. Judge at the MAT 1 gate. If it needs help, the fix is a slightly stronger
   mottling rather than adding features it should not have.
+
+## Found while fixing, worth knowing
+
+- **A horizontal scrollbar can appear from a pseudo-element, not a box.** The reveal stage's glow
+  `::before` is 756px inside a 600px stage, and the wide layout has always relied on the screen's
+  `overflow: hidden` to clip it. The stacked layout initially set `overflow: visible`, copying the
+  short-viewport block, and the glow pushed the document 13px wider than the viewport. Nothing
+  showed up as an oversized element, because no element WAS oversized. If a screen ever grows a
+  mysterious horizontal scrollbar, check the decorations before the boxes.
