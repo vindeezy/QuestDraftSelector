@@ -61,6 +61,16 @@ export interface TrackField {
    * rule is the behaviour worth pinning, not the buffer mechanics.
    */
   lay(bot: number, x: number, y: number, heading: number): boolean;
+  /**
+   * Forgets where `bot` last marked, WITHOUT removing the marks it already laid.
+   *
+   * Must be called the moment a bot's wheels are clean, and the reason is the gap filling. A
+   * bot that oiled up, dried off, and hit a second slick across the arena had its next mark
+   * bridged from wherever it last marked -- drawing a line along a path it may never have
+   * driven, so marks appeared BEHIND it before it ever reached the oil. Gap filling is right
+   * within one continuous run and wrong across two.
+   */
+  forget(bot: number): void;
   /** Ages every mark by one tick and retires the expired ones. */
   advance(): void;
   /** Forgets everything, including where each bot last marked. */
@@ -165,6 +175,10 @@ export function createTrackField(options: TrackFieldOptions = {}): TrackField {
       const used = (steps * spacing) / distance;
       lastAt.set(bot, { x: previous.x + dx * used, y: previous.y + dy * used });
       return true;
+    },
+
+    forget(bot) {
+      lastAt.delete(bot);
     },
 
     advance() {

@@ -107,6 +107,48 @@ describe('laying marks', () => {
   });
 });
 
+describe('not bridging across a dry spell', () => {
+  it('bridges within one continuous run — which is the behaviour that needs bounding', () => {
+    // Documented deliberately: gap filling is correct while a bot is continuously oily, and it
+    // is what makes a fast bot's trail as dense as a slow one's.
+    const f = createTrackField();
+    f.lay(0, 0, 0, 0);
+    f.lay(0, 500, 0, 0);
+    expect(live(f).length).toBeGreaterThan(2);
+  });
+
+  it('does NOT bridge once the bot has dried off in between', () => {
+    // The bug this fixes. A bot that oiled up, dried off, then hit a second slick across the
+    // arena had a line drawn from the first slick to the second, along ground it may never have
+    // driven — so marks appeared behind it BEFORE it reached the oil.
+    const f = createTrackField();
+    f.lay(0, 0, 0, 0);
+    f.forget(0);
+    f.lay(0, 500, 0, 0);
+    expect(live(f)).toHaveLength(2);
+  });
+
+  it('forgets the position without erasing marks already laid', () => {
+    // A trail that vanished the moment the wheels cleaned would defeat the point: the marks
+    // leading AWAY from a slick are the whole effect.
+    const f = createTrackField();
+    f.lay(0, 0, 0, 0);
+    f.lay(0, TRACK_SPACING + 1, 0, 0);
+    const before = live(f).length;
+    f.forget(0);
+    expect(live(f)).toHaveLength(before);
+  });
+
+  it('forgets one bot without disturbing another', () => {
+    const f = createTrackField();
+    f.lay(0, 0, 0, 0);
+    f.lay(1, 0, 0, 0);
+    f.forget(0);
+    expect(f.lay(1, 1, 0, 0)).toBe(false);
+    expect(f.lay(0, 1, 0, 0)).toBe(true);
+  });
+});
+
 describe('the bound', () => {
   it('never exceeds its capacity, however far a bot drives', () => {
     const f = createTrackField({ capacity: 8 });

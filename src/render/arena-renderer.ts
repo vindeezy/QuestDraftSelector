@@ -1354,15 +1354,19 @@ export async function createArenaRenderer(
       // Picking up oil, and laying it back down. Read straight from the surface map rather
       // than from an effect, for the same reason the slicks themselves are: the simulation
       // records a slick by setting a tile, and that tile is the truth.
-      if (bot.alive) {
-        const tileIndex = tileIndexAt(current.arena.grid, bot.body.x, bot.body.y);
-        if (tileIndex >= 0 && isOiled(baseSurfaces, current.arena.surfaces, tileIndex)) {
-          oily[index] = OIL_CARRY_TICKS;
-        }
-        if ((oily[index] ?? 0) > 0) {
-          oily[index] = (oily[index] ?? 0) - 1;
-          tracks.lay(index, bot.body.x, bot.body.y, (bot.heading / ANGLE_STEPS) * Math.PI * 2);
-        }
+      const tileIndex = tileIndexAt(current.arena.grid, bot.body.x, bot.body.y);
+      if (tileIndex >= 0 && isOiled(baseSurfaces, current.arena.surfaces, tileIndex)) {
+        oily[index] = OIL_CARRY_TICKS;
+      }
+      if ((oily[index] ?? 0) > 0) {
+        oily[index] = (oily[index] ?? 0) - 1;
+        tracks.lay(index, bot.body.x, bot.body.y, (bot.heading / ANGLE_STEPS) * Math.PI * 2);
+      } else {
+        // Clean wheels: forget where this bot last marked. Without this, the next slick it
+        // reaches has its first mark BRIDGED from the last one -- drawing a line back along
+        // ground it may never have driven, so marks appear behind a bot before it has touched
+        // any oil. Gap filling is right within one run of marking and wrong across two.
+        tracks.forget(index);
       }
 
       const lit = flash[index] ?? 0;
