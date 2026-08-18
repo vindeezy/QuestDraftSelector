@@ -3,19 +3,26 @@ import { readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, extname, join } from 'node:path';
 import { partsFor } from '../sim/parts/tables';
-import { chassisSprite, spritedChassisIds, spritesAbsent } from './chassis-sprites';
+import {
+  chassisSprite,
+  spritedChassisIds,
+  spritedWeaponKeys,
+  spritesAbsent,
+  weaponSprite,
+} from './part-sprites';
 
 const SPRITE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'sprites');
 
-/** Every image in the sprite folder, with its size on disk. */
-function spriteFiles(): { name: string; ext: string; bytes: number }[] {
-  return readdirSync(SPRITE_DIR)
-    .filter((name) => /\.(png|webp)$/i.test(name))
-    .map((name) => ({
-      name,
-      ext: extname(name).toLowerCase(),
-      bytes: statSync(join(SPRITE_DIR, name)).size,
-    }));
+/** Every image under the sprite folder, weapons included, with its size on disk. */
+function spriteFiles(dir = SPRITE_DIR): { name: string; ext: string; bytes: number }[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    // Recursive on purpose: the weapons live in their own subfolder, and a guard that only
+    // looked at the top level would wave through exactly the 2 MB PNGs it exists to catch.
+    if (entry.isDirectory()) return spriteFiles(full);
+    if (!/\.(png|webp)$/i.test(entry.name)) return [];
+    return [{ name: entry.name, ext: extname(entry.name).toLowerCase(), bytes: statSync(full).size }];
+  });
 }
 
 const CHASSIS_IDS = new Set(partsFor('chassis').map((p) => p.id));
@@ -78,6 +85,33 @@ describe('what actually ships', () => {
     for (const file of spriteFiles()) {
       expect(file.ext, `${file.name} — run: python tools/convert-sprites.py`).toBe('.webp');
     }
+  });
+});
+
+describe('the weapon sprites', () => {
+  const WEAPON_IDS = new Set(partsFor('weapon').map((p) => p.id));
+
+  it("only claims weapons that exist, allowing the hammer's head as its own piece", () => {
+    // Same silent trap as the chassis: the loader keys on the FILENAME, so a misnamed file
+    // loads fine, matches nothing and draws nothing. `weapon-hammer-head` is the one legal
+    // name that is not itself a part id — the hammer's head is sprited separately so the arm
+    // beneath it can still foreshorten.
+    for (const key of spritedWeaponKeys()) {
+      const isPart = WEAPON_IDS.has(key);
+      const isHammerHead = key === 'weapon-hammer-head';
+      expect(isPart || isHammerHead, `no weapon named "${key}" — check the filename`).toBe(true);
+    }
+  });
+
+  it('returns null for a weapon with no sprite, rather than throwing', () => {
+    expect(weaponSprite('weapon-does-not-exist')).toBeNull();
+  });
+
+  it('never sprites the hammer as one rigid piece', () => {
+    // `weapon-hammer.webp` would cover the whole weapon, head and arm together, and the crush
+    // would become a swing — the arm has to collapse under the head for the motion to read
+    // from an overhead camera at all.
+    expect(spritedWeaponKeys()).not.toContain('weapon-hammer');
   });
 });
 

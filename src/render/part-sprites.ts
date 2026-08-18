@@ -1,5 +1,5 @@
 /**
- * Chassis sprites — the SPR 1 trial.
+ * Chassis and weapon sprites — the SPR 1 trial, and its follow-on.
  *
  * Optional artwork that replaces a chassis's flat vector body on the build reveal only. The
  * arena is deliberately untouched: this is a timeboxed experiment, and the point of confining
@@ -49,6 +49,19 @@ const SPRITE_URLS = import.meta.glob<string>('./sprites/*.{png,webp}', {
   import: 'default',
 });
 
+/**
+ * The weapons, in their own subfolder.
+ *
+ * A separate glob rather than a recursive one, because the two sets are keyed on different
+ * part tables and a weapon file that landed in the chassis map would silently match nothing.
+ * The chassis pattern is a single `*`, so it never reaches in here by accident.
+ */
+const WEAPON_URLS = import.meta.glob<string>('./sprites/weapons/*.{png,webp}', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
 /** `./sprites/chassis-wedge.webp` -> `chassis-wedge`, which is the part id the tables use. */
 function chassisIdFromPath(path: string): string {
   return path.replace(/^.*\//, '').replace(/\.(png|webp)$/i, '');
@@ -57,6 +70,19 @@ function chassisIdFromPath(path: string): string {
 /** Chassis id -> sprite URL, for whatever happens to be in the folder. */
 const URL_BY_CHASSIS: ReadonlyMap<string, string> = new Map(
   Object.entries(SPRITE_URLS).map(([path, url]) => [chassisIdFromPath(path), url]),
+);
+
+/**
+ * Weapon key -> sprite URL.
+ *
+ * Keyed on the file's own stem rather than the weapon's part id, because one of them is not a
+ * weapon at all: `weapon-hammer-head` is the hammer's HEAD, and the hammer's arm stays vector
+ * so it can go on foreshortening as the weapon lifts. Mapping that file onto `weapon-hammer`
+ * would put a sprite over the whole weapon and lose the two-piece motion that makes a crush
+ * read from an overhead camera.
+ */
+const URL_BY_WEAPON: ReadonlyMap<string, string> = new Map(
+  Object.entries(WEAPON_URLS).map(([path, url]) => [chassisIdFromPath(path), url]),
 );
 
 const loaded = new Map<string, Texture>();
@@ -74,7 +100,7 @@ let pending: Promise<void> | null = null;
 export function loadChassisSprites(): Promise<void> {
   if (pending !== null) return pending;
 
-  const each = [...URL_BY_CHASSIS].map(async ([chassisId, url]) => {
+  const each = [...URL_BY_CHASSIS, ...URL_BY_WEAPON].map(async ([chassisId, url]) => {
     try {
       const texture = (await Assets.load(url)) as Texture;
       // A texture that loaded without a usable source would draw as a blank rectangle over the
@@ -107,10 +133,26 @@ export function spritedChassisIds(): string[] {
   return [...URL_BY_CHASSIS.keys()].sort();
 }
 
+/**
+ * The sprite for a weapon, or null.
+ *
+ * `key` is the file stem, not always a part id — see `URL_BY_WEAPON`. Null means "draw the
+ * vector weapon", which is what every weapon did before this existed and what any weapon
+ * without a file still does.
+ */
+export function weaponSprite(key: string): Texture | null {
+  return loaded.get(key) ?? null;
+}
+
+/** Which weapon sprites are present on disk. */
+export function spritedWeaponKeys(): string[] {
+  return [...URL_BY_WEAPON.keys()].sort();
+}
+
 /** True when no sprite files exist at all, i.e. the trial has not started. Lets the portrait
  *  skip the load entirely rather than awaiting a promise that resolves over nothing. */
 export function spritesAbsent(): boolean {
-  return URL_BY_CHASSIS.size === 0;
+  return URL_BY_CHASSIS.size === 0 && URL_BY_WEAPON.size === 0;
 }
 
 /** Test seam: forgets what has loaded and allows loading to be started again. */

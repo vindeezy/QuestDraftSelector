@@ -43,7 +43,21 @@ ROOT = Path(__file__).resolve().parent.parent
 SPRITES = ROOT / "src" / "render" / "sprites"
 # Where the full-resolution generations are kept. Outside `src/`, because they are source
 # material rather than something the site loads.
-ARCHIVE = ROOT / "ChatGPT Graphics" / "Chassis"
+ARCHIVE_ROOT = ROOT / "ChatGPT Graphics"
+
+# Two sprites are generated LYING DOWN and mounted upright, so the converter turns them.
+#
+# This is a fix for a prompt, not a quirk of the art. `docs/weapon-sprite-prompts.md` asks for
+# the spinning bar and the ram plate horizontally, because a long thin subject fills a wide
+# frame far better than a tall sliver of one — but both are mounted across the front of a bot,
+# vertically, in the renderer's local space. Asking for them one way and using them the other
+# needs exactly one rotation somewhere, and here is the only place it happens once rather than
+# every time somebody regenerates them.
+#
+# COUNTER-clockwise, which is what puts the ram plate's heavy leading edge — along the bottom
+# of the generated image — on the RIGHT, where the bot is facing. The bar is symmetric and does
+# not care.
+ROTATE_CCW = {"weapon-spinning-bar", "weapon-ram-plate"}
 LONG_EDGE = 768
 QUALITY = 90
 # Target mean luminance of the visible hull, 0-255.
@@ -117,6 +131,9 @@ def convert(png: Path) -> None:
     im = Image.open(png).convert("RGBA")
     before = png.stat().st_size
 
+    if png.stem in ROTATE_CCW:
+        im = im.rotate(90, expand=True, resample=Image.BICUBIC)
+
     im = normalise_brightness(im)
 
     mask = im.getchannel("A").point(lambda v: 255 if v > ALPHA_FLOOR else 0)
@@ -135,9 +152,11 @@ def convert(png: Path) -> None:
     im.save(out, "WEBP", quality=QUALITY, method=6)
 
     # Archive the original before removing it from the sprite folder. Never `unlink` — see
-    # the module docstring for the generations that taught us that.
-    ARCHIVE.mkdir(parents=True, exist_ok=True)
-    kept = ARCHIVE / png.name
+    # the module docstring for the generations that taught us that. The archive mirrors the
+    # sprite folder's own shape, so weapons do not land in with the chassis.
+    archive = ARCHIVE_ROOT / (png.parent.name.capitalize() if png.parent != SPRITES else "Chassis")
+    archive.mkdir(parents=True, exist_ok=True)
+    kept = archive / png.name
     if kept.exists():
         kept.unlink()
     png.replace(kept)
@@ -148,7 +167,7 @@ def convert(png: Path) -> None:
         f"{before / 1024:.0f} KB -> {after / 1024:.0f} KB "
         f"({100 * (1 - after / before):.1f}% smaller); "
         f"luminance {mean_luminance(Image.open(out).convert('RGBA')):.0f}; "
-        f"original kept in {ARCHIVE.relative_to(ROOT)}"
+        f"original kept in {archive.relative_to(ROOT)}"
     )
 
 
@@ -156,7 +175,7 @@ def main() -> None:
     if not SPRITES.is_dir():
         sys.exit(f"no sprite folder at {SPRITES}")
 
-    pngs = sorted(SPRITES.glob("*.png"))
+    pngs = sorted(SPRITES.rglob("*.png"))
     if not pngs:
         print("Nothing to convert — no .png files in src/render/sprites/")
         return

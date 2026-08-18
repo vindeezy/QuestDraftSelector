@@ -3,7 +3,7 @@ import type { BotBuild } from '../sim/parts/assemble';
 import { partAt } from '../sim/parts/tables';
 import { destroyOnce } from './destroy-once';
 import { armourTexture, loadMaterials, textureFor } from './materials';
-import { chassisSprite, loadChassisSprites, spritesAbsent } from './chassis-sprites';
+import { chassisSprite, loadChassisSprites, spritesAbsent, weaponSprite } from './part-sprites';
 
 /**
  * Draws an assembled bot's portrait — the first time a league member sees the machine
@@ -814,6 +814,61 @@ export interface BotPortraitOptions {
    * the armour textures are: `tint` multiplies and can only darken.
    */
   chassisSprite?: Texture | null;
+
+  /**
+   * An optional sprite for the weapon's main body, drawn in place of its vector art.
+   *
+   * Reveal-only for the same measured reason as `chassisSprite`: in the arena a weapon is about
+   * a tenth of this size, where the detail cannot survive and the brightness the sprite costs is
+   * paid on the one screen that needs ten machines told apart at a glance.
+   */
+  weaponSprite?: Texture | null;
+
+  /**
+   * An optional sprite for the hammer's HEAD alone.
+   *
+   * Separate because the hammer is the only two-piece weapon: the head lives in its own node so
+   * the arm beneath it can collapse to almost nothing as the weapon rears up, which is what
+   * makes a crush read from directly overhead. One sprite over the whole hammer would swing as
+   * a rigid body and lose that.
+   */
+  weaponHeadSprite?: Texture | null;
+}
+
+/**
+ * Replaces a weapon Graphics' drawn content with a sprite, in place.
+ *
+ * The vector art is drawn FIRST and then thrown away, which looks wasteful and is the point:
+ * `drawWeapon` returns the anchors the whole motion system runs on — the tip a flame is thrown
+ * from, the pivot a blade spins about, the offset a hammer head slides along — and those come
+ * out of the geometry rather than from a table. Drawing it, measuring it and then discarding
+ * the pixels means a sprite inherits anchors that are correct by construction instead of
+ * anchors somebody typed in next to the art.
+ *
+ * The sprite becomes a CHILD of the same Graphics, so every transform already applied to that
+ * node — the mount's scale, the pivot, the spin, the swing — reaches it untouched. Nothing in
+ * `weapon-motion.ts` needs to know sprites exist.
+ *
+ * **Aspect is preserved, not stretched.** The chassis sprites are clipped to a polygon, so
+ * stretching them into its box is safe. A weapon has no such outline: a saw blade forced into
+ * a slightly non-square box becomes an oval, and an oval that spins wobbles. Fitted by the
+ * tighter of the two axes, centred on the vector art's own bounds.
+ */
+function applyWeaponSprite(g: Graphics, texture: Texture, tint: number): void {
+  const bounds = g.getLocalBounds();
+  if (!(bounds.width > 0) || !(bounds.height > 0)) return;
+  if (!(texture.width > 0) || !(texture.height > 0)) return;
+
+  const scale = Math.min(bounds.width / texture.width, bounds.height / texture.height);
+  g.clear();
+
+  const sprite = new Sprite(texture);
+  sprite.anchor.set(0.5);
+  sprite.width = texture.width * scale;
+  sprite.height = texture.height * scale;
+  sprite.position.set(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  sprite.tint = tint;
+  g.addChild(sprite);
 }
 
 export function drawBotPortrait(
@@ -909,6 +964,14 @@ export function drawBotPortrait(
   // same bench, unlike the armour, whose whole point is that the seven materials differ.
   const weaponMetal = weaponFill(options.weaponTexture);
   const drawn = drawWeapon(weaponGfx, weaponHead, weaponPart.id, frontX, weaponMetal);
+
+  // Sprites over the vector weapon, once its geometry has given up the anchors. The hammer is
+  // the one weapon whose sprite replaces only PART of itself: its head is a separate node so
+  // the arm can foreshorten under it, so `weapon-hammer-head` covers the head and the arm stays
+  // drawn. Every other weapon is one rigid piece and takes its sprite whole.
+  if (options.weaponSprite) applyWeaponSprite(weaponGfx, options.weaponSprite, WEAPON_METAL);
+  if (options.weaponHeadSprite) applyWeaponSprite(weaponHead, options.weaponHeadSprite, WEAPON_METAL);
+
   const weaponAnchor = drawn.tip;
   const weaponScale = options.weaponScale ?? 1;
 
@@ -1028,6 +1091,9 @@ export async function mountBotPortraitStage(
     texture: armourTexture(partAt('armour', build.armour).id),
     weaponTexture: textureFor('weapon'),
     chassisSprite: chassisSprite(partAt('chassis', build.chassis).id),
+    weaponSprite: weaponSprite(partAt('weapon', build.weapon).id),
+    // The hammer's head only — see `weaponHeadSprite`. Every other weapon leaves this null.
+    weaponHeadSprite: weaponSprite(`${partAt('weapon', build.weapon).id}-head`),
   });
   drawing.view.x = size / 2;
   drawing.view.y = size / 2;
