@@ -17,12 +17,15 @@ taste:
 
 | chassis | appearances in seed 43000236 | in the trial? |
 |---|---|---|
-| Diamond | 3 — Tommy, Spencer, Rob | **yes** — most common, biggest payoff |
-| Wedge | 2 — Pat, Erik | **yes** — most distinctive silhouette, should look best |
-| Circle | 2 — Colby, Nick L | **yes** — the stress test |
-| Tower | 2 — Paden, Nick C | not yet |
-| Square | 1 — Vin | not yet |
+| Diamond | 3 — Tommy, Spencer, Rob | **done** — most common, biggest payoff |
+| Wedge | 2 — Pat, Erik | **done** — most distinctive silhouette |
+| Circle | 2 — Colby, Nick L | **done** — the stress test, and it passed |
+| Tower | 2 — Paden, Nick C | **round two** |
+| Square | 1 — Vin | **round two** |
 | **Box** | **0** | **no — never rolled** |
+
+Round two finishes the set: all ten members get a machine instead of four of them keeping a
+flat vector shape next to six that do not.
 
 **Box cannot be judged at all**, because no member in the recorded event has one. A Box sprite
 would be work that nothing on the site can display. Skip it.
@@ -94,6 +97,65 @@ These are not style preferences. Each one breaks something specific if ignored.
 > recoloured later. Flat even lighting, NO cast shadow, NO ground, NO background. Fully
 > transparent background. Crisp silhouette, centred, filling the frame. Game sprite asset,
 > high detail, 1:1 square.
+
+---
+
+# Round two — Tower and Square
+
+Two things are different this time, both learned from round one.
+
+**These two have a FLAT FRONT, not a point.** Wedge, Diamond and Circle all had something at
+the front for the eye to catch. Tower is an octagon whose nearest vertex to the front is 22.5°
+off, so an armoured face looks forward; Square is axis-aligned, so a flat side looks forward.
+Left unsaid, a generator will invent a prow and the art will disagree with the machine that
+collides. Both prompts state it and then give the front something else to be readable by.
+
+**They must match the first three.** Three sprites generated separately can each be good and
+still look like three different games — and now there are five. The existing three measure a
+mean luminance of 110-116 out of 255 and share a vocabulary: brushed steel, hard-edged armour
+plates, panel seams, hex bolts, weld lines, scuffs and worn corners. Both prompts below repeat
+that language deliberately. **Do not make these two brighter or darker than the first three**,
+even though brighter would help Tommy — that is a decision for the whole set, not for two of
+it, and mixing brightness across chassis is more obvious than any of it being dark.
+
+## Tower
+
+> Top-down orthographic view looking straight down from directly overhead at a battle robot
+> chassis. OCTAGONAL shape: a regular eight-sided hull with a FLAT armoured face pointing to
+> the RIGHT — no prow, no point, no spike at the front. It is the smallest and most compact
+> chassis in the game, so it should read as dense and heavily armoured for its size, with
+> thick plating crowded into a small footprint. Make the RIGHT-hand flat face obviously the
+> front: a heavier forward plate, a reinforced lip, a vent or sensor slot centred on it, so
+> the direction it faces is clear at a glance. Bare chassis only: NO weapon, NO spinning
+> blade, NO turret, NO exposed wheels. Brushed steel and light grey armour plating, hard-edged
+> plates, panel seams, hex bolts, weld lines, scuffs and worn corners. Pure greyscale — no
+> colour tint of any kind, so it can be recoloured later; mid-grey overall, neither bright
+> white nor dark. Flat even lighting, NO cast shadow, NO ground, NO background. Fully
+> transparent background. Crisp silhouette, centred, filling the frame. Game sprite asset,
+> high detail, 1:1 square.
+
+## Square
+
+> Top-down orthographic view looking straight down from directly overhead at a battle robot
+> chassis. SQUARE shape: a plain four-sided box hull, flat on all four sides, with a FLAT
+> armoured face pointing to the RIGHT — no prow, no point, no spike at the front. This is the
+> plain honest baseline chassis, so it should look workmanlike and solidly built rather than
+> exotic. Make the RIGHT-hand face obviously the front: a heavier forward plate, a reinforced
+> bumper lip, a vent or sensor slot centred on it, so the direction it faces is clear at a
+> glance. Bare chassis only: NO weapon, NO spinning blade, NO turret, NO exposed wheels.
+> Brushed steel and light grey armour plating, hard-edged plates, panel seams, hex bolts, weld
+> lines, scuffs and worn corners. Pure greyscale — no colour tint of any kind, so it can be
+> recoloured later; mid-grey overall, neither bright white nor dark. Flat even lighting, NO
+> cast shadow, NO ground, NO background. Fully transparent background. Crisp silhouette,
+> centred, filling the frame. Game sprite asset, high detail, 1:1 square.
+
+**Names:** `chassis-tower.webp` and `chassis-square.webp` (or `.png` to look first).
+
+Silhouette accuracy is worth aiming for but is no longer load-bearing — the renderer fits each
+sprite to its chassis's real bounds and clips it to the outline, so nothing can overhang the
+armour rim or leave the vector body showing through however the art comes back. The armour
+material is layered over the top automatically, so these two need nothing extra to show what
+they are made of.
 
 ---
 

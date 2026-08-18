@@ -26,13 +26,20 @@ Generated art arrives huge: the first three were 1254x1254 PNGs totalling 6.5 MB
 resize the long edge to 768, and save as WebP quality 90:
 
 ```bash
-python -c "from PIL import Image; im=Image.open('x.png').convert('RGBA'); im=im.crop(im.getchannel('A').point(lambda v:255 if v>10 else 0).getbbox()); w,h=im.size; s=768/max(w,h); im.resize((round(w*s),round(h*s)),Image.LANCZOS).save('x.webp','WEBP',quality=90,method=6)"
+python tools/convert-sprites.py
 ```
 
-That took the same three files to 435 KB — 93.5% smaller — for 40.6 dB PSNR measured on
-visible pixels only. **Cropping is not optional**: the art ships with a transparent margin
-(the wedge had 94px top and bottom), and the renderer fits the texture to the chassis's
-bounding box, so an uncropped sprite draws inset from its own outline.
+It converts every `.png` in this folder in place and deletes the original, so it is safe to
+re-run and safe to drop several in at once. That took the first three files to 435 KB — 93.5%
+smaller — for 40.6 dB PSNR measured on visible pixels only.
+
+**Cropping is not optional**: the art ships with a transparent margin (the wedge had 94px top
+and bottom), and the renderer fits the texture to the chassis's bounding box, so an uncropped
+sprite draws inset from its own outline.
+
+Forgetting this step is caught rather than shipped — `chassis-sprites.test.ts` fails on any
+sprite over 300 KB, and on any `.png` left in this folder, both with the command above in the
+failure message.
 
 A file named anything else loads fine, matches nothing, and draws nothing — so it looks like
 the sprite failed when the filename failed. `chassis-sprites.test.ts` fails the build on a name

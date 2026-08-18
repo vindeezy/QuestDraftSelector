@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
+import { readdirSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, extname, join } from 'node:path';
 import { partsFor } from '../sim/parts/tables';
 import { chassisSprite, spritedChassisIds, spritesAbsent } from './chassis-sprites';
+
+const SPRITE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'sprites');
+
+/** Every image in the sprite folder, with its size on disk. */
+function spriteFiles(): { name: string; ext: string; bytes: number }[] {
+  return readdirSync(SPRITE_DIR)
+    .filter((name) => /\.(png|webp)$/i.test(name))
+    .map((name) => ({
+      name,
+      ext: extname(name).toLowerCase(),
+      bytes: statSync(join(SPRITE_DIR, name)).size,
+    }));
+}
 
 const CHASSIS_IDS = new Set(partsFor('chassis').map((p) => p.id));
 
@@ -32,6 +48,35 @@ describe('discovering sprite files', () => {
     // "textures are not ready yet" path that the real screen hits on first paint.
     for (const id of CHASSIS_IDS) {
       expect(chassisSprite(id), id).toBeNull();
+    }
+  });
+});
+
+describe('what actually ships', () => {
+  /**
+   * Per-file ceiling. The three trial sprites land at 117-181 KB after conversion, so this
+   * leaves real headroom while still catching the failure it exists for: the same three
+   * arrived as 1254x1254 PNGs of 1.7-2.8 MB each, and committing them would have put 6.5 MB
+   * of chassis art on a site whose entire armour and floor texture set is 321 KB.
+   */
+  const MAX_SPRITE_BYTES = 300 * 1024;
+
+  it('keeps every sprite under the size ceiling', () => {
+    for (const file of spriteFiles()) {
+      expect(
+        file.bytes,
+        `${file.name} is ${Math.round(file.bytes / 1024)} KB — run: python tools/convert-sprites.py`,
+      ).toBeLessThanOrEqual(MAX_SPRITE_BYTES);
+    }
+  });
+
+  it('ships WebP, not the raw generated PNG', () => {
+    // `.png` still LOADS on purpose, so a fresh generation can be dropped in and looked at
+    // before it is converted. This is the gate that stops one being committed that way — the
+    // conversion also crops the transparent margin, without which the art draws inset from
+    // its own outline.
+    for (const file of spriteFiles()) {
+      expect(file.ext, `${file.name} — run: python tools/convert-sprites.py`).toBe('.webp');
     }
   });
 });
