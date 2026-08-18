@@ -38,6 +38,8 @@ import {
   oilSplatPoints,
 } from './floor-state';
 import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
+import { OIL_CARRY_TICKS, createTrackField, trackAlpha } from './vfx/tracks';
+import { tileIndexAt } from '../sim/arena/tiles';
 import {
   HAZARD_JET_EVERY,
   RECOIL_TICKS,
@@ -245,6 +247,22 @@ const PLAIN_FLOOR_COLOR = 0x454f5c;
 /** The pixel size the floor textures ship at. Needed to scale one across the arena; not read
  *  from the texture itself, because a failed load has no size to read. */
 const TILE_TEXTURE_SIZE = 512;
+
+/**
+ * Tyre marks: half the distance between the two wheel smears, how long each is, and how heavy.
+ *
+ * The gauge is set just inside a bot's own radius so the two lines sit under where its wheels
+ * would be. Wider and they trail outside the machine that left them, which reads as two bots
+ * having passed rather than one.
+ */
+const TRACK_GAUGE = 6;
+const TRACK_LENGTH = 4;
+const TRACK_WIDTH = 3;
+
+/** Near-black, and deliberately not pure: pure black matches the pits, and a mark on the floor
+ *  must not read as a hole in it. */
+const TRACK_COLOR = 0x14121c;
+const TRACK_ALPHA = 0.55;
 
 /**
  * Radians a hazard saw turns per tick.
@@ -516,6 +534,17 @@ export async function createArenaRenderer(
    * for the obvious reason.
    */
   const baseSurfaces = Uint8Array.from(match.arena.surfaces);
+
+  /**
+   * Tyre marks, and how much oil each bot is still carrying.
+   *
+   * The slick already shows where the oil IS. What it cannot show is that a bot drove through
+   * it — which is the entire point of the ability, and until now the least visible thing a bot
+   * could do to another. The carry timer is what puts marks on clean floor leading away from a
+   * spill rather than only on top of it.
+   */
+  const tracks = createTrackField();
+  const oily = match.bots.map(() => 0);
 
   const hazardEntries = new Map<string, HazardEntry>();
   for (const zone of match.arena.zones) {
@@ -1135,6 +1164,26 @@ export async function createArenaRenderer(
       art.rim.alpha = glow;
     }
 
+    // Under everything else in this layer, because a track is on the floor and a cannonball is
+    // above it.
+    for (const mark of tracks.marks) {
+      if (!mark.active) continue;
+      const alpha = trackAlpha(mark.age);
+      if (alpha <= 0) continue;
+      const dx = Math.cos(mark.heading);
+      const dy = Math.sin(mark.heading);
+      // Perpendicular, to set the two wheels either side of the centre line. One smear would
+      // read as a skid; two parallel ones read as a vehicle.
+      const px = -dy * TRACK_GAUGE;
+      const py = dx * TRACK_GAUGE;
+      for (const side of [1, -1]) {
+        dynamic
+          .moveTo(mark.x + px * side - dx * TRACK_LENGTH, mark.y + py * side - dy * TRACK_LENGTH)
+          .lineTo(mark.x + px * side + dx * TRACK_LENGTH, mark.y + py * side + dy * TRACK_LENGTH)
+          .stroke({ width: TRACK_WIDTH, color: TRACK_COLOR, alpha: alpha * TRACK_ALPHA });
+      }
+    }
+
     for (const shot of current.projectiles) {
       drawCannonball(dynamic, shot.x, shot.y, shot.radius * CANNONBALL_SCALE);
       // A thin smoke trail, thrown backwards along the flight path. Every third tick rather
@@ -1226,6 +1275,8 @@ export async function createArenaRenderer(
 
     field.advance(FRAME_SECONDS);
 
+    tracks.advance();
+
     for (let i = 0; i < flash.length; i++) {
       flash[i] = Math.max(0, flash[i]! - FRAME_SECONDS / FLASH_SECONDS);
       // Counted in ticks rather than seconds, because it is wound by a simulation event and
@@ -1300,6 +1351,20 @@ export async function createArenaRenderer(
 
       // The bloom for a bot struck in the last sixth of a second. Drawn for every bot, with
       // or without a silhouette, so the demo loop's plain circles react too.
+      // Picking up oil, and laying it back down. Read straight from the surface map rather
+      // than from an effect, for the same reason the slicks themselves are: the simulation
+      // records a slick by setting a tile, and that tile is the truth.
+      if (bot.alive) {
+        const tileIndex = tileIndexAt(current.arena.grid, bot.body.x, bot.body.y);
+        if (tileIndex >= 0 && isOiled(baseSurfaces, current.arena.surfaces, tileIndex)) {
+          oily[index] = OIL_CARRY_TICKS;
+        }
+        if ((oily[index] ?? 0) > 0) {
+          oily[index] = (oily[index] ?? 0) - 1;
+          tracks.lay(index, bot.body.x, bot.body.y, (bot.heading / ANGLE_STEPS) * Math.PI * 2);
+        }
+      }
+
       const lit = flash[index] ?? 0;
       if (lit > 0) {
         flashLayer.circle(x, y, r + 3).fill({ color: 0xffffff, alpha: lit * 0.5 });
