@@ -1,8 +1,9 @@
-import { Application, Container, Graphics, type FillInput, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, type FillInput, type Texture } from 'pixi.js';
 import type { BotBuild } from '../sim/parts/assemble';
 import { partAt } from '../sim/parts/tables';
 import { destroyOnce } from './destroy-once';
 import { armourTexture, loadMaterials, textureFor } from './materials';
+import { chassisSprite, loadChassisSprites, spritesAbsent } from './chassis-sprites';
 
 /**
  * Draws an assembled bot's portrait — the first time a league member sees the machine
@@ -713,6 +714,20 @@ export interface BotPortraitOptions {
    * option could not express that without pretending the weapon's metal is a build property.
    */
   weaponTexture?: Texture | null;
+
+  /**
+   * An optional chassis sprite, drawn over the vector body and UNDER the armour rim and the
+   * weapon — the SPR 1 trial (`docs/sprite-prompts.md`, `chassis-sprites.ts`).
+   *
+   * Additive by construction: the vector body is still drawn underneath, so omitting this (or
+   * passing null, which is what every caller does until sprite files exist) leaves the portrait
+   * byte-for-byte what it was. That is deliberate — this is a timeboxed experiment, and an
+   * experiment that changes the default path is one that cannot be cheaply abandoned.
+   *
+   * Tinted with the member's colour, so the art must be light and greyscale for the same reason
+   * the armour textures are: `tint` multiplies and can only darken.
+   */
+  chassisSprite?: Texture | null;
 }
 
 export function drawBotPortrait(
@@ -743,6 +758,19 @@ export function drawBotPortrait(
   strokeShape(body, shape, outline);
   drawChassisDetail(body, chassisPart.id, shape, r, colour);
   view.addChild(body);
+
+  // The trial layer. Sized to the chassis's own diameter rather than the texture's pixels, so a
+  // sprite generated at any resolution lands at the size the silhouette already occupies, and
+  // `anchor 0.5` puts its centre on the bot's centre of rotation — a sprite offset by even a few
+  // pixels reads as a wobble the moment the bot turns.
+  if (options.chassisSprite) {
+    const sprite = new Sprite(options.chassisSprite);
+    sprite.anchor.set(0.5);
+    sprite.width = r * 2;
+    sprite.height = r * 2;
+    sprite.tint = colour;
+    view.addChild(sprite);
+  }
 
   const armourGfx = new Graphics();
   const armourAnchor = drawArmour(armourGfx, armourPart.id, shape);
@@ -852,6 +880,11 @@ export async function mountBotPortraitStage(
   // likely. Loading began at boot, ten beats earlier, so in practice this resolves instantly --
   // and if it somehow has not, the fallback draws flat colour rather than waiting forever.
   await loadMaterials();
+  // The SPR 1 trial, and this is the ONLY place it is loaded -- `mountBotPortraitStage` is the
+  // build reveal's helper and nothing else calls it, so the arena, the Forge and the demo loop
+  // cannot pick up a sprite even by accident. `spritesAbsent` short-circuits the await entirely
+  // while the folder is empty, so the shipped path does no extra work at all.
+  if (!spritesAbsent()) await loadChassisSprites();
 
   const app = new Application();
   await app.init({
@@ -868,6 +901,7 @@ export async function mountBotPortraitStage(
   const drawing = drawBotPortrait(build, colour, {
     texture: armourTexture(partAt('armour', build.armour).id),
     weaponTexture: textureFor('weapon'),
+    chassisSprite: chassisSprite(partAt('chassis', build.chassis).id),
   });
   drawing.view.x = size / 2;
   drawing.view.y = size / 2;
