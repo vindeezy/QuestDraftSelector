@@ -69,16 +69,17 @@ describe('previewSeed', () => {
         'Vin Cinotti (50 pts) > Erik Gundersen (49 pts) > Tommy McCormick (39 pts) > ' +
         'Colby Thompson (32 pts) > Pat Driscoll (24 pts) > Rob Arena (14 pts) > Paden Simmons (3 pts)',
     );
-    // Moved from `29af339d` on 17 August when six member colours changed, and that is the
-    // checksum working rather than breaking. It folds in each member's id, name AND colour on
-    // purpose (see `runEvent`), so that a record cannot go on verifying after the league swaps
-    // somebody out — a roster is WHO is in it, not just how many.
+    // Moved from `29af339d` on 17 August when six member colours changed, then from `77d1da53`
+    // on 18 August when Tommy's moved, and both times that is the checksum working rather than
+    // breaking. It folds in each member's id, name AND colour on purpose (see `runEvent`), so
+    // that a record cannot go on verifying after the league swaps somebody out — a roster is
+    // WHO is in it, not just how many.
     //
     // The simulation did not change, and the assertion above this one is the proof: the draft
     // order and every point total are identical, and that line kept passing while this one
     // failed. If both ever move together, something real has changed and re-pinning is the
     // wrong response.
-    expect(output).toContain('checksum:        77d1da53');
+    expect(output).toContain('checksum:        cf05eb26');
   });
 
   it('reproduces the exact same draft order across two separate runs of the same seed', () => {

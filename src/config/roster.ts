@@ -63,12 +63,29 @@ const REQUIRED_MEMBER_COUNT = 10;
  * Black still needs its light outline at render time, or it vanishes into the floor. That is a
  * rendering requirement this file cannot enforce.
  *
+ * **Black was later lifted from `#1C1F26` to `#3A352E`, and warm rather than lighter is the
+ * whole point.** The chassis sprites on the build reveal are tinted, and `tint` multiplies, so a
+ * member's colour is a ceiling on how much of their machine can be seen. Every other member
+ * rendered at 38.9 luminance or better; near-black put Tommy at 13.9, which is not a dark bot
+ * but an unlit one — the panel seams, bolts and weld lines simply were not there.
+ *
+ * The obvious fix is the wrong one. Lifting a near-black on its own axis walks it straight at
+ * Nick Lenker's blue-grey: a cool charcoal bright enough to matter (`#31363F`) measures dE 29.2
+ * against him, under the 34.0 this palette is built to hold. Searching 32,349 candidates that
+ * clear the floor and stay the darkest colour in the set, the ones with any brightness to spare
+ * are all WARM — which makes sense, since the only direction with room in it is the one Nick
+ * Lenker is not in.
+ *
+ * `#3A352E` renders at 26.8 against 15.4, nearly double, holds dE 35.3 at its nearest neighbour,
+ * and is still comfortably the darkest member (Colby, next darkest, is 86.2 to its 53.6). It
+ * reads as a very dark warm grey — still the black bot, now a black bot you can see.
+ *
  * These have now had the test that matters — all ten on screen, at bot size, in motion, over
  * the textured floor — which the previous set never had.
  */
 export const ROSTER: readonly RosterMember[] = [
   { id: 'paden', name: 'Paden Simmons', initials: 'PS', colour: '#2278FF' }, // Blue — pushed bluer
-  { id: 'tommy', name: 'Tommy McCormick', initials: 'TM', colour: '#1C1F26' }, // Black — needs a light outline at render time, see comment above
+  { id: 'tommy', name: 'Tommy McCormick', initials: 'TM', colour: '#3A352E' }, // Black — warm charcoal, lifted off near-black for the chassis sprite; see comment above
   { id: 'colby', name: 'Colby Thompson', initials: 'CT', colour: '#E03131' }, // Red
   { id: 'pat', name: 'Pat Driscoll', initials: 'PD', colour: '#2FB344' }, // Green
   { id: 'spencer', name: 'Spencer Lalk', initials: 'SL', colour: '#FB933F' }, // Orange — brighter, away from Red

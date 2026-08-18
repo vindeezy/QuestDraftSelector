@@ -12,7 +12,7 @@
     {
       "id": "tommy",
       "name": "Tommy McCormick",
-      "colour": "#1C1F26"
+      "colour": "#3A352E"
     },
     {
       "id": "colby",
@@ -55,6 +55,6 @@
       "colour": "#647793"
     }
   ],
-  "checksum": "b2e672a8",
-  "recordedAt": "2026-08-17T22:01:29.960Z"
+  "checksum": "35d2876d",
+  "recordedAt": "2026-08-18T18:23:19.019Z"
 }

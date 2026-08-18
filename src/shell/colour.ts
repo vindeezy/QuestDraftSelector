@@ -26,12 +26,12 @@ export function readableInkFor(hexColour: string): string {
  * are themselves nearly black. Those swatches get a brighter ring so their edge is
  * visible; every other colour is left alone.
  *
- * Tommy's `#1C1F26` is the one roster colour this catches, and the third place it has
+ * Tommy's `#3A352E` is the one roster colour this catches, and the third place it has
  * needed special handling: `arena-renderer.ts` gives his bot a bright outline
  * (`DARK_BOT_LUMINANCE`) and his health bar a brightened fill (`healthBarColour`). Same
  * threshold as the renderer's, kept in sync by intent rather than by import — `src/render/`
  * must not be reached into from `src/shell/`, see that file's own note on the duplication.
  */
 export function isDarkColour(hexColour: string): boolean {
-  return lumaOf(hexColour) < 0.18;
+  return lumaOf(hexColour) < 0.3;
 }

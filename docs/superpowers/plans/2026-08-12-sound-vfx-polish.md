@@ -588,7 +588,7 @@ npm run build`.
 - [ ] **Step 4: Confirm the recorded event is untouched**
 
 ```bash
-npm run record -- --seed 43000236   # previews; must print checksum 2e92efe2
+npm run record -- --seed 43000236   # previews; must print checksum 35d2876d
 git status --short data/            # must be empty
 ```
 

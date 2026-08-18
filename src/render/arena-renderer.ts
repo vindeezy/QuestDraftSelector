@@ -92,8 +92,20 @@ function inkFor(colour: number): number {
  *  floor and wall colours (`0x0b0f16`/`0x35424f`) — see the roster.ts comment on the one
  *  member (Tommy, `#1C1F26`) this matters for, and `plinko-renderer.ts`'s identical
  *  `DARK_BALL_LUMINANCE` guard on the same member's ball. Exported so a test can check the
- *  threshold directly against Tommy's real roster colour without duplicating the number. */
-export const DARK_BOT_LUMINANCE = 0.18;
+ *  threshold directly against Tommy's real roster colour without duplicating the number. *
+ * **0.30, raised from 0.18 on 18 August**, when Tommy moved from `#1C1F26` (0.121) to
+ * `#3A352E` (0.211) so his chassis sprite would be visible. 0.18 had stopped separating
+ * anything: it sat between two colours that no longer existed either side of it, and the one
+ * member it was written for fell out of it while needing it MORE than before, not less.
+ * Measured against the arena floor, which has itself been lightened to `0x454f5c` since the
+ * threshold was chosen — his contrast against the ground he drives on FELL from 1.98 to 1.46,
+ * because lifting him moved him TOWARDS the floor rather than away from it.
+ *
+ * 0.30 is the floor's own luminance, so the rule now reads as what it always meant: a bot
+ * darker than the ground it stands on needs an outline. The next-darkest member is Colby at
+ * 0.397, so this still catches Tommy and only Tommy, with room on both sides.
+ */
+export const DARK_BOT_LUMINANCE = 0.3;
 
 /** True when `colour` needs a brighter, thicker outline to stay legible against the
  *  arena floor — pulled out as its own pure function so this specific requirement (the

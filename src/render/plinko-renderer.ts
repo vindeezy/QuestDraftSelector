@@ -64,8 +64,20 @@ function inkFor(colour: number): number {
 /** Below this brightness a ball is at real risk of disappearing into the board's own
  *  near-black background (`0x0b0f16`) and peg colour (`0x35424f`) — see the roster.ts
  *  comment on the one member (Tommy, `#1C1F26`) who needs this. Those balls get a
- *  brighter, thicker outline regardless of whether they're the highlighted one. */
-const DARK_BALL_LUMINANCE = 0.18;
+ *  brighter, thicker outline regardless of whether they're the highlighted one. *
+ * **0.30, raised from 0.18 on 18 August**, when Tommy moved from `#1C1F26` (0.121) to
+ * `#3A352E` (0.211) so his chassis sprite would be visible. 0.18 had stopped separating
+ * anything: it sat between two colours that no longer existed either side of it, and the one
+ * member it was written for fell out of it while needing it MORE than before, not less.
+ * Measured against the arena floor, which has itself been lightened to `0x454f5c` since the
+ * threshold was chosen — his contrast against the ground he drives on FELL from 1.98 to 1.46,
+ * because lifting him moved him TOWARDS the floor rather than away from it.
+ *
+ * 0.30 is the floor's own luminance, so the rule now reads as what it always meant: a bot
+ * darker than the ground it stands on needs an outline. The next-darkest member is Colby at
+ * 0.397, so this still catches Tommy and only Tommy, with room on both sides.
+ */
+const DARK_BALL_LUMINANCE = 0.3;
 
 /**
  * How far above y=0 a run's release column reaches, right now — i.e. how much extra
