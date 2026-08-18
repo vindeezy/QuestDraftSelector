@@ -2169,11 +2169,20 @@ button {
   border-color: var(--neon-cyan-dim);
 }
 
+/* Sized as a real target rather than as text with padding. Measured at 29x19 across every
+   screen that makes a noise, which is under half the 44px a finger expects and fiddly even
+   with a mouse — and this is the one control somebody reaches for in a hurry, in a room, with
+   the sound too loud. The glyph stays 15px; only the box around it grows. */
 .audio-controls__mute {
-  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
   background: none;
   border: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--ink);
   font-size: 15px;
   line-height: 1;

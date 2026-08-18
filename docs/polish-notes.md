@@ -26,9 +26,6 @@ event.
 Things flagged during implementation that need a human eye before anyone can say whether
 they are actually wrong.
 
-- **No visible way to go back** during a first watch. `progress.ts` allows it — any
-  already-seen beat is reachable — but nothing on screen offers it. `?reset` exists as the
-  escape hatch. Whether members want in-watch back navigation is a real question.
 - **Battle 1 gets one scoreboard where battles 2 and 3 get two.** Correct (a second screen
   would show identical data) but it makes the walkthrough's rhythm uneven, and the
   transitions may need to acknowledge that.
@@ -43,6 +40,19 @@ they are actually wrong.
   already `#ffffff`, so no hex could have rescued it) and then choosing the hexes by search rather
   than by eye: worst pair 34.0. Tommy's black is fine — the light outline does its job, and the
   lightened floor helps it further.
+- **In-watch back navigation — decided: leave it alone.** The note claiming "nothing on screen
+  offers it" was simply out of date. `← Back` is on every beat but the landing, unconditionally;
+  `Forward →` appears once the next beat has been seen, deliberately gated on the strict
+  `hasSeenBeat` so nobody can click into a battle they never watched; and `Resume` jumps to the
+  frontier when it is more than a step ahead. Battles and Forge boards carry their own "2 of 3"
+  position.
+
+  What is genuinely absent is jumping back to a SPECIFIC earlier beat (five clicks of Back from
+  battle 3 to the build reveal, each paying the ~230ms screen transition) and any sense of
+  position across all nineteen. Both were offered and declined: this is a show watched once, in
+  order, in a room together, and Back plus Resume already covers "I missed that, show me again".
+  A jump menu would mostly add a surface for someone to spoil a battle for themselves.
+
 - **The build reveal's portrait overlaps its info cards on a narrow window.** Fixed. Two separate
   faults. `portraitSizeFor` had a floor of 380 while `.reveal-arena`'s centre track can shrink to
   280, so between those the canvas was wider than the track it sat in and simply spilled over —
@@ -60,6 +70,24 @@ they are actually wrong.
   next to Hardened Steel's obvious rivets, a viewer on the reveal may reasonably conclude that
   their bot missed out. Judge at the MAT 1 gate. If it needs help, the fix is a slightly stronger
   mottling rather than adding features it should not have.
+
+- **The mute button was a 29x19 hit target**, on every screen that makes a noise. Under half the
+  44px a finger expects, and fiddly with a mouse too — and it is the one control somebody grabs in
+  a hurry, in a room, with the sound too loud. Now 34x34; the glyph is unchanged, only the box
+  around it grew.
+
+## Swept, and clean
+
+All nineteen beats audited at 1280x800 for horizontal overflow, elements escaping the viewport,
+text clipped rather than wrapped, and undersized hit targets. **Zero of the first three.** The only
+recurring hit was the mute button above. `what-to-expect` and the first Forge board scroll
+vertically at 800px tall, which is correct for a reading screen and for a board mid-drop.
+
+One methodological note, because it cost time: **screenshots from the browser pane cannot be
+trusted for layout judgement.** The landing and name-select screens both look plainly
+left-of-centre in a capture and measure dead centre against the viewport — the pane's image
+geometry does not map linearly to CSS pixels. Every layout finding here came from
+`getBoundingClientRect`, and the one real overlap bug was confirmed the same way.
 
 ## Found while fixing, worth knowing
 
