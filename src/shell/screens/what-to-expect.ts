@@ -7,6 +7,7 @@ import { buildsForSeed } from '../../sim/parts/forge';
 import { createArenaRenderer } from '../../render/arena-renderer';
 import { PLACEMENT_POINTS, KILL_POINTS } from '../../sim/event/scoring';
 import { DEMO_SEED } from '../demo-seed';
+import { FLOOR_BACKDROP, FLOOR_KEY, swatchHex } from '../floor-key';
 import { nextBeat } from '../beats';
 import { ordinal } from '../ordinal';
 import { canvasSupportsWebGL } from '../canvas-support';
@@ -17,10 +18,15 @@ import type { Screen, ScreenContext } from './types';
  * excitement rather than just explain rules — see
  * `docs/superpowers/specs/2026-08-11-website-design.md` §2.1.
  *
- * Three sections, each with a short description *and* a live visual: a looping Forge
- * drop, a miniature battle, and the points table. Both live panels run `DEMO_SEED`
+ * Four sections, each with a short description *and* a picture: a looping Forge drop, a
+ * miniature battle, the floor key, and the points table. Both live panels run `DEMO_SEED`
  * (never the official seed — see that module's doc comment) so this screen can never
  * spoil the real event it is previewing.
+ *
+ * The split between sections two and three is deliberate and was chosen rather than
+ * inherited. "The battles" sells the thing — ten machines, no driver, last one moving.
+ * "The arenas" explains it, and holds the copy about the three layouts that used to sit
+ * inside the battles paragraph. Selling and explaining in one breath did neither well.
  */
 
 // --- Demo panel tuning -----------------------------------------------------------------
@@ -192,6 +198,37 @@ async function mountArenaLoop(host: HTMLElement): Promise<() => void> {
   };
 }
 
+/**
+ * The arenas section's "picture" — the floor key.
+ *
+ * Swatches take their colours from `FLOOR_KEY`, which takes them from the renderer's own
+ * constants, so a legend explaining the floor cannot drift away from the floor it explains.
+ * See `floor-key.ts` for what is deliberately left out of it.
+ */
+function renderFloorKey(): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.className = 'floor-key';
+
+  wrap.innerHTML = `
+    <p class="floor-key__title">The floor itself</p>
+    <ul class="floor-key__list">
+      ${FLOOR_KEY.map(
+        (entry) => `
+        <li class="floor-key__item">
+          <span class="floor-key__swatch" aria-hidden="true"
+                style="background: ${swatchHex(entry.colour)}; box-shadow: inset 0 0 0 4px ${swatchHex(FLOOR_BACKDROP)}"></span>
+          <span class="floor-key__body">
+            <span class="floor-key__label">${entry.label}</span>
+            <span class="floor-key__blurb">${entry.blurb}</span>
+          </span>
+        </li>
+      `,
+      ).join('')}
+    </ul>
+  `;
+  return wrap;
+}
+
 /** The scoring section's "picture" — the points table, plainly laid out, exactly as the
  *  spec asks for it. Not a chart: the ask here is legibility, not decoration. */
 function renderPointsTable(): HTMLElement {
@@ -243,15 +280,32 @@ export const whatToExpectScreen: Screen = {
         <div class="expect-row expect-row--reverse">
           <div class="expect-text">
             <h2>The battles</h2>
-            <p>Three arenas, three different ways to lose. One pushes you to the middle.
-              One turns the floor to ice. One hides its hazards behind buttons you'll
-              trip without meaning to. Whoever's left standing wins the battle — everyone
-              else is scored where they fell.</p>
+            <p>Ten machines hit the floor at once, and every one of them is hunting.
+              Spinners, hammers, flamethrowers — whatever the Forge handed you is what you
+              fight with, plus one ability that fires when the damage starts landing,
+              whether or not you'd have picked that moment. Saws come up out of the ground.
+              Cannons fire across it. Bots get shoved into hazards, into walls, and into
+              each other.</p>
+            <p><strong class="expect-highlight">Nobody drives. Nobody surrenders. It ends
+              when one machine is still moving</strong> — and everyone else is scored
+              exactly where they fell.</p>
           </div>
           <div class="expect-visual" data-panel="arena"></div>
         </div>
 
         <div class="expect-row">
+          <div class="expect-text">
+            <h2>The arenas</h2>
+            <p>Three arenas, three different ways to lose. One pushes you to the middle.
+              One turns the floor to ice. One hides its hazards behind buttons you'll
+              trip without meaning to.</p>
+            <p>And the ground is never just ground — what a bot is standing on decides
+              whether it can run, turn, or stop at all.</p>
+          </div>
+          <div class="expect-visual" data-panel="floors"></div>
+        </div>
+
+        <div class="expect-row expect-row--reverse">
           <div class="expect-text">
             <h2>The scoring</h2>
             <p>Where you finish is what pays: ${PLACEMENT_POINTS[0]} points for first,
@@ -271,8 +325,10 @@ export const whatToExpectScreen: Screen = {
 
     const forgeHost = root.querySelector<HTMLElement>('[data-panel="forge"]')!;
     const arenaHost = root.querySelector<HTMLElement>('[data-panel="arena"]')!;
+    const floorsHost = root.querySelector<HTMLElement>('[data-panel="floors"]')!;
     const scoringHost = root.querySelector<HTMLElement>('[data-panel="scoring"]')!;
 
+    floorsHost.appendChild(renderFloorKey());
     scoringHost.appendChild(renderPointsTable());
 
     let unmounted = false;

@@ -674,6 +674,79 @@ button {
   }
 }
 
+/* The floor key on "The arenas". Same card vocabulary as `.points-table-wrap` below —
+   both are the still, informative "picture" half of their row, against the two live
+   canvas panels above them. Wider than the points table because these rows are sentences
+   rather than two-digit numbers. */
+.floor-key {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-lift);
+}
+
+.floor-key__title {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.floor-key__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.floor-key__item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 0;
+  border-bottom: 1px solid rgb(35 43 58 / 0.6);
+}
+
+.floor-key__item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* `flex-shrink: 0` matters: without it the swatch is the flexible item next to a
+   multi-line sentence and collapses to a sliver — which is the one part of this card that
+   has to be exactly the colour it claims to be. */
+.floor-key__swatch {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  margin-top: 2px;
+}
+
+.floor-key__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.floor-key__label {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--ink);
+}
+
+.floor-key__blurb {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+
 .points-table-wrap {
   width: 100%;
   max-width: 260px;

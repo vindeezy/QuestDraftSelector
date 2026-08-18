@@ -31,6 +31,8 @@ import {
   PIT_WALL,
   PIT_WALL_BANDS,
   PIT_WALL_DEPTH,
+  PLAIN_FLOOR_COLOR,
+  SURFACE_COLOR,
   brighten,
   pitEdges,
   pitWallAlpha,
@@ -212,37 +214,7 @@ const PULSE_PERIOD_TICKS = 40;
 const WARNING_BASE = 0x4a2318;
 const WARNING_BRIGHT = 0xff6a3d;
 
-/** Floor tint per surface. Plain floor and any surface missing here keep the default. */
-const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
-  // Dark and viscous, and — deliberately — nowhere near the WARNING pulse's orange-brown
-  // range so a tarred tile is never mistaken for a tile about to drop.
-  [Surface.Tar]: 0x241a10,
-  // Deeper and more saturated than the near-white it was, so ice reads as cold and slippery
-  // rather than as "a pale tile". It also has to stay clearly apart from the plain floor, which
-  // is being lightened -- two pale greys next to each other would say nothing at all.
-  [Surface.Ice]: 0x7fc4e8,
-  [Surface.Gravel]: 0x7c7161,
-  [Surface.ConveyorN]: 0x2c3f52,
-  [Surface.ConveyorS]: 0x2c3f52,
-  [Surface.ConveyorE]: 0x2c3f52,
-  [Surface.ConveyorW]: 0x2c3f52,
-};
 
-/**
- * The colour of a tile with no surface of its own.
- *
- * Lightened from the near-black `0x161d27` it started as, and the reasons compound. Pits are
- * lethal and used to read as "slightly darker floor"; oil, tar and tyre marks are all dark and
- * had almost nothing to sit against; and the floor texture itself was nearly invisible, because
- * a texture MULTIPLIES and a surface at luminance 28 has no range to vary within.
- *
- * Not taken all the way to the texture's own light grey, though it was tempting. Ten member
- * colours have to stay apart on top of this, and while a bright floor rescues Tommy's black it
- * costs the white, silver and yellow bots the contrast they currently have. This is roughly two
- * and a half times brighter, which is enough for the dark things to show and short of the point
- * where the light bots start to dissolve.
- */
-const PLAIN_FLOOR_COLOR = 0x454f5c;
 
 /** The pixel size the floor textures ship at. Needed to scale one across the arena; not read
  *  from the texture itself, because a failed load has no size to read. */

@@ -250,3 +250,44 @@ export function pitWallAlpha(band: number, bands = PIT_WALL_BANDS): number {
   const t = Math.min(1, band / bands);
   return 0.95 * Math.pow(1 - t, 1.7);
 }
+
+// --- Floor colour -----------------------------------------------------------------------
+//
+// These live here rather than in `arena-renderer.ts` (where they were, and where they are
+// still used) so that anything needing to name a floor colour can do so without importing
+// PixiJS. The what-to-expect screen's floor key is the reason: a legend whose swatches are
+// hardcoded copies of these numbers is a legend that goes quietly wrong the next time the
+// floor is retuned, and a legend that imports the renderer cannot be tested in a Node
+// environment.
+
+/** Floor tint per surface. Plain floor and any surface missing here keep the default. */
+export const SURFACE_COLOR: Partial<Record<SurfaceValue, number>> = {
+  // Dark and viscous, and — deliberately — nowhere near the WARNING pulse's orange-brown
+  // range so a tarred tile is never mistaken for a tile about to drop.
+  [Surface.Tar]: 0x241a10,
+  // Deeper and more saturated than the near-white it was, so ice reads as cold and slippery
+  // rather than as "a pale tile". It also has to stay clearly apart from the plain floor, which
+  // is being lightened -- two pale greys next to each other would say nothing at all.
+  [Surface.Ice]: 0x7fc4e8,
+  [Surface.Gravel]: 0x7c7161,
+  [Surface.ConveyorN]: 0x2c3f52,
+  [Surface.ConveyorS]: 0x2c3f52,
+  [Surface.ConveyorE]: 0x2c3f52,
+  [Surface.ConveyorW]: 0x2c3f52,
+};
+
+/**
+ * The colour of a tile with no surface of its own.
+ *
+ * Lightened from the near-black `0x161d27` it started as, and the reasons compound. Pits are
+ * lethal and used to read as "slightly darker floor"; oil, tar and tyre marks are all dark and
+ * had almost nothing to sit against; and the floor texture itself was nearly invisible, because
+ * a texture MULTIPLIES and a surface at luminance 28 has no range to vary within.
+ *
+ * Not taken all the way to the texture's own light grey, though it was tempting. Ten member
+ * colours have to stay apart on top of this, and while a bright floor rescues Tommy's black it
+ * costs the white, silver and yellow bots the contrast they currently have. This is roughly two
+ * and a half times brighter, which is enough for the dark things to show and short of the point
+ * where the light bots start to dissolve.
+ */
+export const PLAIN_FLOOR_COLOR = 0x454f5c;
