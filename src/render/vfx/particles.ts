@@ -109,9 +109,11 @@ export interface ParticleField {
   readonly particles: readonly Particle[];
   /** Sparks thrown outward: weapon hits, hazard contact. */
   burst(options: SpawnOptions): void;
-  /** Slow, fat, barely-falling dust: collisions, smoke. */
+  /** Slow, fat, barely-falling dust: collisions, impacts. */
   puff(options: SpawnOptions): void;
-  /** An evenly spaced expanding circle: shockwaves, eliminations. */
+  /** A dense cloud that stays ON its origin and clears fast: Smoke Screen only. */
+  shroud(options: SpawnOptions): void;
+  /** An evenly spaced expanding circle: EMP, eliminations. */
   ring(options: SpawnOptions): void;
   /**
    * A cone thrown in one direction: flame from a nozzle.
@@ -175,6 +177,17 @@ function ringCount(intensity: number): number {
 
 function jetCount(intensity: number): number {
   return Math.round(4 + 7 * clamp01(intensity));
+}
+
+/**
+ * The densest count here, and it has to be.
+ *
+ * A shroud's job is to actually HIDE a machine for a moment, and a bot is about 40 world units
+ * across. A handful of puffs scattered over that reads as somebody smoking, not as cover. The
+ * count is what turns a suggestion into an occlusion.
+ */
+function shroudCount(intensity: number): number {
+  return Math.round(14 + 12 * clamp01(intensity));
 }
 
 export function createParticleField(options: FieldOptions = {}): ParticleField {
@@ -278,6 +291,38 @@ export function createParticleField(options: FieldOptions = {}): ParticleField {
           4.8 + 4.8 * random(),
           0.3,
           0.12,
+        );
+      }
+    },
+
+    /**
+     * Smoke Screen, and nothing else uses it.
+     *
+     * Every other emitter throws particles AWAY from a point; this one keeps them ON it. The
+     * ability hides the bot that fired it, so the effect has to sit over that bot rather than
+     * announce itself by spraying outward — a `puff`, which is what this used to be, is
+     * mechanically the opposite of what the ability does.
+     *
+     * Four choices, all of them about the same tension: cover the machine, then get out of the
+     * way. Barely any speed, so the cloud stays where it was laid rather than drifting off the
+     * bot it is meant to be hiding. Heavy drag, so what little spread there is stops almost at
+     * once. Fat particles, because area is the whole point and fifteen big ones occlude where
+     * forty small ones stipple. And a SHORT life: this is the one effect deliberately allowed
+     * to hide a bot, so it pays that back by being gone quickly — the standing rule in
+     * `vfx/index.ts` is that effects which hide bots lose, and the only reason this one is
+     * permitted is that it hides its own caster, briefly, as the literal point of the ability.
+     */
+    shroud(o) {
+      const count = shroudCount(o.intensity);
+      for (let i = 0; i < count; i++) {
+        spawn(
+          o,
+          4 + 16 * random(),
+          random() * Math.PI * 2,
+          0.26 + 0.22 * random(),
+          12 + 10 * random(),
+          0.82,
+          0.02,
         );
       }
     },

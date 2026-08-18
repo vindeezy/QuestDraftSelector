@@ -20,7 +20,7 @@ import type { Effect } from '../../sim/arena/effects';
  * reason.
  */
 
-export type VisualKind = 'burst' | 'puff' | 'ring';
+export type VisualKind = 'burst' | 'puff' | 'ring' | 'shroud' | 'wave';
 
 export interface VisualLayer {
   kind: VisualKind;
@@ -72,13 +72,20 @@ const WEAPON_VISUALS = new Map<string, VisualLayer>([
 
 /** Per ability. Cold and pretty rather than hot: an ability is a system firing, not damage. */
 const ABILITY_VISUALS = new Map<string, VisualLayer>([
+  // EMP keeps the particle ring — discrete, electric, scattering. Shockwave used to be the
+  // same emitter in a different tint, which is why the two were indistinguishable in play:
+  // what a viewer reads first is MOTION, not hue. They are now separated by medium, and the
+  // pair below is the one place in this table where that matters more than colour.
   ['ability-emp', { kind: 'ring', tint: ELECTRIC, scale: 1 }],
   ['ability-nitro', { kind: 'burst', tint: NITRO, scale: 0.8 }],
   ['ability-oil-slick', { kind: 'puff', tint: OIL, scale: 1 }],
-  ['ability-shockwave', { kind: 'ring', tint: SPARK_WHITE, scale: 1.2 }],
+  // One continuous expanding front, drawn rather than spawned — see `vfx/waves.ts`.
+  ['ability-shockwave', { kind: 'wave', tint: SPARK_WHITE, scale: 1.2 }],
   ['ability-repair', { kind: 'ring', tint: HEAL, scale: 0.7 }],
   ['ability-adrenaline', { kind: 'ring', tint: RAGE, scale: 0.7 }],
-  ['ability-smoke-screen', { kind: 'puff', tint: SMOKE, scale: 1.3 }],
+  // A cloud that sits ON the caster and clears fast, not a puff thrown outward — the ability
+  // hides the bot, so the effect has to cover it rather than radiate from it.
+  ['ability-smoke-screen', { kind: 'shroud', tint: SMOKE, scale: 1.3 }],
 ]);
 
 /** Per hazard family, read off the id prefix exactly as the sound layer does. */

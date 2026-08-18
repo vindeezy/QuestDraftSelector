@@ -41,6 +41,7 @@ import {
 } from './floor-state';
 import { armourTexture, loadMaterials, oilTexture, surfaceTexture, textureFor } from './materials';
 import { OIL_CARRY_TICKS, createTrackField, trackAlpha } from './vfx/tracks';
+import { createWaveField, waveAlpha, waveRadius, waveWidth } from './vfx/waves';
 import { tileIndexAt } from '../sim/arena/tiles';
 import {
   HAZARD_JET_EVERY,
@@ -615,6 +616,22 @@ export async function createArenaRenderer(
     hazardLayer.addChild(view);
     buttonArt.set(button.id, { rim, disarmedAt: -9999, wasArmed: false });
   }
+
+  /**
+   * Shockwave fronts, drawn UNDER the machines.
+   *
+   * A ring wide enough to read is wide enough to swallow a bot, and the standing rule is that
+   * effects which hide bots lose. Below the silhouettes it still reads perfectly — it is a
+   * bright edge crossing a dark floor — and a viewer hunting their own machine never loses it
+   * behind the ability that just went off.
+   *
+   * Redrawn each frame rather than transformed, because unlike every other pre-built thing in
+   * this renderer a wave changes SHAPE every tick: its radius, its thickness and its alpha are
+   * all functions of age, so there is no static geometry to keep.
+   */
+  const waves = createWaveField();
+  const waveLayer = new Graphics();
+  world.addChild(waveLayer);
 
   const silhouetteLayer = new Container();
   world.addChild(silhouetteLayer);
@@ -1251,6 +1268,8 @@ export async function createArenaRenderer(
         };
         if (layer.kind === 'burst') field.burst(spec);
         else if (layer.kind === 'puff') field.puff(spec);
+        else if (layer.kind === 'shroud') field.shroud(spec);
+        else if (layer.kind === 'wave') waves.emit(effect.x, effect.y, spec.intensity);
         else field.ring(spec);
       }
 
@@ -1281,6 +1300,19 @@ export async function createArenaRenderer(
     }
 
     field.advance(FRAME_SECONDS);
+
+    // Two passes over the wave pool: age it, then draw whatever survived. Cleared and rebuilt
+    // rather than accumulated, since every live front moves every frame.
+    waves.advance();
+    waveLayer.clear();
+    for (const wave of waves.waves) {
+      if (!wave.active) continue;
+      const alpha = waveAlpha(wave.age, wave.intensity);
+      if (alpha <= 0) continue;
+      waveLayer
+        .circle(wave.x, wave.y, waveRadius(wave.age, wave.intensity))
+        .stroke({ width: waveWidth(wave.age, wave.intensity), color: 0xfff4e0, alpha });
+    }
 
     tracks.advance();
 
