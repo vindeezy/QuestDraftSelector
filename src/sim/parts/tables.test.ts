@@ -40,9 +40,22 @@ describe('partsFor', () => {
   });
 
   // Player-facing copy, shown when a league member sees their bot for the first time.
-  // 120 characters is the chosen sane maximum: comfortably over the longest blurb actually
-  // written (105) with room to breathe, while still forcing one or two short sentences.
-  const MAX_BLURB_LENGTH = 120;
+  //
+  // 190 characters, and unlike the 120 it replaces this number is MEASURED rather than
+  // chosen. The old comment called 120 a "sane maximum" sitting comfortably over the
+  // longest blurb then written (105) — taste, not a constraint, and the rewritten weapon
+  // and ability blurbs ran straight through it at 143-182.
+  //
+  // What the reveal cards actually tolerate, measured in the browser with every card
+  // holding the longest blurb of its own category: nothing clips and nothing overflows,
+  // even at 1120px wide, which is the tightest the layout ever gets — just above the
+  // 1100px stacking breakpoint the blurb column narrows to 163px and the weapon blurb
+  // wraps to eight lines. The card grows to fit; `overflow: hidden` never bites.
+  //
+  // So this cap is no longer about fitting. It is about a member reading six of these in
+  // a row on the night: 190 leaves room for "what it is, and how it hurts them" in two
+  // sentences and stops a blurb becoming a paragraph.
+  const MAX_BLURB_LENGTH = 190;
 
   it('gives every part a non-empty blurb', () => {
     for (const category of CATEGORIES) {

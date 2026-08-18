@@ -231,42 +231,48 @@ const WEAPON: readonly Part[] = [
     id: 'weapon-vertical-spinner',
     label: 'Vertical Spinner',
     category: 'weapon',
-    blurb: "One of the narrowest windows in the game, but nothing launches them further when it lands.",
+    blurb:
+      'A disc spinning edge-up, so it catches underneath and throws. Narrow window, long wait — and nothing in the game sends a bot further than a clean hit.',
     set: { weaponArc: 250, weaponDamage: 2.2, attackCooldown: 50, weaponKnockback: 4.0 },
   },
   {
     id: 'weapon-hammer',
     label: 'Hammer',
     category: 'weapon',
-    blurb: 'Hits harder than anything else here, then makes you wait for the next swing.',
+    blurb:
+      'A heavy mallet that rears up and smashes down. The hardest single blow on the floor, but through the narrowest window and the longest reload in the game.',
     set: { weaponArc: 205, weaponDamage: 2.6, attackCooldown: 75, weaponKnockback: 2.2 },
   },
   {
     id: 'weapon-saw-blade',
     label: 'Saw Blade',
     category: 'weapon',
-    blurb: "Nothing about it stands out, which is exactly why it's easy to land.",
+    blurb:
+      'A jagged-toothed disc spinning at high speed in front of you. Almost no shove, so nothing gets knocked clear — it just keeps cutting, twice a second, for as long as you stay on them.',
     set: { weaponArc: 512, weaponDamage: 1.0, attackCooldown: 30, weaponKnockback: 0.5 },
   },
   {
     id: 'weapon-spinning-bar',
     label: 'Spinning Bar',
     category: 'weapon',
-    blurb: 'Wide enough to catch what Saw Blade misses, with real shove behind it.',
+    blurb:
+      'A spinning, weighted bar sweeping a wide arc. Catches enemies in front of you, and carries enough weight to move whatever it finds.',
     set: { weaponArc: 694, weaponDamage: 1.15, attackCooldown: 34, weaponKnockback: 1.4 },
   },
   {
     id: 'weapon-ram-plate',
     label: 'Ram Plate',
     category: 'weapon',
-    blurb: "Barely hurts per hit, but it's almost always hitting and always pushing.",
+    blurb:
+      'A blunt steel plate across your entire front. Each shunt causes minimal damage, but no one is safe in front of you as it lands constantly — you win by never letting them settle.',
     set: { weaponArc: 899, weaponDamage: 0.6, attackCooldown: 16, weaponKnockback: 2.0 },
   },
   {
     id: 'weapon-flamethrower',
     label: 'Flamethrower',
     category: 'weapon',
-    blurb: 'No knockback at all, which means they stay in the fire.',
+    blurb:
+      'A nozzle throwing a cone of flame. The smallest bite in the game, landing at the highest rate — and with no knockback at all, nothing pushes them out of it.',
     set: { weaponArc: 796, weaponDamage: 0.35, attackCooldown: 8, weaponKnockback: 0 },
   },
 ];
