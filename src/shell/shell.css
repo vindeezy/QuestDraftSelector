@@ -119,6 +119,106 @@ body {
   z-index: 1;
 }
 
+/* --- Tier 2: the air in the room ---------------------------------------------------------
+   Grain and haze, over everything. This is the layer that stops charcoal reading as flat
+   design and starts it reading as a room with dust in it.
+
+   Above the content rather than below it, which is the whole point of film grain -- it has
+   to sit on the type as well as the panels or the image separates into "photo" and "UI".
+   The tile is alpha-only with a mean of 7.6/255 and is drawn at 55% here, so it lifts a
+   charcoal panel by about four levels: felt, not seen. Legibility was re-audited across all
+   nineteen beats afterwards rather than assumed.
+
+   `pointer-events: none` on both, and neither is ever a hit target. */
+#app::after {
+  content: '';
+  position: fixed;
+  /* `inset: 0` for the same reason as the haze below: a transformed ancestor turns a fixed
+     box into a contained one, and a negative inset then becomes real page overflow. The
+     drift is on `background-position`, which needs no overscan -- a repeating tile has no
+     edge to expose. */
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image: url('./textures/grain.png');
+  background-repeat: repeat;
+  /* Drifts by exactly one tile over its cycle, so the loop is seamless -- any other distance
+     shows a jump at the wrap. Slow enough to be weather rather than an animation. */
+  animation: grain-drift 24s steps(1, end) infinite;
+}
+
+@keyframes grain-drift {
+  0% { background-position: 0 0; }
+  20% { background-position: -32px 16px; }
+  40% { background-position: 16px -32px; }
+  60% { background-position: -16px -16px; }
+  80% { background-position: 32px 32px; }
+  100% { background-position: 0 0; }
+}
+
+/* Haze: two enormous, nearly invisible warm and cool pools drifting across each other. No
+   particles, no canvas -- at this size and opacity a gradient IS smoke, and it costs one
+   composited layer instead of a second renderer running on every beat. */
+.screen::before {
+  content: '';
+  position: fixed;
+  /* `inset: 0` and NOT a negative inset, and drifted by background-position rather than by
+     transform. Both halves of that are a bug fix rather than a preference.
+
+     A fixed element is only fixed until an ancestor is transformed -- at which point it is
+     contained by that ancestor instead of the viewport. The beat transitions animate a
+     transform on `.screen`, so during every transition this pseudo-element became a huge
+     absolutely-positioned box hanging 20% outside its parent, and the document grew 211px
+     wider. Measured, not theorised: the sweep caught it on the first pass.
+
+     Nothing here now exceeds the viewport in either state, so there is no geometry left to
+     leak. */
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(28% 34% at 22% 30%, rgb(255 138 61 / 0.045), transparent 70%),
+    radial-gradient(32% 30% at 78% 68%, rgb(157 195 222 / 0.035), transparent 72%);
+  background-repeat: no-repeat;
+  animation: haze-drift 68s ease-in-out infinite alternate;
+}
+
+@keyframes haze-drift {
+  from { background-position: -3% 2%, 3% -2%; }
+  to { background-position: 4% -3%, -4% 3%; }
+}
+
+/* Brushed steel on the panels that carry content. A gradient rather than a second image:
+   the sheen of rolled metal is a directional highlight, which is exactly what a gradient is,
+   and it costs nothing to download. Kept to panels -- texture behind body text reads as a
+   dirty screen, not as atmosphere. */
+.score-table-wrap,
+.points-table-wrap,
+.floor-key,
+.reveal-part-card,
+.expect-visual__stage {
+  background-image: linear-gradient(
+    168deg,
+    rgb(255 255 255 / 0.035) 0%,
+    rgb(255 255 255 / 0.012) 26%,
+    transparent 55%,
+    rgb(0 0 0 / 0.06) 100%
+  );
+}
+
+/* Reduced motion: the room keeps its dirt and loses its weather. Grain and sheen are
+   texture and stay; the drifts are movement and stop. */
+@media (prefers-reduced-motion: reduce) {
+  #app::after {
+    animation: none;
+  }
+
+  .screen::before {
+    animation: none;
+  }
+}
+
 h1,
 h2,
 h3 {
