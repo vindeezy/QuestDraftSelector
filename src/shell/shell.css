@@ -34,6 +34,10 @@
   --bg-2: #1b1f24;
   --bg-3: #242930;
   --line: #2d333b;
+  /* Where light catches the top edge of a plate. Metal lit from above is brighter along its
+     upper border than its lower one, and that single asymmetry is most of what separates a
+     steel panel from a rectangle with a grey outline. Read by `--shadow-lift` below. */
+  --line-lit: #3d454f;
 
   /* Cool steel: the "good" channel — points, your bot, a rank climbing. Descended from the
      old cyan so the learned meaning survives, desaturated so it stops being neon. */
@@ -54,7 +58,18 @@
   /* Heavy and condensed, for words that should land like a hit: BATTLE, ELIMINATED, WINNER. */
   --font-display: 'Anton', var(--font-sans);
 
-  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.72);
+  /* Lift AND the lit top edge, in one token.
+     
+     The edge was briefly its own rule listing every panel, which did nothing on six of the
+     ten: `box-shadow` is not additive, so each panel's own later `box-shadow: var(--shadow-lift)`
+     replaced the shared rule outright. Reading the computed shadow back off the page was the
+     only way to see it -- the stylesheet looked correct.
+     
+     Folded into the token instead, every surface that already lifts now also catches light,
+     and no ordering can undo it. */
+  --shadow-lift:
+    inset 0 1px 0 var(--line-lit),
+    0 10px 30px -12px rgb(0 0 0 / 0.72);
   /* 3px, not 14. A 14px radius is a moulded plastic corner; 3px is what a milled edge on
      steel plate looks like once it has been deburred. Not 0 either -- a true square corner
      reads as an unstyled div, and every real panel has some break on its edge.
@@ -64,10 +79,7 @@
      and a round token beside a square panel is a design that knows the difference. */
   --radius: 3px;
 
-  /* Where light catches the top edge of a plate. Metal lit from above is brighter along its
-     upper border than its lower one, and that single asymmetry is most of what separates a
-     steel panel from a rectangle with a grey outline. */
-  --line-lit: #3d454f;
+
 }
 
 @media (prefers-color-scheme: light) {
@@ -198,22 +210,13 @@ body {
   to { background-position: 4% -3%, -4% 3%; }
 }
 
-/* Steel separators. The plates that carry content now catch light along their top edge, the
-   way a real panel lit from above does. One declaration per surface, and it is the difference
-   between a bordered rectangle and something with a thickness.
-
-   Applied as `border-top-color` rather than a second border, so nothing moves: the box model
-   is untouched and no layout can shift. */
-.score-table-wrap,
-.points-table-wrap,
-.floor-key,
-.reveal-part-card,
-.expect-visual__stage,
-.roster-tile,
-.score-member,
-.forge-board {
-  border-top-color: var(--line-lit);
+/* Steel separators are carried by `--shadow-lift` itself, so every panel that lifts also
+   catches light. Only surfaces with a bespoke shadow need to say it themselves. */
+.btn,
+.audio-controls {
+  box-shadow: var(--shadow-lift);
 }
+
 
 /* Brushed steel on the panels that carry content. A gradient rather than a second image:
    the sheen of rolled metal is a directional highlight, which is exactly what a gradient is,
@@ -460,6 +463,7 @@ button {
   border-color: #8a4a22;
   color: #fdf1e6;
   box-shadow:
+    inset 0 1px 0 rgb(255 190 140 / 0.22),
     0 0 0 1px rgb(255 138 61 / 0.16) inset,
     0 14px 30px -16px rgb(255 106 31 / 0.5);
 }
@@ -467,6 +471,7 @@ button {
 .btn-primary:hover {
   border-color: var(--ember);
   box-shadow:
+    inset 0 1px 0 rgb(255 205 165 / 0.3),
     0 0 0 1px rgb(255 138 61 / 0.3) inset,
     0 18px 38px -14px rgb(255 106 31 / 0.66);
 }
@@ -666,6 +671,9 @@ button {
 }
 
 .roster-tile {
+  /* A real plate, and it never actually lifted -- the rule below transitions `box-shadow`
+     without one ever being set. Now it lifts and catches light like every other panel. */
+  box-shadow: var(--shadow-lift);
   --member-colour: var(--accent);
   position: relative;
   display: flex;
@@ -687,13 +695,16 @@ button {
 .roster-tile:hover {
   transform: translateY(-2px);
   border-color: var(--member-colour);
-  box-shadow: 0 14px 28px -18px var(--member-colour);
+  box-shadow:
+    inset 0 1px 0 var(--line-lit),
+    0 14px 28px -18px var(--member-colour);
 }
 
 .roster-tile--selected {
   border-color: var(--member-colour);
   background: var(--bg-3);
   box-shadow:
+    inset 0 1px 0 var(--line-lit),
     0 0 0 1px var(--member-colour),
     0 14px 30px -16px var(--member-colour);
 }
