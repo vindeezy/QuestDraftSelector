@@ -1990,9 +1990,27 @@ button {
    rendered once in its final order and inverted, rather than sorted on screen. */
 
 /* Only while the shuffle is running. A permanent transition on `transform` would also catch
-   the row's hover and highlight states, which want to be immediate. */
+   the row's hover and highlight states, which want to be immediate.
+
+   1500ms and ease-IN-out, and both halves of that are deliberate. The first version ran 520ms
+   on the site's usual `cubic-bezier(0.16, 1, 0.3, 1)`, and was unreadable — not mainly because
+   it was short, but because that curve is a strong ease-out: it completes 90% of the travel in
+   33% of the duration, so the movement really lasted about 170ms and the rest was a creep into
+   place. Tripling the duration alone would still have front-loaded it the same way.
+
+   `cubic-bezier(0.65, 0, 0.35, 1)` spreads the same distance across the whole run — 90% of the
+   travel takes 71% of the duration — so ten rows crossing each other is legible for about
+   1065ms instead of 170. That is roughly six times the visible motion, from a change of 2.9x
+   in duration.
+
+   This is the one place on the site that deliberately does not use the house ease-out. That
+   curve is right for an entrance, where the element is arriving and should settle. Here the
+   JOURNEY is the content: the point is watching who overtakes whom, and an ease-out hides the
+   overtaking. It also buys a free beat at the start — the first 10% of the duration covers 1%
+   of the distance, so the board holds still just long enough for the eye to latch on, without
+   a hold that would leave new rank numbers sitting in old positions. */
 .screen-scoreboard.is-shuffling .score-row {
-  transition: transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 1500ms cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .score-move {
@@ -2007,8 +2025,9 @@ button {
 
   /* Held back until the travel has nearly finished: the eye follows the row that is moving,
      then reads what it did. Both at once makes the viewer choose. `backwards` so the badge is
-     invisible from the first frame rather than flashing before the delay starts. */
-  animation: move-settles 260ms ease 420ms backwards;
+     invisible from the first frame rather than flashing before the delay starts. Tracks the
+     1500ms travel above -- it lands as the rows settle, not while they are still crossing. */
+  animation: move-settles 320ms ease 1400ms backwards;
 }
 
 @keyframes move-settles {
