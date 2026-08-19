@@ -12,8 +12,11 @@ import { ARENA_VARIANT_NAMES } from '../../sim/event/arenas';
 import { FIRST_BEAT } from '../beats';
 import type { ScreenContext } from './types';
 
-const { createArenaRendererMock, drawMock, destroyMock } = vi.hoisted(() => {
+const { createArenaRendererMock, drawMock, destroyMock, setCameraMock } = vi.hoisted(() => {
   const drawMock = vi.fn();
+  // The final-blow camera. A fake renderer missing this is not a lenient fake, it is a
+  // renderer that does not implement `ArenaRenderer` -- and the screen is right to call it.
+  const setCameraMock = vi.fn();
   const destroyMock = vi.fn();
   const createArenaRendererMock = vi.fn(
     async (
@@ -28,10 +31,10 @@ const { createArenaRendererMock, drawMock, destroyMock } = vi.hoisted(() => {
       void highlight;
       void tags;
       void visuals;
-      return { draw: drawMock, destroy: destroyMock };
+      return { draw: drawMock, setCamera: setCameraMock, destroy: destroyMock };
     },
   );
-  return { createArenaRendererMock, drawMock, destroyMock };
+  return { createArenaRendererMock, drawMock, destroyMock, setCameraMock };
 });
 
 vi.mock('../canvas-support', () => ({
@@ -194,6 +197,15 @@ describe('battleScreen — wiring into the arena renderer', () => {
 
       await vi.advanceTimersByTimeAsync(16);
       expect(drawMock).toHaveBeenCalled();
+
+      // The final-blow camera is driven every frame, not only near the end: this is the
+      // wiring that broke when `setCamera` was added to the renderer and the fake here did
+      // not have it, so it is worth asserting rather than assuming. Early in the battle the
+      // shot is the plain whole-arena view -- scale 1, centred -- which is exactly what
+      // "the camera is being driven but is not doing anything yet" should look like.
+      expect(setCameraMock).toHaveBeenCalled();
+      const shot = setCameraMock.mock.calls.at(-1)![0] as { scale: number };
+      expect(shot.scale).toBeCloseTo(1, 5);
 
       teardown();
     } finally {

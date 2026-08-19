@@ -376,6 +376,14 @@ export interface ArenaRenderer {
    * Defaults to `match.effects` for callers stepping one tick a frame.
    */
   draw(match: Match, effects?: readonly Effect[]): void;
+  /**
+   * Points the view at a world position and pushes in, or `null` for the plain whole-arena
+   * view this ships with for all but the last second of a battle.
+   *
+   * Presentation only, and only ever driven by `vfx/final-blow.ts`. The simulation has no
+   * notion of a camera and nothing here feeds back into it.
+   */
+  setCamera(shot: { x: number; y: number; scale: number } | null): void;
   destroy(): void;
 }
 
@@ -790,6 +798,14 @@ export async function createArenaRenderer(
 
   /** Current shake energy, 0-1, decaying every frame. */
   let shake = 0;
+
+  /** The final-blow camera, or null for the plain view. See `vfx/final-blow.ts`. */
+  let camera: { x: number; y: number; scale: number } | null = null;
+
+  /** The arena's own pixel extent, which is NOT the canvas width -- that also carries the
+   *  kill feed, and centring on it would push every shot off to one side. */
+  const arenaWidth = match.arena.grid.cols * match.arena.grid.tileSize;
+  const arenaHeight = match.arena.grid.rows * match.arena.grid.tileSize;
 
   // Read once. Someone who has asked their operating system for less motion is not asking
   // per battle, and re-querying every frame would cost more than it could ever save.
@@ -1350,8 +1366,28 @@ export async function createArenaRenderer(
     // Offset the whole arena, kill feed excluded. Rounded to whole pixels: a sub-pixel offset
     // on a canvas this size blurs every edge instead of reading as a jolt.
     const amount = shake * SHAKE_PIXELS;
-    world.x = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
-    world.y = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
+    const shakeX = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
+    const shakeY = amount === 0 ? 0 : Math.round((Math.random() * 2 - 1) * amount);
+
+    // Camera and shake compose here rather than fighting over `world.x`. Shake is an offset
+    // in SCREEN pixels and must not scale with the push-in — a jolt that grows as the camera
+    // closes in would read as the whole arena lurching rather than as an impact.
+    if (camera === null) {
+      world.scale.set(1);
+      world.x = shakeX;
+      world.y = shakeY;
+    } else {
+      // Clamped so the push-in can never expose the void outside the arena: at scale s the
+      // view covers grid/s, so its centre has to stay that far inside every edge. Without
+      // this a bot dying in a corner would frame half floor and half nothing.
+      const halfW = arenaWidth / (2 * camera.scale);
+      const halfH = arenaHeight / (2 * camera.scale);
+      const cx = Math.min(Math.max(camera.x, halfW), arenaWidth - halfW);
+      const cy = Math.min(Math.max(camera.y, halfH), arenaHeight - halfH);
+      world.scale.set(camera.scale);
+      world.x = arenaWidth / 2 - cx * camera.scale + shakeX;
+      world.y = arenaHeight / 2 - cy * camera.scale + shakeY;
+    }
 
     // Copy the pool onto the GPU-facing structs. Dead particles go to alpha 0 rather than
     // being removed: the sprite list is fixed for the renderer's whole lifetime, which is the
@@ -1563,5 +1599,11 @@ export async function createArenaRenderer(
 
   draw(match);
 
-  return { draw, destroy: destroyOnce(app) };
+  /** Points the view at a world position, or `null` for the plain whole-arena view. Only
+   *  `vfx/final-blow.ts` drives this; see `ArenaRenderer` for why it is presentation only. */
+  const setCamera = (shot: { x: number; y: number; scale: number } | null): void => {
+    camera = shot;
+  };
+
+  return { draw, setCamera, destroy: destroyOnce(app) };
 }

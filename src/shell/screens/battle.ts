@@ -6,6 +6,16 @@ import { ROSTER, toEventMembers, type RosterMember } from '../../config/roster';
 import { createArenaRenderer, type ArenaRenderer } from '../../render/arena-renderer';
 import { nextBeat, type BeatId } from '../beats';
 import { canvasSupportsWebGL } from '../canvas-support';
+import { prefersReducedMotion } from '../../render/reduced-motion';
+import { botIndexOf } from '../../sim/parts/from-effect';
+import type { Elimination } from '../../sim/arena/match';
+import {
+  cameraShot,
+  easeOutShot,
+  playbackSpeed,
+  releaseDone,
+  releaseWeight,
+} from '../../render/vfx/final-blow';
 import { sharedAudioBus } from '../audio';
 import { emptyState, playFrame, tickToMs } from '../../audio/play';
 import { mountAudioControls, mountPauseControl, mountReplayControl } from './audio-controls';
@@ -208,6 +218,30 @@ export function battleScreen(beat: BeatId): Screen {
       let stopped = false;
       let unmounted = false;
       let frame = 0;
+
+      /**
+       * The tick the battle is decided on, and the machine it happens to.
+       *
+       * Read from the recorded result rather than watched for. Every elimination carries its
+       * tick and the event is deterministic, so the last one is known before playback starts —
+       * which is the only reason the camera can start moving BEFORE the blow instead of
+       * reacting once the bot is already gone.
+       */
+      const lastElimination = battle.eliminations.reduce<Elimination | null>(
+        (latest, e) => (latest === null || e.tick > latest.tick ? e : latest),
+        null,
+      );
+
+      // Spatial movement is what a motion-sensitive viewer asked not to have. The slow-down
+      // stays: it is a rhythm, not a camera move, and it is what makes the moment read.
+      const cinemaCamera = !prefersReducedMotion();
+
+      /** Fractional ticks carried between frames, so speeds below 1x advance the simulation
+       *  on some frames and not others while rendering stays at full rate. */
+      let tickDebt = 0;
+      /** When the match ended, in wall-clock ms — the outro is timed off this, since there
+       *  are no ticks left to count once the fight is over. */
+      let doneAt: number | null = null;
       let readTimer: ReturnType<typeof setTimeout> | null = null;
       let renderer: ArenaRenderer | null = null;
 
@@ -260,7 +294,17 @@ export function battleScreen(beat: BeatId): Screen {
         if (pauseControl.paused) return;
 
         const frameEffects: Effect[] = [];
-        advanceBattleFrame(match, TICKS_PER_FRAME, frameEffects);
+
+        // Slow motion is fewer TICKS per frame, never a slower tick. The physics, their
+        // order and the result are untouched -- they are simply handed out more slowly, and
+        // the renderer keeps drawing at full rate so the camera move stays smooth while the
+        // fight crawls.
+        const speed =
+          lastElimination === null ? 1 : playbackSpeed(match.world.tick, lastElimination.tick);
+        tickDebt += TICKS_PER_FRAME * speed;
+        const steps = Math.floor(tickDebt);
+        tickDebt -= steps;
+        if (steps > 0) advanceBattleFrame(match, steps, frameEffects);
 
         // The consumption point WEB 4 reserved. Read once per rendered frame, after every
         // tick that ran this frame has contributed to it -- which is why `advanceBattleFrame`
@@ -281,9 +325,37 @@ export function battleScreen(beat: BeatId): Screen {
 
         // The same accumulated bus the sound layer just read, for the same reason: at more
         // than one tick per frame `match.effects` holds only the last tick's events.
+        // The camera, before the draw that uses it. Framed on the bot that is about to die,
+        // sliding in from the whole-arena view as the run-up progresses.
+        if (renderer !== null && cinemaCamera && lastElimination !== null) {
+          // Bots are identified by index, not by a field on the bot: `bot-3` is
+          // `match.bots[3]`, which is what `botIndexOf` decodes.
+          const doomedIndex = botIndexOf(lastElimination.botId);
+          const doomed = doomedIndex === null ? undefined : match.bots[doomedIndex];
+          if (doomed !== undefined) {
+            const centre = {
+              x: (match.arena.grid.cols * match.arena.grid.tileSize) / 2,
+              y: (match.arena.grid.rows * match.arena.grid.tileSize) / 2,
+            };
+            const shot = cameraShot(match.world.tick, lastElimination.tick, doomed.body, centre);
+            renderer.setCamera(
+              doneAt === null ? shot : easeOutShot(shot, centre, releaseWeight(performance.now() - doneAt)),
+            );
+          }
+        }
+
         renderer?.draw(match, frameEffects);
 
         if (match.done) {
+          // Hold on the kill, then give the whole arena back before the result appears --
+          // the standings are read off the full board, so the shot has to return it. The
+          // loop keeps running through the outro: it is still drawing, just not advancing.
+          if (doneAt === null) doneAt = performance.now();
+          if (!releaseDone(performance.now() - doneAt)) {
+            frame = requestAnimationFrame(tick);
+            return;
+          }
+          renderer?.setCamera(null);
           pauseControl.conceal();
           replayControl.reveal();
           scheduleContinue();
