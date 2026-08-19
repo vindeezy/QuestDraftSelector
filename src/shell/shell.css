@@ -55,7 +55,19 @@
   --font-display: 'Anton', var(--font-sans);
 
   --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.72);
-  --radius: 14px;
+  /* 3px, not 14. A 14px radius is a moulded plastic corner; 3px is what a milled edge on
+     steel plate looks like once it has been deburred. Not 0 either -- a true square corner
+     reads as an unstyled div, and every real panel has some break on its edge.
+
+     Deliberately NOT applied to the member badges and swatches. Thirteen radii in this file
+     are `50%` and one more is a 999px pill on `.score-swatch`: those are TOKENS, not panels,
+     and a round token beside a square panel is a design that knows the difference. */
+  --radius: 3px;
+
+  /* Where light catches the top edge of a plate. Metal lit from above is brighter along its
+     upper border than its lower one, and that single asymmetry is most of what separates a
+     steel panel from a rectangle with a grey outline. */
+  --line-lit: #3d454f;
 }
 
 @media (prefers-color-scheme: light) {
@@ -184,6 +196,23 @@ body {
 @keyframes haze-drift {
   from { background-position: -3% 2%, 3% -2%; }
   to { background-position: 4% -3%, -4% 3%; }
+}
+
+/* Steel separators. The plates that carry content now catch light along their top edge, the
+   way a real panel lit from above does. One declaration per surface, and it is the difference
+   between a bordered rectangle and something with a thickness.
+
+   Applied as `border-top-color` rather than a second border, so nothing moves: the box model
+   is untouched and no layout can shift. */
+.score-table-wrap,
+.points-table-wrap,
+.floor-key,
+.reveal-part-card,
+.expect-visual__stage,
+.roster-tile,
+.score-member,
+.forge-board {
+  border-top-color: var(--line-lit);
 }
 
 /* Brushed steel on the panels that carry content. A gradient rather than a second image:
@@ -354,7 +383,7 @@ button {
 
 ::-webkit-scrollbar-thumb {
   background: var(--bg-3);
-  border-radius: 8px;
+  border-radius: 3px;
   border: 3px solid var(--bg-1);
 }
 
@@ -394,9 +423,10 @@ button {
 .btn {
   appearance: none;
   border: 1px solid var(--line);
+  border-top-color: var(--line-lit);
   background: var(--bg-2);
   color: var(--ink);
-  border-radius: 999px;
+  border-radius: 3px;
   padding: 12px 26px;
   font-size: 15px;
   font-weight: 700;
@@ -869,7 +899,7 @@ button {
   position: relative;
   width: 200px;
   height: 120px;
-  border-radius: 8px;
+  border-radius: 3px;
   border: 1px solid var(--line);
   background: var(--bg-2);
 }
@@ -980,7 +1010,7 @@ button {
   width: 26px;
   height: 26px;
   flex-shrink: 0;
-  border-radius: 5px;
+  border-radius: 3px;
   border: 1px solid rgb(255 255 255 / 0.18);
   margin-top: 2px;
 }
@@ -1250,7 +1280,7 @@ button {
   align-items: center;
   gap: 10px;
   padding: 8px 8px;
-  border-radius: 8px;
+  border-radius: 3px;
   border-left: 2px solid transparent;
   animation: forge-row-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -2122,9 +2152,10 @@ button {
   font-weight: 700;
 }
 
+/* Squared with the panels: this is a marking stamped on a row, and a stencil has corners. */
 .score-you {
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: 2px;
   background: var(--accent);
   color: #04121a;
   font-size: 9px;
@@ -2406,7 +2437,8 @@ button {
   padding: 5px 10px 5px 7px;
   background: color-mix(in srgb, var(--bg-2) 82%, transparent);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-top-color: var(--line-lit);
+  border-radius: 3px;
 }
 
 /* Everything a screen docks beneath Back: volume, mute, pause, replay. Stacked and
@@ -2451,7 +2483,7 @@ button {
   padding: 0;
   background: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: 3px;
   color: var(--ink);
   font-size: 15px;
   line-height: 1;
