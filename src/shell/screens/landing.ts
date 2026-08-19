@@ -1,5 +1,5 @@
 import { ensureAudioResumed } from '../audio';
-import { mountWaveCanvas } from '../vfx/wave-canvas';
+import { mountSmokeCanvas } from '../vfx/smoke-canvas';
 import type { Screen, ScreenContext } from './types';
 
 /**
@@ -9,13 +9,13 @@ import type { Screen, ScreenContext } from './types';
  * gesture that creates and resumes the shared `AudioContext` (see `audio.ts`'s doc
  * comment for why it has to happen here, before anything actually needs to make sound).
  *
- * The moving field behind it is the one place on the site that spends frames on nothing but
+ * The smoke behind it is the one place on the site that spends frames on nothing but
  * atmosphere. It earns them here and nowhere else: this is the screen a member sits on while
  * the rest of the league catches up, and the only one with nothing else to look at.
  *
- * Order in the DOM is deliberate — waves, then scrim, then glow, then content. Each layer
- * has to sit over the one before it, and none of them are positioned by z-index, so the
- * source order IS the stack.
+ * Order in the DOM is deliberate — smoke, then scrim, then glow, then content. Each layer has
+ * to sit over the one before it, and none of them are positioned by z-index, so the source
+ * order IS the stack.
  */
 export const landingScreen: Screen = {
   render(ctx: ScreenContext) {
@@ -43,12 +43,12 @@ export const landingScreen: Screen = {
 
     // Mounted after the append, not before: the canvas sizes itself off the host's measured
     // box, and an element still detached from the document measures 0×0.
-    const waves = mountWaveCanvas(root);
+    const smoke = mountSmokeCanvas(root);
 
     // The first screen with a teardown. Without it the frame loop outlives the screen, and a
     // viewer walking the whole site would leave one running per visit to the landing.
     return () => {
-      waves.destroy();
+      smoke.destroy();
     };
   },
 };

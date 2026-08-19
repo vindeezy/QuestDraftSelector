@@ -629,12 +629,17 @@ button {
     radial-gradient(58% 44% at 50% 38%, #262b32 0%, #1b1f24 42%, #101317 74%, var(--bg-0) 100%);
 }
 
-/* The moving field. Drawn by `src/shell/vfx/wave-canvas.ts`; this only places it.
+/* The smoke. Drawn by `src/shell/vfx/smoke-canvas.ts`; this only places it.
+
+   The canvas backing store is far smaller than the box it fills — the noise is rasterised at a
+   fraction of screen resolution and stretched, which is the whole reason this can run on the
+   CPU at all. `width`/`height` at 100% are what perform that stretch, so they are load-bearing
+   rather than tidiness.
 
    No z-index anywhere in the landing stack — the canvas is prepended as the first child and
    the source order does the work (see the doc comment on `landingScreen`). Adding one here
    would mean adding four, and the next person to insert an element would have to guess. */
-.landing-waves {
+.landing-smoke {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -651,14 +656,16 @@ button {
    nothing and take the whole effect back out again.
 
    Measured, not judged by eye, and the method took three attempts to get honest. Sampling the
-   composite at intervals gave 6.25 one run and 6.37 the next for the same CSS — it was missing
-   the crests. Bounding it by the brightest pixel anywhere on the canvas gave 2.56, which is
-   pessimistic nonsense: those pixels are line crossings out in the margins where the scrim
-   never reaches. What is actually true is the per-point temporal maximum — for every point in
-   the text box, the brightest the field ever gets AT THAT POINT — watched for 18-25 seconds.
+   composite at intervals gave two different answers for identical CSS — it was missing the
+   brightest moments. Bounding it by the brightest pixel anywhere on the canvas gave a figure
+   so pessimistic it was useless, since those pixels are lit smoke out at the margins where the
+   scrim never reaches. What is actually true is the per-point temporal maximum: for every
+   point in the text box, the brightest the field ever gets AT THAT POINT, watched for 18-20
+   seconds of real motion.
 
-   On that basis, at 375x812 and again at 1440x900: title 11.15:1, tagline 12.32:1, button
-   label 13.65:1, against a 4.5:1 requirement.
+   On that basis — title 7.34:1, tagline 11.21:1, button label 16.31:1 at 375x812, and
+   10.85 / 11.56 / 16.11 at 699x790 — against a 4.5:1 requirement. The title is lowest on the
+   narrow screen, where its box is wide enough to reach the lit smoke at the edges.
 
    The first pass sat at 0.82 in the centre, which cleared the bar with more room than it
    needed and left a visible dark smudge where the scrim met the glow. */
@@ -732,9 +739,9 @@ button {
 
 /* `--ink`, not the `--ink-dim` every other secondary line on the site uses. This is the only
    body text on the site sitting over something that moves, and the dimmest ink in the palette
-   was the wrong tool for it — measured at 4.57:1 over the field's peak on a 375px screen,
-   which passes AA by 0.07 and is not a margin. Full ink measures 12.32:1 and, on a screen with
-   three elements on it, reads as deliberate rather than washed out. */
+   is the wrong tool for that — it was measured at 4.57:1 over an earlier background, passing
+   AA by 0.07, which is not a margin. Full ink measures 11.21:1 on the narrowest screen and, on
+   a screen with three elements on it, reads as deliberate rather than washed out. */
 .landing-tagline {
   font-size: 1.15rem;
   color: var(--ink);

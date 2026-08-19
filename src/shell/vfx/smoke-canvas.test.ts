@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mountWaveCanvas } from './wave-canvas';
+import { mountSmokeCanvas } from './smoke-canvas';
 
 /**
- * jsdom has no 2D context, so nothing here checks what gets DRAWN — `wave-field.test.ts`
+ * jsdom has no 2D context, so nothing here checks what gets DRAWN — `smoke-field.test.ts`
  * covers that, which is the whole reason the arithmetic lives in a separate file.
  *
  * What is checked is the part that can strand the site: mounting, and coming back off. The
@@ -39,7 +39,7 @@ describe('mounting the field', () => {
   it('puts the canvas behind everything already in the host', () => {
     const el = host();
     el.innerHTML = '<div class="landing-content">title</div>';
-    mountWaveCanvas(el);
+    mountSmokeCanvas(el);
     // Source order IS paint order here — nothing in the landing stack is z-indexed. A canvas
     // appended instead of prepended would sit on top of the title.
     expect(el.firstElementChild?.tagName).toBe('CANVAS');
@@ -47,7 +47,7 @@ describe('mounting the field', () => {
 
   it('hides itself from assistive tech', () => {
     const el = host();
-    mountWaveCanvas(el);
+    mountSmokeCanvas(el);
     expect(el.querySelector('canvas')?.getAttribute('aria-hidden')).toBe('true');
   });
 
@@ -55,21 +55,21 @@ describe('mounting the field', () => {
     // Exactly the jsdom case, and also a browser that has run out of contexts. An atmosphere
     // layer must never be the reason a screen fails to render.
     const el = host();
-    expect(() => mountWaveCanvas(el)).not.toThrow();
+    expect(() => mountSmokeCanvas(el)).not.toThrow();
   });
 });
 
 describe('coming back off', () => {
   it('removes the canvas', () => {
     const el = host();
-    const handle = mountWaveCanvas(el);
+    const handle = mountSmokeCanvas(el);
     handle.destroy();
     expect(el.querySelector('canvas')).toBeNull();
   });
 
   it('stops asking for frames', () => {
     const el = host();
-    const handle = mountWaveCanvas(el);
+    const handle = mountSmokeCanvas(el);
     const before = frames.length;
     handle.destroy();
     // Run whatever was already queued. A destroyed field must not schedule anything further.
@@ -81,7 +81,7 @@ describe('coming back off', () => {
     // The router calls teardown on navigation, and again on `destroy()` if the page is being
     // torn down mid-transition. Both paths are real.
     const el = host();
-    const handle = mountWaveCanvas(el);
+    const handle = mountSmokeCanvas(el);
     handle.destroy();
     expect(() => { handle.destroy(); }).not.toThrow();
   });
@@ -89,7 +89,7 @@ describe('coming back off', () => {
   it('lets go of the visibility listener', () => {
     const el = host();
     const remove = vi.spyOn(document, 'removeEventListener');
-    mountWaveCanvas(el).destroy();
+    mountSmokeCanvas(el).destroy();
     expect(remove).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
   });
 });
