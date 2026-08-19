@@ -5,8 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Draft by Combat</title>
     <style>
-      /* Avoids a flash of white before shell.css loads. Everything else lives there. */
-      html, body { background: #05070b; }
+      /*
+        Avoids a flash of white before shell.css loads. Everything else lives there.
+
+        MUST MATCH `--bg-0` in `src/shell/shell.css`. This is a duplicated colour and it went
+        stale once already: the palette moved to charcoal on 19 August and this stayed on the
+        old near-black. Because a background on the ROOT element propagates to the canvas, it
+        painted the whole scrollable page, while `body` -- which shell.css does colour -- is
+        only ever one viewport tall (`html, body { height: 100% }`). The result was a hard
+        horizontal seam at exactly 100vh on the two screens tall enough to scroll.
+
+        `shell.test.ts` now fails if these two drift apart again.
+      */
+      html { background: #0c0e11; }
     </style>
   </head>
   <body>
