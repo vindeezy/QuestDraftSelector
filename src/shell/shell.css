@@ -2410,6 +2410,66 @@ button {
     var(--bg-0);
 }
 
+/* Needed so the fireworks canvas has something to be absolute against. */
+.screen-draft-order {
+  position: relative;
+}
+
+/* The fireworks. Drawn by `src/shell/vfx/fireworks-canvas.ts`; this only places it.
+
+   `absolute`, NOT `fixed`, even though filling the viewport is what it wants. A fixed element
+   stops being fixed the moment an ancestor is transformed, and the beat transitions animate a
+   transform on `.screen` — the landing's haze hit exactly that and grew the document 211px
+   wider mid-transition. The screen is `min-height: 100vh`, so absolute covers the viewport
+   anyway and keeps the sparks with the board if the table runs long. */
+.draft-fireworks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Without this the sparks rain over the names and the points, and the board becomes unreadable
+   at the exact moment it matters most.
+
+   Prepending the canvas as the first child is NOT enough, which is the part worth remembering:
+   source order only decides paint order between siblings in the SAME positioning class. A
+   positioned element paints above every static one regardless of where it sits in the markup,
+   so an absolute canvas written first still lands on top of a static table written after it.
+
+   Making the content positioned too puts all four in one group, and then source order does
+   apply — canvas first, content after, sparks behind. No z-index needed on any of them, which
+   is why there isn't one. */
+.screen-draft-order .score-header,
+.screen-draft-order .score-table-wrap,
+.screen-draft-order .score-footer {
+  position: relative;
+}
+
+/* The board gets a floor to sit on, which it does not have anywhere else on the site.
+
+   `.score-table-wrap` carries a sheen gradient and grain but no background COLOUR, so on every
+   other screen the page shows through it — which is fine, because the page is dark and still.
+   Here there are fireworks behind it.
+
+   The measurement is worth recording carefully, because the first pass nearly let this ship.
+   One nine-second sample of the finale caught sparks at 0.44 alpha behind the member names and
+   reported 4.96:1 — thin, but passing. A second sample of the SAME build caught 0.894 alpha,
+   which puts near-white gold behind white text at roughly 1.45:1. The names were not marginal,
+   they were periodically unreadable; the first run simply missed the peak. Sampling a moving
+   background gives an optimistic answer often enough that a single pass should never be
+   trusted to clear something.
+
+   With this backdrop the same worst case measures 9.51:1.
+
+   0.72 rather than opaque on purpose: the glow still comes through the board, which is what
+   makes the sparks read as being BEHIND it rather than as a separate layer that got occluded.
+   Losing that would be losing most of the effect. */
+.screen-draft-order .score-table-wrap {
+  background-color: rgb(12 14 17 / 0.72);
+}
+
 .draft-title {
   text-transform: uppercase;
   letter-spacing: 0.01em;

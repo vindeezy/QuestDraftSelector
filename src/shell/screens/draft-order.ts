@@ -1,7 +1,8 @@
-import { toEventMembers } from '../../config/roster';
+import { ROSTER, toEventMembers } from '../../config/roster';
 import { nextBeat } from '../beats';
 import { ordinal } from '../ordinal';
 import { resetWatch } from '../progress';
+import { mountFireworks } from '../vfx/fireworks-canvas';
 import { draftOrderRows, renderCumulativeTable, type ScoreRow } from './scoreboard';
 import { getEventResult } from './forge';
 import type { Screen, ScreenContext } from './types';
@@ -57,6 +58,17 @@ export function pickCaption(row: ScoreRow): string {
   return `${ordinal(row.rank)} pick — ${row.name}`;
 }
 
+/**
+ * A member's colour, for the firework that goes up when their pick lands.
+ *
+ * Falls back to a warm white for an id the roster does not know. That should be impossible —
+ * the rows come from the same roster — but a missing colour must not be the thing that stops
+ * the celebration on the screen the whole site exists to reach.
+ */
+export function colourForMember(memberId: string): string {
+  return ROSTER.find((member) => member.id === memberId)?.colour ?? '#FFECD6';
+}
+
 function tableMarkup(rows: readonly ScoreRow[], claimedMemberId: string | null, hidden: boolean): string {
   return `<div class="score-table-wrap">${renderCumulativeTable(rows, claimedMemberId, hidden)}</div>`;
 }
@@ -90,6 +102,33 @@ export const draftOrderScreen: Screen = {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
 
+    // `ctx.seed` so the same draft night puts up the same show twice — a replay that fired
+    // different fireworks would be the one thing on this screen that was not decided in
+    // advance, on the screen whose entire promise is that everything was.
+    const fireworks = mountFireworks(root, ctx.seed);
+
+    /**
+     * Sends up the shell for a pick that has NOT landed yet.
+     *
+     * Launched one pick early, on purpose. A shell takes 1.57-1.79s to reach its apex (see
+     * `fireworks.ts` — the rise is solved from the burst height, so this is arithmetic rather
+     * than a guess), and picks land every 1500ms. Firing at the moment a name appeared put its
+     * burst 1.6s later, which is to say on top of the NEXT name — so every firework was
+     * celebrating the wrong member, in the wrong colour, on the one screen where the colours
+     * mean something.
+     *
+     * Leading by one interval lands each burst 70-290ms after its own name. The alternative was
+     * to speed the shells up, which would have cost the arc that makes them read as fireworks
+     * at all.
+     */
+    const armFireworksFor = (index: number): void => {
+      const row = rows[index];
+      if (!row) return;
+      // First pick gets the barrage rather than a single shell.
+      if (index === 0) fireworks.finale(colourForMember(row.memberId));
+      else fireworks.celebrate(colourForMember(row.memberId));
+    };
+
     const uncover = (index: number): void => {
       const el = rowEls[index];
       if (!el) return;
@@ -114,13 +153,22 @@ export const draftOrderScreen: Screen = {
       timer = setTimeout(() => {
         if (stopped) return;
         uncover(index);
+        // The shell for the pick AFTER this one, so it is already climbing when that name
+        // lands. See `armFireworksFor`.
+        const upcoming = sequence[at + 1];
+        if (upcoming !== undefined) armFireworksFor(upcoming);
         run(sequence, at + 1);
       }, REVEAL_INTERVAL_MS);
     };
 
     revealButton.addEventListener('click', () => {
       revealButton.classList.add('is-hidden');
-      run(revealSequence(rows.length), 0);
+      const sequence = revealSequence(rows.length);
+      // The opening shell, launched on the click rather than on the first row, so the very
+      // first pick gets the same treatment as the other nine.
+      const first = sequence[0];
+      if (first !== undefined) armFireworksFor(first);
+      run(sequence, 0);
     });
 
     continueButton.addEventListener('click', () => {
@@ -132,6 +180,9 @@ export const draftOrderScreen: Screen = {
     return () => {
       stopped = true;
       if (timer !== null) clearTimeout(timer);
+      // Before anything else that could throw. A screen left mid-finale has up to nine staged
+      // timers and a frame loop, and all of them outlive the DOM they were drawing into.
+      fireworks.destroy();
     };
   },
 };
