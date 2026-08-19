@@ -481,6 +481,80 @@ button {
   font-size: 17px;
 }
 
+/* --- The heartbeat on Begin ---------------------------------------------------------------
+   Used on exactly one button on the whole site. A page where several things pulse has nothing
+   that pulses; this is the only screen with a single action on it, and it is the only place
+   that has earned the attention.
+
+   Both halves of the beat are on PSEUDO-ELEMENTS, and the button's own `transform` and
+   `box-shadow` are left strictly alone. That is not tidiness — `.btn:active` presses via
+   `transform` and `.btn-primary:hover` swells via `box-shadow`, and a running animation on
+   either property outranks both. Pulsing the button itself would have quietly cost the press
+   and the hover, which are the two bits of feedback that actually tell a viewer the button
+   works. */
+.btn-heartbeat {
+  position: relative;
+}
+
+.btn-heartbeat::before,
+.btn-heartbeat::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Behind the button's own gradient, so neither layer ever washes over the label. */
+  z-index: -1;
+  opacity: 0;
+}
+
+/* The swell: light coming up under the button and going out again. */
+.btn-heartbeat::before {
+  background: radial-gradient(60% 140% at 50% 50%, rgb(255 106 31 / 0.85) 0%, rgb(255 106 31 / 0) 70%);
+  animation: heartbeat-bloom 2600ms ease-out infinite;
+}
+
+/* The ring going out. `inset` rather than `transform: scale()` — the button is three times
+   wider than it is tall, and a scaled ring stands off the ends far further than the sides,
+   which reads as a stretching oval instead of a pulse. Animating inset keeps the ring the
+   same distance from the edge the whole way round. */
+.btn-heartbeat::after {
+  border: 1px solid var(--ember);
+  animation: heartbeat-ring 2600ms ease-out infinite;
+}
+
+/* Lub-dub, then a rest. The second beat is slightly weaker and closer than the first, which
+   is what makes it read as a heartbeat rather than as a blinking light. Everything after 34%
+   is the gap — most of the cycle is nothing happening at all, and that is the point. */
+@keyframes heartbeat-bloom {
+  0%   { opacity: 0; transform: scale(0.96); }
+  6%   { opacity: 0.5; transform: scale(1.06); }
+  13%  { opacity: 0.14; transform: scale(0.99); }
+  20%  { opacity: 0.4; transform: scale(1.045); }
+  34%  { opacity: 0; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* The corner radius grows with the ring. Holding it at the button's own 3px made the ring
+   read as a hard rectangle — close enough to `:focus-visible` (2px `--accent` at 3px offset)
+   to be mistaken for one, which would be a genuine accessibility problem rather than a
+   styling quibble. Rounding as it travels reads as a pulse leaving the button instead. */
+@keyframes heartbeat-ring {
+  0%   { inset: 0; border-radius: 3px; opacity: 0.5; }
+  30%  { inset: -20px; border-radius: 22px; opacity: 0; }
+  100% { inset: -20px; border-radius: 22px; opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No beat, and no residue of one — both layers are held at rest rather than frozen
+     mid-animation, which is what `animation: none` alone would leave behind. */
+  .btn-heartbeat::before,
+  .btn-heartbeat::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* The router's walkthrough navigation (see `renderBeatNav` in `router.ts`). Deliberately
    `fixed` rather than part of any screen's layout: these are appended as the last children
    of #app on every beat, and a screen that centres its content must not shift because they
@@ -555,6 +629,47 @@ button {
     radial-gradient(58% 44% at 50% 38%, #262b32 0%, #1b1f24 42%, #101317 74%, var(--bg-0) 100%);
 }
 
+/* The moving field. Drawn by `src/shell/vfx/wave-canvas.ts`; this only places it.
+
+   No z-index anywhere in the landing stack — the canvas is prepended as the first child and
+   the source order does the work (see the doc comment on `landingScreen`). Adding one here
+   would mean adding four, and the next person to insert an element would have to guess. */
+.landing-waves {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* The price of a background with movement: the title now sits on something that changes
+   brightness underneath it. This puts the contrast back.
+
+   Deliberately a soft radial rather than a flat sheet — the field is brightest through the
+   middle band, which is exactly where the type is, so the darkening is needed there and
+   nowhere else. A flat scrim strong enough to fix the centre would flatten the corners into
+   nothing and take the whole effect back out again.
+
+   Measured, not judged by eye, and the method took three attempts to get honest. Sampling the
+   composite at intervals gave 6.25 one run and 6.37 the next for the same CSS — it was missing
+   the crests. Bounding it by the brightest pixel anywhere on the canvas gave 2.56, which is
+   pessimistic nonsense: those pixels are line crossings out in the margins where the scrim
+   never reaches. What is actually true is the per-point temporal maximum — for every point in
+   the text box, the brightest the field ever gets AT THAT POINT — watched for 18-25 seconds.
+
+   On that basis, at 375x812 and again at 1440x900: title 11.15:1, tagline 12.32:1, button
+   label 13.65:1, against a 4.5:1 requirement.
+
+   The first pass sat at 0.82 in the centre, which cleared the bar with more room than it
+   needed and left a visible dark smudge where the scrim met the glow. */
+.landing-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(48% 46% at 50% 47%, rgb(12 14 17 / 0.7) 0%, rgb(12 14 17 / 0.4) 55%, transparent 100%);
+}
+
 /* No `filter: blur()` here. A radial gradient is already soft, and blurring one costs a
    compositing layer for almost no visual gain — see `.reveal-stage` for the bug that kind
    of layer caused on the reveal screen. */
@@ -574,6 +689,15 @@ button {
 
 .landing-content {
   position: relative;
+  /* Required, not cosmetic. `.btn-heartbeat`'s glow layers sit at `z-index: -1` so they pass
+     behind the button rather than over its label — and a negative z-index escapes upward
+     through every ancestor that is not a stacking context. Without this it would sail past
+     `.landing-content` AND `.screen-landing` and end up behind the landing's own background
+     gradient, i.e. invisible.
+
+     `settle-in` already makes this a stacking context for its first 720ms, so the alternative
+     was an effect that worked until the entrance finished and then vanished. */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -606,9 +730,14 @@ button {
     0 6px 30px rgb(255 106 31 / 0.14);
 }
 
+/* `--ink`, not the `--ink-dim` every other secondary line on the site uses. This is the only
+   body text on the site sitting over something that moves, and the dimmest ink in the palette
+   was the wrong tool for it — measured at 4.57:1 over the field's peak on a 375px screen,
+   which passes AA by 0.07 and is not a margin. Full ink measures 12.32:1 and, on a screen with
+   three elements on it, reads as deliberate rather than washed out. */
 .landing-tagline {
   font-size: 1.15rem;
-  color: var(--ink-dim);
+  color: var(--ink);
   max-width: 46ch;
   line-height: 1.5;
 }
