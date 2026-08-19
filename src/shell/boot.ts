@@ -91,34 +91,17 @@ function applyResetParam(seed: number): void {
 }
 
 /**
- * `?sounds` — the sound lab. TEMPORARY: removed in FIN 1, along with `sound-lab.ts`.
+ * Returns the gate result.
  *
- * Intercepted before the checksum gate and before any progress is touched, exactly as the
- * seed preview route was. It is a listening tool for one person, not a screen anyone watches,
- * so it has no business making the walkthrough wait for `runEvent` or recording that a beat
- * was reached.
- */
-function isSoundLabRequested(): boolean {
-  if (typeof window === 'undefined') return false;
-  return new URL(window.location.href).searchParams.has('sounds');
-}
-
-/**
- * Returns the gate result, or `null` when the sound lab took over — the gate genuinely did
- * not run in that case, and saying so is better than inventing a passing result for a check
- * nobody performed.
+ * Nullable for historical reasons worth keeping: `?sounds` used to mount a sound lab here and
+ * return null, because the gate genuinely had not run and saying so beat inventing a passing
+ * result for a check nobody performed. The lab is gone; the honest return type is not, since
+ * any future route that short-circuits boot will want exactly the same escape hatch.
  */
 export async function boot(
   container: HTMLElement,
   record?: EventRecord,
 ): Promise<ChecksumCheck | null> {
-  if (isSoundLabRequested()) {
-    const { mountSoundLab } = await import('./screens/sound-lab');
-    container.innerHTML = '';
-    mountSoundLab({ container });
-    return null;
-  }
-
   renderLoading(container);
   await nextPaint();
 

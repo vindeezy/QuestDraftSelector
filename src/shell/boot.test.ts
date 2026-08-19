@@ -136,19 +136,23 @@ describe('the ?reset escape hatch', () => {
   });
 });
 
-describe('the ?sounds route', () => {
-  // TEMPORARY, alongside the lab itself: both go in FIN 1.
-  it('mounts the lab instead of the walkthrough, without running the gate', async () => {
+describe('the removed ?sounds route', () => {
+  // The sound lab was a listening tool for one person, mounted at `?sounds`, and FIN 1
+  // deleted it. This is the test that used to prove it mounted, inverted to prove it no
+  // longer does — kept rather than deleted because the interesting risk did not leave with
+  // the lab. Somebody has that URL in their history, and an unknown query parameter has to
+  // be ignored on the way to the walkthrough rather than mounting nothing and leaving a
+  // blank screen on draft night.
+  it('falls through to the normal walkthrough instead of mounting anything', async () => {
     const container = makeContainer();
     window.history.replaceState(null, '', '/?sounds');
 
     const check = await boot(container);
 
-    // Null, not a fabricated pass: the checksum gate genuinely did not run.
-    expect(check).toBeNull();
-    expect(container.querySelector('.lab')).not.toBeNull();
-    expect(container.querySelector('.gate--loading')).toBeNull();
-    expect(container.dataset.beat).toBeUndefined();
+    // A real gate result, not null: the checksum gate now runs like any other visit.
+    expect(check?.ok).toBe(true);
+    expect(container.querySelector('.lab')).toBeNull();
+    expect(container.dataset.beat).toBeDefined();
 
     window.history.replaceState(null, '', '/');
   });

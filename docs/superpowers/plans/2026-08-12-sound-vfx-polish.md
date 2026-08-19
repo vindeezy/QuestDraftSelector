@@ -543,7 +543,11 @@ rather than wrapped, undersized hit targets. Zero of the first three; the mute b
 deferred, since the visual direction has been signed off repeatedly and churn nine days out is
 the bigger risk. Still available if wanted.
 - [x] **Step 4: Verify** — full suite, lint, types, build.
-- [ ] **Step 5: WATCH GATE** — the owner walks all nineteen beats.
+- [x] **Step 5: WATCH GATE** — the owner walked all nineteen beats on 18 August and passed it.
+Colours were called out as fine in play, with the observation that every bot carries its
+owner's initials, so the colour is not doing the identification on its own — which is a fair
+qualification of the CIELAB separation work: the tightest pair in the palette is Spencer/Rob
+at 29.3, and a label on the machine is doing work no dE figure accounts for.
 - [x] **Step 6: Commit** — landed across several commits rather than one.
 
 ---
@@ -580,12 +584,15 @@ nobody else, but collapses his separation from Nick Lenker from dE 39.7 to 14.3,
 
 ## FIN 1: Remove the lab, verify, deploy
 
-- [ ] **Step 1: Delete** `src/shell/screens/sound-lab.ts`, its route in `boot.ts` and its
-styles, exactly as the seed preview was removed.
-- [ ] **Step 2: Confirm `?sounds` falls through** to the normal walkthrough.
-- [ ] **Step 3: Full verification** — `npx vitest run && npm run lint && npx tsc --noEmit &&
-npm run build`.
-- [ ] **Step 4: Confirm the recorded event is untouched**
+- [x] **Step 1: Deleted** `src/shell/screens/sound-lab.ts`, its test, its route in `boot.ts`
+and 154 lines of styles in `shell.css`.
+- [x] **Step 2: `?sounds` falls through** to the normal walkthrough. The test that proved the
+lab mounted was INVERTED rather than deleted: somebody has that URL in their history, and an
+unknown query parameter has to be ignored on the way to the walkthrough rather than mounting
+nothing and leaving a blank screen on the night. Confirmed in a real browser as well as jsdom.
+- [x] **Step 3: Full verification** — 1,182 tests, lint, types and build all clean.
+- [x] **Step 4: The recorded event is untouched** — checksum `35d2876d`, `git status data/`
+empty.
 
 ```bash
 npm run record -- --seed 43000236   # previews; must print checksum 35d2876d
