@@ -207,6 +207,62 @@ body {
   );
 }
 
+/* --- Tier 3: the room reacts ------------------------------------------------------------
+   The fight lights the venue around it. `--atmo-glow` is how much just happened, `--atmo-heat`
+   is what kind (0 ember, 1 the red of an elimination), and `--atmo-dim` takes light AWAY as
+   the floor empties -- the brief asks for the final combatants to feel more intense, and the
+   honest way to do that is to close the room in rather than turn something up.
+
+   All three are written by `screens/battle.ts` from the renderer's own effect bus, so this is
+   the same events that make the sparks, not a second guess at them. They default to calm, so
+   every other beat renders as if this block did not exist.
+
+   The light lands OUTSIDE the arena, which is what makes it affordable: there is nothing out
+   there to hide, so it can be felt without competing with the machines. The standing rule
+   still holds -- if effects hide bots, effects lose. */
+.screen-battle {
+  --atmo-glow: 0;
+  --atmo-heat: 0;
+  --atmo-dim: 1;
+}
+
+.screen-battle::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* Two stops from the same pair of numbers: a warm wash across the whole room, and a
+     stronger pool low and wide where the arena sits. `color-mix` moves ember toward the
+     warning red as heat rises, so an elimination reads as a different EVENT rather than as a
+     brighter version of a hit. */
+  background:
+    radial-gradient(
+      120% 80% at 50% 50%,
+      color-mix(in srgb, var(--warning) calc(var(--atmo-heat) * 100%), var(--ember))
+        calc(var(--atmo-glow) * 9%),
+      transparent 70%
+    );
+  opacity: calc(var(--atmo-glow) * 0.85);
+  /* No transition. The glow is already eased by its own decay in `vfx/atmosphere.ts`, and a
+     CSS transition on top would smear an impact into a swell. */
+}
+
+/* The room closing in. Dims the ambient haze rather than the arena: the fight stays exactly
+   as readable while the walls go darker around it. */
+.screen-battle::before {
+  opacity: var(--atmo-dim);
+  transition: opacity 900ms linear;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The warm flash stays -- it is light, not movement, and removing it would take away
+     information rather than motion. Only the slow dim transition is dropped. */
+  .screen-battle::before {
+    transition: none;
+  }
+}
+
 /* Reduced motion: the room keeps its dirt and loses its weather. Grain and sheen are
    texture and stay; the drifts are movement and stop. */
 @media (prefers-reduced-motion: reduce) {

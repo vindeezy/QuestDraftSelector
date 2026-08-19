@@ -49,6 +49,7 @@ import {
 } from './part-sprites';
 import { OIL_CARRY_TICKS, createTrackField, trackAlpha } from './vfx/tracks';
 import { createWaveField, waveAlpha, waveRadius, waveWidth } from './vfx/waves';
+import { CALM, absorb, closingIn, fade, type Atmosphere } from './vfx/atmosphere';
 import { tileIndexAt } from '../sim/arena/tiles';
 import {
   HAZARD_JET_EVERY,
@@ -387,6 +388,16 @@ export interface ArenaRenderer {
   destroy(): void;
 }
 
+/**
+ * Told once a frame how much the fight is lighting the room, so the PAGE around the arena can
+ * react — see `vfx/atmosphere.ts`.
+ *
+ * A callback rather than the renderer reaching out and styling the document: the renderer owns
+ * a canvas and should not know that a page exists, and the shell can then decide what "warm"
+ * means in its own language.
+ */
+export type AtmosphereListener = (atmosphere: Atmosphere & { dim: number }) => void;
+
 /** Linear blend between two 0xRRGGBB colors, t in [0, 1]. */
 function lerpColor(from: number, to: number, t: number): number {
   const fr = (from >> 16) & 0xff;
@@ -420,6 +431,7 @@ export async function createArenaRenderer(
   personalityTags: Map<string, string> = new Map(),
   botVisuals?: readonly ArenaBotVisual[],
   builds?: readonly BotBuild[],
+  onAtmosphere?: AtmosphereListener,
 ): Promise<ArenaRenderer> {
   // Awaited before anything is built, and this is load-bearing rather than tidy.
   //
@@ -798,6 +810,12 @@ export async function createArenaRenderer(
 
   /** Current shake energy, 0-1, decaying every frame. */
   let shake = 0;
+
+  /** How much the fight is lighting the room outside the arena, and how many bots it started
+   *  with — the second is fixed for the match's life and is what "closing in" is measured
+   *  against. */
+  let atmosphere: Atmosphere = CALM;
+  const startedWith = match.bots.length;
 
   /** The final-blow camera, or null for the plain view. See `vfx/final-blow.ts`. */
   let camera: { x: number; y: number; scale: number } | null = null;
@@ -1338,6 +1356,11 @@ export async function createArenaRenderer(
       if (!calm && visual.shake > shake) shake = Math.min(visual.shake, SHAKE_CEILING);
     }
 
+    // The same frame's events, folded into how much they light the page. Read from the whole
+    // accumulated bus for the same reason everything else here is: at more than one tick per
+    // frame, `match.effects` holds only the last tick's events.
+    atmosphere = absorb(atmosphere, effects);
+
     field.advance(FRAME_SECONDS);
 
     // Two passes over the wave pool: age it, then draw whatever survived. Cleared and rebuilt
@@ -1362,6 +1385,10 @@ export async function createArenaRenderer(
       burn[i] = Math.max(0, burn[i]! - 1);
     }
     shake = Math.max(0, shake - FRAME_SECONDS / SHAKE_SECONDS);
+
+    // The room fades here with everything else that decays per frame; it is REPORTED from
+    // `draw`, which is the only place that holds the match and can count who is still alive.
+    atmosphere = fade(atmosphere, FRAME_SECONDS);
 
     // Offset the whole arena, kill feed excluded. Rounded to whole pixels: a sub-pixel offset
     // on a canvas this size blurs every edge instead of reading as a jolt.
@@ -1416,6 +1443,16 @@ export async function createArenaRenderer(
     // look the same on a replay as it did live, and frames are not guaranteed to line up
     // one-for-one with simulation steps.
     consume(effects, current.world.tick);
+
+    // Tell the page how much the fight is lighting it. After `consume`, so this frame's
+    // events are already folded in, and cheap enough to do unconditionally -- the shell
+    // decides whether anything changes.
+    if (onAtmosphere) {
+      let living = 0;
+      for (const bot of current.bots) if (bot.alive) living += 1;
+      onAtmosphere({ ...atmosphere, dim: closingIn(living, startedWith) });
+    }
+
     flashLayer.clear();
     drawFloor(current);
     dynamic.clear();

@@ -238,6 +238,11 @@ export function battleScreen(beat: BeatId): Screen {
 
       /** Fractional ticks carried between frames, so speeds below 1x advance the simulation
        *  on some frames and not others while rendering stays at full rate. */
+      /** Last values pushed to CSS, so an unchanged frame writes nothing. */
+      let lastGlow = '';
+      let lastHeat = '';
+      let lastDim = '';
+
       let tickDebt = 0;
       /** When the match ended, in wall-clock ms — the outro is timed off this, since there
        *  are no ticks left to count once the fight is over. */
@@ -270,6 +275,31 @@ export function battleScreen(beat: BeatId): Screen {
           new Map(),
           memberBallVisuals(members),
           event.builds,
+          // The venue reacting to the fight. Two custom properties on the screen root, which
+          // the CSS turns into warmth on the walls -- see `vfx/atmosphere.ts` for what the
+          // numbers mean and `shell.css` for what the room does with them.
+          //
+          // Written only when a value actually changes at two decimal places. A custom
+          // property write invalidates style for the subtree, and doing that 60 times a
+          // second for a number that has not moved is the kind of cost that does not show up
+          // until it is on a laptop in somebody's front room.
+          (atmosphere) => {
+            const glow = atmosphere.glow.toFixed(2);
+            const heat = atmosphere.heat.toFixed(2);
+            const dim = atmosphere.dim.toFixed(2);
+            if (glow !== lastGlow) {
+              root.style.setProperty('--atmo-glow', glow);
+              lastGlow = glow;
+            }
+            if (heat !== lastHeat) {
+              root.style.setProperty('--atmo-heat', heat);
+              lastHeat = heat;
+            }
+            if (dim !== lastDim) {
+              root.style.setProperty('--atmo-dim', dim);
+              lastDim = dim;
+            }
+          },
         ).then(
           (created) => {
             if (unmounted) created.destroy();
