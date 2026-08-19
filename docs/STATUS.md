@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-17
+Last updated: 2026-08-18
 
 **Deadline: end of August 2026.** The league needs a working draft-order experience.
 
@@ -20,7 +20,7 @@ Last updated: 2026-08-17
 | **Arena 1 — The Grinder** | **Done and locked.** Built to spec, measured, balanced. |
 | **Arenas 2 and 3** | The Gauntlet and The Crossfire. Playable and recorded against; not rebuilt to spec. |
 | Website | **Done end to end.** Landing through Forge, build reveal, three battles, scoreboards, draft order. |
-| Official event | **Recorded and deployed.** Seed `43000236`, checksum `35d2876d`. Re-recorded twice for roster colour edits — six members on 17 August, then Tommy on 18 August (`#1C1F26` to `#3A352E`, so his chassis sprite is visible). The checksum folds in each member's id, name and colour by design, so a roster edit moves it. Both times the draft order, every point total, all three battle lengths and the tiebreak count were verified identical: on the second the entire `--seed` report differed by exactly one line, the checksum itself, and the saved record by three — colour, checksum, timestamp. |
+| Official event | **Recorded and deployed**, live at https://vindeezy.github.io/QuestDraftSelector/ as of 18 August. Seed `43000236`, checksum `35d2876d`. Re-recorded twice for roster colour edits — six members on 17 August, then Tommy on 18 August (`#1C1F26` to `#3A352E`, so his chassis sprite is visible). The checksum folds in each member's id, name and colour by design, so a roster edit moves it. Both times the draft order, every point total, all three battle lengths and the tiebreak count were verified identical: on the second the entire `--seed` report differed by exactly one line, the checksum itself, and the saved record by three — colour, checksum, timestamp. |
 | Sound | Done. 23 synthesised voices, level-matched by measurement, mixed with per-sound and global voice caps. |
 | VFX | Done. Pooled particles, per-weapon/ability/hazard visuals, bot flash, screen shake, reduced-motion support. Smoke Screen and Shockwave have their own emitters — the latter a drawn expanding front rather than a particle ring, because it and the EMP were the same emitter in two tints. |
 | Sprites | Done. Five chassis and six weapons, generated then cropped, brightness-normalised and converted by `tools/convert-sprites.py` (12.4 MB of PNG to 471 KB of WebP for the weapons alone). Drawn on the build reveal AND in the arena; `?vectorbots` falls back to the vector machines. |

@@ -603,8 +603,18 @@ git status --short data/            # must be empty
 meant to prove unchanged — found the hard way in SND 1. And **not** a bare
 `npm run record -- 43000236`: the positional argument is a COUNT of seeds to suggest, so that
 asks for forty-three million events and never returns.
-- [ ] **Step 5: Push and watch CI.** Walk the deployed site end to end.
-- [ ] **Step 6: Commit** — `chore: remove the sound lab`
+- [x] **Step 5: Pushed and CI green.** 76 commits, run #7 on `0a587ea`, conclusion success.
+- [x] **Step 6: Committed** — `chore: remove the sound lab`.
+- [x] **Step 7: Walked the deployed site.** Checksum gate passes, no console errors, sprites
+and armour textures serve from the Pages base path (`chassis-circle` 200/152,924 bytes,
+`armour-alloy` 200/71,184 bytes), and `?sounds` lands on the walkthrough with no lab.
+
+One measurement trap worth recording, because it nearly became a false bug report:
+`performance.getEntriesByType('resource')` on the deployed page returned ZERO image entries
+while the sprites were plainly rendering on screen. The site was fine; the probe was not.
+Confirmed instead by fetching the hashed asset URLs directly, which is the check that
+actually answers "does the base path resolve in production" — the thing most likely to break
+only after deploy.
 
 ---
 
