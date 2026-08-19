@@ -5,6 +5,8 @@ import { ROSTER, toEventMembers } from '../../config/roster';
 import { nextBeat, type BeatId } from '../beats';
 import { ordinal } from '../ordinal';
 import { readableInkFor, isDarkColour } from '../colour';
+import { movementLabel, rankMovement, type RankMove } from '../rank-movement';
+import { canAnimateScreens } from '../transitions';
 import { getEventResult } from './forge';
 import type { Screen, ScreenContext } from './types';
 
@@ -291,8 +293,44 @@ function pointsCell(points: number, sub: string, extraClass = ''): string {
  * Those finishes are still shown, as the quiet line under the placement points, which is
  * how the cumulative board has always read them.
  */
-function rankCell(row: ScoreRow): string {
-  return `<td class="score-rank">${ordinal(row.rank)}</td>`;
+/**
+ * The movement badge: a drawn triangle and a number, or a bar for a member who held station.
+ *
+ * Drawn rather than typed. An arrow glyph inherits whatever the system font has decided an
+ * arrow looks like, at whatever weight, and next to tabular numerals in a table that is
+ * otherwise precise it reads as a character that wandered in. Three shapes in one 8x6 viewBox
+ * share a silhouette and a weight, so the column reads as one thing with three states.
+ *
+ * The number is the distance, not the destination — "up 4" answers what a viewer is asking at
+ * that moment, where "to 2nd" is already in the rank beside it.
+ */
+function movementBadge(move: RankMove | undefined): string {
+  if (move === undefined) return '';
+  const dir = move.delta > 0 ? 'up' : move.delta < 0 ? 'down' : 'hold';
+  const shape =
+    move.delta === 0
+      ? '<rect x="0" y="2.5" width="8" height="1" rx="0.5" />'
+      : '<path d="M4 0 8 6 0 6Z" />';
+  const distance = move.delta === 0 ? '' : String(Math.abs(move.delta));
+  return `
+    <span class="score-move score-move--${dir}">
+      <svg class="score-move__mark" viewBox="0 0 8 6" aria-hidden="true">${shape}</svg>
+      <span class="score-move__distance" aria-hidden="true">${distance}</span>
+      <span class="sr-only">${escapeHtml(movementLabel(move))}</span>
+    </span>
+  `;
+}
+
+/**
+ * The ordinal sits in its own element rather than as a bare text node in the cell.
+ *
+ * The movement badge shares this cell, so "what does the rank column say" stops being
+ * answerable from the cell's text once a badge is in it — the cell reads "1st 5 up 5 places
+ * to 1", which is right for a screen reader and useless for anything asking about ranks.
+ * A named element keeps that question answerable.
+ */
+function rankCell(row: ScoreRow, move?: RankMove): string {
+  return `<td class="score-rank"><span class="score-rank__value">${ordinal(row.rank)}</span>${movementBadge(move)}</td>`;
 }
 
 function totalCell(row: ScoreRow): string {
@@ -349,6 +387,7 @@ export function renderCumulativeTable(
   rows: readonly ScoreRow[],
   claimedMemberId: string | null,
   hideRows = false,
+  moves: ReadonlyMap<string, RankMove> = new Map(),
 ): string {
   const battleCount = rows[0]?.cells.length ?? 0;
 
@@ -375,8 +414,8 @@ export function renderCumulativeTable(
         )
         .join('');
       return `
-        <tr class="score-row${isYou ? ' is-you' : ''}${hideRows ? ' is-hidden' : ''}" data-row="${index}">
-          ${rankCell(row)}
+        <tr class="score-row${isYou ? ' is-you' : ''}${hideRows ? ' is-hidden' : ''}" data-row="${index}" data-member="${escapeHtml(row.memberId)}">
+          ${rankCell(row, moves.get(row.memberId))}
           ${memberCell(row, isYou)}
           ${cells}
           ${totalCell(row)}
@@ -401,6 +440,58 @@ export function renderCumulativeTable(
   `;
 }
 
+/**
+ * Slides each row from the position it held on the previous board to the one it holds now.
+ *
+ * FLIP, and specifically the invert half of it: the table is rendered ONCE, in its correct
+ * final order, then each moved row is offset backwards to where it used to be and released.
+ * Rendering the old order first and re-sorting would work too and is worse — it puts a wrong
+ * board on screen, and any frame where the standings are wrong is a frame somebody can read.
+ *
+ * Offsets come from the rows' own measured positions rather than a row-height constant,
+ * because a tie note makes a row taller and a constant would drift every row below it.
+ *
+ * The badges are held back until the movement has almost finished (see `--settle` in the CSS).
+ * Motion first, number second: the eye follows the row that is moving and then reads what it
+ * did, where showing both at once makes the viewer choose.
+ */
+function playRankMovement(root: HTMLElement, moves: ReadonlyMap<string, RankMove>): void {
+  // Reduced motion keeps the badges and drops the travel. The board still says who climbed;
+  // it just stops being a thing that slides.
+  if (moves.size === 0 || !canAnimateScreens()) return;
+
+  const rows = [...root.querySelectorAll<HTMLElement>('tr.score-row[data-member]')];
+  if (rows.length === 0) return;
+
+  const tops = rows.map((row) => row.offsetTop);
+  const moved: { row: HTMLElement; dy: number }[] = [];
+
+  for (const row of rows) {
+    const move = moves.get(row.dataset.member ?? '');
+    if (move === undefined || move.delta === 0) continue;
+    const from = tops[move.from - 1];
+    const to = tops[move.to - 1];
+    if (from === undefined || to === undefined) continue;
+    moved.push({ row, dy: from - to });
+  }
+
+  if (moved.length === 0) return;
+
+  for (const { row, dy } of moved) {
+    row.style.transform = `translateY(${dy}px)`;
+  }
+
+  // Two frames, not one. A single rAF can still land inside the same style recalculation as
+  // the writes above, and the browser then interpolates from the final value to itself --
+  // which is a board that simply appears sorted, exactly the thing this replaces.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      root.classList.add('is-shuffling');
+      for (const { row } of moved) row.style.transform = '';
+    });
+  });
+}
+
 export function scoreboardScreen(beat: BeatId): Screen {
   const config = scoreboardConfigFor(beat);
   if (config === null) throw new Error(`scoreboardScreen: "${beat}" is not a scoreboard beat.`);
@@ -410,6 +501,15 @@ export function scoreboardScreen(beat: BeatId): Screen {
       const result = getEventResult(ctx.seed, toEventMembers());
       const rows = scoreboardRows(result, config);
       const copy = scoreboardCopy(beat, config);
+
+      // Movement is only meaningful on a cumulative board that HAS a previous one. After
+      // battle one everybody starts level, every delta reads zero, and a column of zeroes
+      // teaches a viewer to ignore the column right before the next board needs them to read
+      // it. The battle-only boards show one battle's points and have no standing to move.
+      const moves =
+        config.mode === 'cumulative' && config.battleIndex > 0
+          ? rankMovement(rows, scoreboardRows(result, { ...config, battleIndex: config.battleIndex - 1 }))
+          : new Map<string, RankMove>();
 
       const root = document.createElement('section');
       root.className = `screen screen-scoreboard screen-scoreboard--${config.mode}`;
@@ -421,7 +521,7 @@ export function scoreboardScreen(beat: BeatId): Screen {
         <div class="score-table-wrap">
           ${config.mode === 'battle'
             ? renderBattleTable(rows, ctx.state.claimedMemberId)
-            : renderCumulativeTable(rows, ctx.state.claimedMemberId)}
+            : renderCumulativeTable(rows, ctx.state.claimedMemberId, false, moves)}
         </div>
         <footer class="score-footer">
           <button type="button" class="btn btn-primary btn-large" data-role="continue">
@@ -435,6 +535,10 @@ export function scoreboardScreen(beat: BeatId): Screen {
       });
 
       ctx.container.appendChild(root);
+
+      // After append: the rows need real measured positions, which they do not have while
+      // the section is still detached.
+      playRankMovement(root, moves);
     },
   };
 }

@@ -1983,6 +1983,68 @@ button {
     0 0 60px rgb(76 224 255 / 0.14);
 }
 
+/* --- Standings movement (the board after battle two) --------------------------------------
+   The one screen whose meaning is a CHANGE rather than a state. Rows slide from where they
+   stood on the previous board to where they stand now, and each carries a badge saying how
+   far it travelled. See `playRankMovement` in `screens/scoreboard.ts` for why the table is
+   rendered once in its final order and inverted, rather than sorted on screen. */
+
+/* Only while the shuffle is running. A permanent transition on `transform` would also catch
+   the row's hover and highlight states, which want to be immediate. */
+.screen-scoreboard.is-shuffling .score-row {
+  transition: transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.score-move {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  vertical-align: 0.06em;
+
+  /* Held back until the travel has nearly finished: the eye follows the row that is moving,
+     then reads what it did. Both at once makes the viewer choose. `backwards` so the badge is
+     invisible from the first frame rather than flashing before the delay starts. */
+  animation: move-settles 260ms ease 420ms backwards;
+}
+
+@keyframes move-settles {
+  from {
+    opacity: 0.001;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.score-move__mark {
+  width: 8px;
+  height: 6px;
+  fill: currentColor;
+}
+
+/* Cyan for a climb, matching the accent that means "good" everywhere else on the site; the
+   danger red for a fall. Holding is deliberately quiet -- it is the absence of news, and a
+   third bright colour would give it a weight it has not earned. */
+.score-move--up {
+  color: var(--neon-cyan);
+}
+
+.score-move--down {
+  color: var(--danger);
+}
+
+.score-move--down .score-move__mark {
+  transform: rotate(180deg);
+}
+
+.score-move--hold {
+  color: var(--ink-faint);
+}
+
 /* The running "Nth pick — Name" line. Fixed height so the board never shifts when the
    text changes length mid-reveal. */
 .draft-caption {
@@ -2034,6 +2096,18 @@ button {
 
 .score-footer .is-hidden {
   display: none;
+}
+
+/* Reduced motion keeps the meaning and drops the travel: the badges still say who climbed
+   and by how much, they simply stop waiting for a slide that is no longer happening. */
+@media (prefers-reduced-motion: reduce) {
+  .screen-scoreboard.is-shuffling .score-row {
+    transition: none;
+  }
+
+  .score-move {
+    animation: none;
+  }
 }
 
 /* The reveal is long enough that a reduced-motion viewer should still get the result,

@@ -302,6 +302,46 @@ describe('scoreboardScreen', () => {
     expect(headers).toEqual(['Rank', 'Member', 'Placement points', 'Kill points', 'Total']);
   });
 
+  it('shows how far each member moved, but only on the board that has a previous one', () => {
+    // The whole point of the movement badges. After ONE battle everybody started level, so
+    // every delta would read zero — and a column of zeroes teaches a viewer to ignore the
+    // column immediately before the next board needs them to read it.
+    const first = makeContext(null);
+    scoreboardScreen('standings-1').render(first);
+    expect(first.container.querySelectorAll('.score-move')).toHaveLength(0);
+
+    const second = makeContext(null);
+    scoreboardScreen('standings-2').render(second);
+    expect(second.container.querySelectorAll('.score-move')).toHaveLength(ROSTER.length);
+  });
+
+  it('conserves movement — every climb is matched by somebody falling', () => {
+    // On a fixed roster the deltas must sum to zero. If they ever do not, the board was
+    // built from two different rosters and is quietly lying about who overtook whom.
+    const ctx = makeContext(null);
+    scoreboardScreen('standings-2').render(ctx);
+
+    const deltas = [...ctx.container.querySelectorAll('.score-move')].map((el) => {
+      const distance = Number(el.querySelector('.score-move__distance')!.textContent!.trim() || '0');
+      return el.classList.contains('score-move--down') ? -distance : distance;
+    });
+
+    expect(deltas).toHaveLength(ROSTER.length);
+    expect(deltas.reduce((sum, d) => sum + d, 0)).toBe(0);
+    // And it is a real reshuffle rather than a board where nothing happened.
+    expect(deltas.some((d) => d !== 0)).toBe(true);
+  });
+
+  it('says the movement out loud for anyone who cannot see the arrow', () => {
+    const ctx = makeContext(null);
+    scoreboardScreen('standings-2').render(ctx);
+    const spoken = [...ctx.container.querySelectorAll('.score-move .sr-only')].map((el) =>
+      el.textContent!.trim(),
+    );
+    expect(spoken).toHaveLength(ROSTER.length);
+    expect(spoken.every((text) => /^(up|down) \d+ places? to \d+$|^holds \d+$/.test(text))).toBe(true);
+  });
+
   it('counts the rank column 1st through 10th in order on BOTH board shapes', () => {
     // The rank reads off the total, never off a finishing place — so it stays in order
     // even on a battle board where kills have reshuffled the scoring away from the
@@ -309,7 +349,12 @@ describe('scoreboardScreen', () => {
     for (const beat of ['standings-1', 'standings-2', 'battle-2-result', 'battle-3-result'] as BeatId[]) {
       const ctx = makeContext(null);
       scoreboardScreen(beat).render(ctx);
-      const ranks = [...ctx.container.querySelectorAll('.score-rank')].map((el) => el.textContent!.trim());
+      // `.score-rank__value`, not `.score-rank`: the cell also carries the movement badge and
+      // its screen-reader sentence on the board that has one, so the cell's own text is
+      // "1st up 5 places to 1" there. The ordinal has its own element for exactly this.
+      const ranks = [...ctx.container.querySelectorAll('.score-rank__value')].map((el) =>
+        el.textContent!.trim(),
+      );
       expect(ranks, beat).toEqual(['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th']);
     }
   });
