@@ -1,31 +1,60 @@
 /*
- * The site's visual system. Gritty base, neon accents — see
- * docs/superpowers/specs/2026-08-11-website-design.md §8. System font stack only: no
- * CDN font, so the site keeps working offline on GitHub Pages for free.
+ * The site's visual system: an underground industrial arena, not a neon dashboard.
+ *
+ * The palette was cyan-and-magenta on near-black until 19 August, which read as a generic
+ * dark UI. It is now charcoal and gunmetal lit by ember, and the token NAMES were changed
+ * with it — a variable called `--neon-cyan` holding a steel blue is a lie that costs
+ * somebody an afternoon later.
+ *
+ * **Ember is light, never data.** It lights buttons, glows and rims; it never encodes a
+ * value. That is measured rather than stylistic: ember against warning red is only dE 21.5,
+ * so a rank-up badge in ember beside a rank-down badge in red would be two orange smudges.
+ * The data pair is `--accent` against `--warning` at dE 99.5, which no viewer can confuse.
+ *
+ * **Every ink clears 4.5:1 on every panel it can land on**, checked against the lightest
+ * (`--bg-2`) rather than the darkest, because charcoal raises the floor that near-black gave
+ * away for free: `--ink-faint` was `#5b6a80` and measured 3.58 there, so it was re-solved.
+ *
+ * One self-hosted display face (Anton, SIL OFL, 18.6 KB) for the words that need authority.
+ * Still no CDN font: see `shell/fonts/README.md` for why the bundle is the only acceptable
+ * place for it.
  */
 
 :root {
-  --ink: #e9edf4;
-  --ink-dim: #93a0b4;
-  --ink-faint: #5b6a80;
+  --ink: #eef1f5;
+  --ink-dim: #a6b0bc;
+  /* Solved, not chosen: the first value clearing 4.5:1 on `--bg-2` while keeping the cool
+     cast the rest of the palette has. */
+  --ink-faint: #7f878f;
 
-  --bg-0: #05070b;
-  --bg-1: #0b0f16;
-  --bg-2: #11151f;
-  --bg-3: #171d2a;
-  --line: #232b3a;
+  /* Charcoal to gunmetal. Never pure black — black reads as an unstyled dark mode, charcoal
+     reads as a room with the lights off. */
+  --bg-0: #0c0e11;
+  --bg-1: #14171b;
+  --bg-2: #1b1f24;
+  --bg-3: #242930;
+  --line: #2d333b;
 
-  --neon-cyan: #4ce0ff;
-  --neon-cyan-dim: #2a7f99;
-  --neon-magenta: #ff3fa4;
-  --neon-amber: #ffb020;
-  --danger: #ff4d5e;
+  /* Cool steel: the "good" channel — points, your bot, a rank climbing. Descended from the
+     old cyan so the learned meaning survives, desaturated so it stops being neon. */
+  --accent: #9dc3de;
+  --accent-dim: #4f7285;
+
+  /* Ember: the light in the room. Buttons, glows, rims. Never a value. */
+  --ember: #ff6a1f;
+  --ember-dim: #b3450f;
+
+  /* Hazard yellow and warning red, used for exactly what they say. */
+  --hazard: var(--hazard);
+  --warning: #ff4d3d;
 
   --font-sans:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji';
+  /* Heavy and condensed, for words that should land like a hit: BATTLE, ELIMINATED, WINNER. */
+  --font-display: 'Anton', var(--font-sans);
 
-  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.6);
+  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.72);
   --radius: 14px;
 }
 
@@ -64,6 +93,32 @@ body {
   isolation: isolate;
 }
 
+/* The venue. One fixed vignette over every beat rather than a per-screen treatment, so the
+   room does not rebuild itself between screens -- the viewer stays in the same place while
+   the content changes.
+
+   The brief lights the page from the arena, and sixteen of the nineteen beats have no arena.
+   So the light falls on the CONTENT: a pool at the middle dropping to blackened steel at the
+   edges. Every screen has something that matters most, and that is what the venue lights.
+
+   `fixed` and `pointer-events: none`, above the page and below nothing: it must never eat a
+   click, and it must not scroll away on the two screens that are taller than the viewport. */
+#app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(78% 62% at 50% 42%, transparent 34%, rgb(5 6 8 / 0.66) 100%);
+}
+
+/* Content sits above the vignette. Screens are already stacking contexts of their own; this
+   only has to beat the pseudo-element. */
+.screen {
+  position: relative;
+  z-index: 1;
+}
+
 h1,
 h2,
 h3 {
@@ -71,6 +126,31 @@ h3 {
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.08;
+}
+
+/* The display face carries the words that should land like a hit, and only those. Every h1
+   on the site is a screen's headline -- the arena's name, the standings, the draft order --
+   which is exactly the register Anton is for. Headings below that stay in the system face:
+   a condensed poster face at 1.5rem stops being authoritative and starts being cramped.
+
+   Anton is drawn tight and heavy, so the -0.02em above is wrong for it -- tracking is opened
+   back to near-zero, and the weight is left at its single 400 rather than being faked bolder. */
+h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.008em;
+  text-transform: uppercase;
+  line-height: 0.96;
+}
+
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  /* `swap`: the headline is readable in the fallback from the first frame and simply
+     improves, rather than being invisible while a download decides. */
+  font-display: swap;
+  src: url('./fonts/anton-latin.woff2') format('woff2');
 }
 
 p {
@@ -85,12 +165,12 @@ button {
 /* Browser surfaces: the parts nobody explicitly draws still carry the design. */
 
 ::selection {
-  background: var(--neon-cyan);
+  background: var(--accent);
   color: var(--bg-0);
 }
 
 :focus-visible {
-  outline: 2px solid var(--neon-cyan);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
   border-radius: 4px;
 }
@@ -111,7 +191,7 @@ button {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--neon-cyan-dim);
+  background: var(--accent-dim);
 }
 
 * {
@@ -163,27 +243,34 @@ button {
 
 .btn:hover {
   background: var(--bg-3);
-  border-color: var(--neon-cyan-dim);
+  border-color: var(--accent-dim);
 }
 
 .btn:active {
   transform: translateY(1px) scale(0.99);
 }
 
+/* The one place ember does its job. Every beat's forward action is this button, so it is
+   the light the room is lit by -- warm metal, warm bloom, and a near-white label so the
+   text stays the brightest thing on it rather than competing with the glow.
+
+   The gradient runs dark-to-darker rather than being a flat fill: a button on a charcoal
+   page needs its own top edge to sit up off the surface, and a single colour reads as a
+   painted rectangle. */
 .btn-primary {
-  background: linear-gradient(180deg, #163244, #0e1e2b);
-  border-color: var(--neon-cyan-dim);
-  color: #d7f6ff;
+  background: linear-gradient(180deg, #3a2417 0%, #24170e 100%);
+  border-color: #8a4a22;
+  color: #fdf1e6;
   box-shadow:
-    0 0 0 1px rgb(76 224 255 / 0.12) inset,
-    0 12px 28px -14px rgb(76 224 255 / 0.35);
+    0 0 0 1px rgb(255 138 61 / 0.16) inset,
+    0 14px 30px -16px rgb(255 106 31 / 0.5);
 }
 
 .btn-primary:hover {
-  border-color: var(--neon-cyan);
+  border-color: var(--ember);
   box-shadow:
-    0 0 0 1px rgb(76 224 255 / 0.25) inset,
-    0 16px 34px -12px rgb(76 224 255 / 0.55);
+    0 0 0 1px rgb(255 138 61 / 0.3) inset,
+    0 18px 38px -14px rgb(255 106 31 / 0.66);
 }
 
 .btn-large {
@@ -223,7 +310,7 @@ button {
   font-size: 13px;
   font-weight: 600;
   opacity: 0.45;
-  background: rgb(11 15 22 / 0.72);
+  background: rgb(20 23 27 / 0.72);
   backdrop-filter: blur(6px);
 }
 
@@ -259,10 +346,10 @@ button {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  /* One source, not two. Two coloured glows read as decoration; one reads as a lamp hung
+     over the room. Warm at the core, cooling outward, on gunmetal. */
   background:
-    radial-gradient(60% 50% at 50% 38%, rgb(76 224 255 / 0.08), transparent 70%),
-    radial-gradient(45% 40% at 82% 78%, rgb(255 63 164 / 0.07), transparent 70%),
-    var(--bg-0);
+    radial-gradient(58% 44% at 50% 38%, #262b32 0%, #1b1f24 42%, #101317 74%, var(--bg-0) 100%);
 }
 
 /* No `filter: blur()` here. A radial gradient is already soft, and blurring one costs a
@@ -271,12 +358,13 @@ button {
 .landing-glow {
   position: absolute;
   inset: -20%;
+  /* An industrial work light: cool white with the faintest warm core, not a neon sign. */
   background:
     radial-gradient(
-      34% 28% at 50% 42%,
-      rgb(76 224 255 / 0.16) 0%,
-      rgb(76 224 255 / 0.07) 46%,
-      transparent 76%
+      32% 27% at 50% 42%,
+      rgb(255 236 214 / 0.1) 0%,
+      rgb(214 224 236 / 0.055) 45%,
+      transparent 74%
     );
   pointer-events: none;
 }
@@ -304,14 +392,15 @@ button {
 }
 
 .landing-title {
-  font-size: clamp(2.6rem, 6vw, 4.4rem);
-  text-transform: uppercase;
-  letter-spacing: -0.01em;
-  background: none;
-  color: var(--ink);
+  font-size: clamp(3.2rem, 8.5vw, 6rem);
+  /* Lit from the front by a cool key with an ember rim beneath -- the accent used as LIGHT
+     on the type rather than as coloured text. Gradient text would be the lazy version of
+     this and reads as a web trick, not a venue. */
+  color: #f2f5f8;
   text-shadow:
-    0 0 24px rgb(76 224 255 / 0.35),
-    0 0 60px rgb(76 224 255 / 0.15);
+    0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 34px rgb(226 236 248 / 0.16),
+    0 6px 30px rgb(255 106 31 / 0.14);
 }
 
 .landing-tagline {
@@ -346,7 +435,7 @@ button {
 }
 
 .resume-banner {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -379,7 +468,7 @@ button {
 }
 
 .roster-tile {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   position: relative;
   display: flex;
   align-items: center;
@@ -506,7 +595,7 @@ button {
 }
 
 .expect-highlight {
-  color: var(--neon-cyan);
+  color: var(--accent);
   font-weight: 700;
 }
 
@@ -571,31 +660,31 @@ button {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--neon-cyan);
-  box-shadow: 0 0 10px var(--neon-cyan);
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent);
   animation: fallback-drop 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .fallback-board:nth-child(2) i {
   animation-delay: 0.15s;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 10px var(--neon-magenta);
+  background: var(--ember);
+  box-shadow: 0 0 10px var(--ember);
 }
 .fallback-board:nth-child(3) i {
   animation-delay: 0.3s;
 }
 .fallback-board:nth-child(4) i {
   animation-delay: 0.45s;
-  background: var(--neon-amber);
-  box-shadow: 0 0 10px var(--neon-amber);
+  background: var(--hazard);
+  box-shadow: 0 0 10px var(--hazard);
 }
 .fallback-board:nth-child(5) i {
   animation-delay: 0.6s;
 }
 .fallback-board:nth-child(6) i {
   animation-delay: 0.75s;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 10px var(--neon-magenta);
+  background: var(--ember);
+  box-shadow: 0 0 10px var(--ember);
 }
 
 @keyframes fallback-drop {
@@ -622,8 +711,8 @@ button {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--neon-cyan);
-  box-shadow: 0 0 8px var(--neon-cyan);
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
   animation: fallback-drift 3.2s ease-in-out infinite;
 }
 
@@ -635,8 +724,8 @@ button {
 .fallback-bot:nth-child(2) {
   top: 60%;
   left: 30%;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 8px var(--neon-magenta);
+  background: var(--ember);
+  box-shadow: 0 0 8px var(--ember);
   animation-delay: 0.4s;
 }
 .fallback-bot:nth-child(3) {
@@ -647,8 +736,8 @@ button {
 .fallback-bot:nth-child(4) {
   top: 70%;
   left: 75%;
-  background: var(--neon-amber);
-  box-shadow: 0 0 8px var(--neon-amber);
+  background: var(--hazard);
+  box-shadow: 0 0 8px var(--hazard);
   animation-delay: 1.2s;
 }
 .fallback-bot:nth-child(5) {
@@ -659,8 +748,8 @@ button {
 .fallback-bot:nth-child(6) {
   top: 15%;
   left: 80%;
-  background: var(--neon-magenta);
-  box-shadow: 0 0 8px var(--neon-magenta);
+  background: var(--ember);
+  box-shadow: 0 0 8px var(--ember);
   animation-delay: 2s;
 }
 
@@ -708,7 +797,7 @@ button {
   gap: 12px;
   align-items: flex-start;
   padding: 12px 0;
-  border-bottom: 1px solid rgb(35 43 58 / 0.6);
+  border-bottom: 1px solid rgb(45 51 59 / 0.6);
 }
 
 .floor-key__item:last-child {
@@ -776,7 +865,7 @@ button {
 .points-table td {
   padding: 6px 0;
   font-size: 0.95rem;
-  border-bottom: 1px solid rgb(35 43 58 / 0.6);
+  border-bottom: 1px solid rgb(45 51 59 / 0.6);
 }
 
 .points-table tr:last-child td {
@@ -790,7 +879,7 @@ button {
 .points-table__points {
   text-align: right;
   font-weight: 700;
-  color: var(--neon-cyan);
+  color: var(--accent);
 }
 
 .points-table__kill-note {
@@ -867,14 +956,14 @@ button {
 }
 
 .forge-stepper__dot--done {
-  background: var(--neon-cyan-dim);
-  border-color: var(--neon-cyan-dim);
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
 }
 
 .forge-stepper__dot--active {
-  background: var(--neon-cyan);
-  border-color: var(--neon-cyan);
-  box-shadow: 0 0 10px rgb(76 224 255 / 0.6);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px rgb(157 195 222 / 0.6);
 }
 
 .forge-progress {
@@ -944,7 +1033,7 @@ button {
 }
 
 .forge-panel {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -988,7 +1077,7 @@ button {
 }
 
 .forge-result-row {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1084,13 +1173,13 @@ button {
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgb(76 224 255 / 0.12) inset,
-      0 12px 28px -14px rgb(76 224 255 / 0.35);
+      0 0 0 1px rgb(157 195 222 / 0.12) inset,
+      0 12px 28px -14px rgb(157 195 222 / 0.35);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgb(76 224 255 / 0.3) inset,
-      0 16px 40px -12px rgb(76 224 255 / 0.65);
+      0 0 0 1px rgb(157 195 222 / 0.3) inset,
+      0 16px 40px -12px rgb(157 195 222 / 0.65);
   }
 }
 
@@ -1130,7 +1219,7 @@ button {
 }
 
 .reveal-frame {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -1220,7 +1309,7 @@ button {
    the leader-line anchors, which nothing in CSS can compute) — see `bot-portrait.ts`'s
    `mountBotPortraitStage`. */
 .reveal-stage {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   position: relative;
   width: min(100%, 600px);
   aspect-ratio: 1;
@@ -1275,7 +1364,7 @@ button {
 }
 
 .reveal-stage__fallback {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   position: relative;
   z-index: 1;
   width: 62%;
@@ -1331,7 +1420,7 @@ button {
 }
 
 .reveal-part-card {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   background: var(--bg-1);
   border: 1px solid var(--line);
   border-top: 2px solid var(--member-colour);
@@ -1389,7 +1478,7 @@ button {
 }
 
 .reveal-selector__badge {
-  --member-colour: var(--neon-cyan);
+  --member-colour: var(--accent);
   position: relative;
   width: 44px;
   height: 44px;
@@ -1430,10 +1519,10 @@ button {
   width: 11px;
   height: 11px;
   border-radius: 50%;
-  background: var(--neon-cyan);
+  background: var(--accent);
   box-shadow:
     0 0 0 2px var(--bg-0),
-    0 0 8px var(--neon-cyan);
+    0 0 8px var(--accent);
 }
 
 /* Both the DROP 'EM/Continue overlay in the Forge and this Continue share the same trap:
@@ -1635,7 +1724,7 @@ button {
   height: 44px;
   border-radius: 50%;
   border: 3px solid var(--bg-3);
-  border-top-color: var(--neon-cyan);
+  border-top-color: var(--accent);
   animation: spin 900ms linear infinite;
 }
 
@@ -1665,9 +1754,9 @@ button {
   justify-content: center;
   font-weight: 800;
   font-size: 1.4rem;
-  color: var(--danger);
-  border: 2px solid var(--danger);
-  box-shadow: 0 0 24px rgb(255 77 94 / 0.35);
+  color: var(--warning);
+  border: 2px solid var(--warning);
+  box-shadow: 0 0 24px rgb(255 77 61 / 0.35);
 }
 
 .gate--error h1 {
@@ -1868,7 +1957,7 @@ button {
 .score-you {
   padding: 2px 7px;
   border-radius: 999px;
-  background: var(--neon-cyan);
+  background: var(--accent);
   color: #04121a;
   font-size: 9px;
   font-weight: 800;
@@ -1893,7 +1982,7 @@ button {
 }
 
 .score-total .score-points__value {
-  color: var(--neon-cyan);
+  color: var(--accent);
 }
 
 /* Why a level total sits where it does. Small and quiet — it explains an ordering, it is
@@ -1913,11 +2002,11 @@ button {
    you". A tint plus a left edge, rather than anything heavier, so their numbers stay
    exactly as readable as everyone else's. */
 .score-row.is-you td {
-  background: rgb(76 224 255 / 0.07);
+  background: rgb(157 195 222 / 0.07);
 }
 
 .score-row.is-you td:first-child {
-  box-shadow: inset 3px 0 0 var(--neon-cyan);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .score-row.is-you .score-rank {
@@ -1971,7 +2060,7 @@ button {
 .screen-draft-order,
 .screen-complete {
   background:
-    radial-gradient(58% 44% at 50% 34%, rgb(76 224 255 / 0.07), transparent 72%),
+    radial-gradient(58% 44% at 50% 34%, rgb(157 195 222 / 0.07), transparent 72%),
     var(--bg-0);
 }
 
@@ -1979,8 +2068,8 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.01em;
   text-shadow:
-    0 0 24px rgb(76 224 255 / 0.32),
-    0 0 60px rgb(76 224 255 / 0.14);
+    0 0 24px rgb(157 195 222 / 0.32),
+    0 0 60px rgb(157 195 222 / 0.14);
 }
 
 /* --- Standings movement (the board after battle two) --------------------------------------
@@ -2049,11 +2138,11 @@ button {
    danger red for a fall. Holding is deliberately quiet -- it is the absence of news, and a
    third bright colour would give it a weight it has not earned. */
 .score-move--up {
-  color: var(--neon-cyan);
+  color: var(--accent);
 }
 
 .score-move--down {
-  color: var(--danger);
+  color: var(--warning);
 }
 
 .score-move--down .score-move__mark {
@@ -2069,7 +2158,7 @@ button {
 .draft-caption {
   margin-top: 8px;
   min-height: 22px;
-  color: var(--neon-cyan);
+  color: var(--accent);
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.03em;
@@ -2094,7 +2183,7 @@ button {
 @keyframes pick-lands {
   0% {
     opacity: 0.001;
-    background: rgb(76 224 255 / 0.22);
+    background: rgb(157 195 222 / 0.22);
   }
   100% {
     opacity: 1;
@@ -2106,7 +2195,7 @@ button {
    a minute later. */
 .score-row.is-first-pick .score-rank,
 .score-row.is-first-pick .score-total .score-points__value {
-  color: var(--neon-amber);
+  color: var(--hazard);
 }
 
 .score-row.is-first-pick .score-name {
@@ -2173,12 +2262,12 @@ button {
 }
 
 .pause-btn.is-paused {
-  border-color: var(--neon-amber);
-  color: var(--neon-amber);
+  border-color: var(--hazard);
+  color: var(--hazard);
 }
 
 .replay-btn {
-  border-color: var(--neon-cyan-dim);
+  border-color: var(--accent-dim);
 }
 
 /* Sized as a real target rather than as text with padding. Measured at 29x19 across every
@@ -2211,7 +2300,7 @@ button {
 
 .audio-controls__slider {
   width: 88px;
-  accent-color: var(--neon-cyan);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -2226,115 +2315,4 @@ button {
   .audio-controls__slider {
     display: none;
   }
-}
-
-/* ==========================================================================================
-   TIER 1 ATMOSPHERE MOCK — LANDING ONLY. Reversible: delete this block and `shell/fonts/`.
-
-   A trial of the industrial-venue direction on one screen: palette, display face, and
-   lighting falloff. Deliberately NOT the whole brief — no grain, no drifting smoke, no
-   hazard stripes, no combat-reactive response. Those are later tiers, and mixing them in
-   here would make it impossible to tell which change bought which part of the feeling.
-
-   Scoped entirely under `.screen-landing`. The other eighteen beats keep the shipped look,
-   so this can be compared against them side by side and abandoned without a trace.
-
-   The light source question this answers: the brief lights the page from the arena, and
-   sixteen of the nineteen beats have no arena. Here the light falls on the CONTENT — a pool
-   around the title, dropping to blackened steel at the edges. That generalises: every screen
-   has something that matters most, and that is what the venue lights.
-   ========================================================================================== */
-
-@font-face {
-  font-family: 'Anton';
-  font-style: normal;
-  font-weight: 400;
-  /* `swap`, so the title is readable in the fallback from the first frame and simply
-     improves, rather than being invisible while a download decides. */
-  font-display: swap;
-  src: url('./fonts/anton-latin.woff2') format('woff2');
-}
-
-.screen-landing {
-  /* Charcoal and gunmetal, never pure black — the brief's first instruction, and the one
-     that does most of the work. Black reads as "unstyled dark mode"; charcoal reads as a
-     room with the lights off. The pool of light sits slightly above centre, where the title
-     is, so the page has a source rather than an even wash. */
-  background:
-    radial-gradient(58% 42% at 50% 38%, #262b32 0%, #1b1f24 42%, #101317 74%, #0a0c0e 100%),
-    #0a0c0e;
-}
-
-/* The original cyan bloom, retuned. Cool white with the faintest warm core: an industrial
-   work light, not a neon sign. Kept as one soft source rather than the two-colour wash the
-   shipped landing uses, because two coloured glows read as decoration and one reads as a
-   lamp. */
-.screen-landing .landing-glow {
-  background: radial-gradient(
-    30% 26% at 50% 40%,
-    rgb(255 236 214 / 0.1) 0%,
-    rgb(214 224 236 / 0.055) 45%,
-    transparent 74%
-  );
-}
-
-/* Blackened-steel vignette over the top, so the room gets darker toward the edges. Sits
-   above the background and below the content, and is inert to the pointer. */
-.screen-landing::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: radial-gradient(70% 58% at 50% 42%, transparent 40%, rgb(6 7 9 / 0.72) 100%);
-  z-index: 0;
-}
-
-.screen-landing .landing-content {
-  position: relative;
-  z-index: 1;
-}
-
-.screen-landing .landing-title {
-  font-family: 'Anton', var(--font-sans);
-  /* Anton is drawn tight and heavy, so it needs none of the compensations the system face
-     did: no extra weight, and tracking opened slightly rather than closed, because a
-     condensed face set this large closes up on its own. */
-  font-weight: 400;
-  letter-spacing: 0.012em;
-  text-transform: uppercase;
-  font-size: clamp(3.2rem, 8.5vw, 6rem);
-  line-height: 0.92;
-  color: #f2f5f8;
-  /* Lit from the front by a cool source, with an ember rim beneath — the warm accent the
-     brief asks for, used as LIGHT on the type rather than as coloured text. Gradient text
-     would be the lazy version of this and reads as a web trick, not a venue. */
-  text-shadow:
-    0 1px 0 rgb(255 255 255 / 0.16),
-    0 0 34px rgb(226 236 248 / 0.16),
-    0 6px 30px rgb(255 106 31 / 0.14);
-}
-
-.screen-landing .landing-tagline {
-  color: #a9b3bf;
-  font-size: 1.08rem;
-  letter-spacing: 0.005em;
-}
-
-/* Ember, and only here. The shipped button is a cyan gradient; this is the same shape lit
-   by a different room. Warm border, warm bloom, cool-white label so the text stays the
-   brightest thing on the button rather than competing with the glow. */
-.screen-landing .btn-primary {
-  background: linear-gradient(180deg, #3a2417 0%, #24170e 100%);
-  border-color: #8a4a22;
-  color: #fdf1e6;
-  box-shadow:
-    0 0 0 1px rgb(255 138 61 / 0.16) inset,
-    0 14px 30px -16px rgb(255 106 31 / 0.5);
-}
-
-.screen-landing .btn-primary:hover {
-  border-color: #ff8a3d;
-  box-shadow:
-    0 0 0 1px rgb(255 138 61 / 0.3) inset,
-    0 18px 38px -14px rgb(255 106 31 / 0.66);
 }

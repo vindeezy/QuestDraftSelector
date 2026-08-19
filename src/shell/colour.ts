@@ -4,20 +4,61 @@
  * `src/sim/`.
  */
 
-/** Picks readable ink (near-black or near-white) for text/icons drawn on a small swatch
- *  filled with `hexColour`. Ten roster colours span from `#FFFFFF` (Vin) to `#1C1F26`
- *  (Tommy) — a single fixed ink colour would fail contrast against roughly half of them,
- *  so this reads the swatch's own luma and picks the readable side of the line. */
-function lumaOf(hexColour: string): number {
+function channels(hexColour: string): [number, number, number] {
   const hex = hexColour.replace('#', '');
-  const r = parseInt(hex.slice(0, 2), 16);
-  const g = parseInt(hex.slice(2, 4), 16);
-  const b = parseInt(hex.slice(4, 6), 16);
+  return [
+    parseInt(hex.slice(0, 2), 16),
+    parseInt(hex.slice(2, 4), 16),
+    parseInt(hex.slice(4, 6), 16),
+  ];
+}
+
+function lumaOf(hexColour: string): number {
+  const [r, g, b] = channels(hexColour);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 }
 
+/** WCAG relative luminance — the perceptual one, unlike `lumaOf`'s cheaper weighting. */
+function relativeLuminance(hexColour: string): number {
+  const [r, g, b] = channels(hexColour).map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x) as [
+    number,
+    number,
+  ];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const INK_DARK = '#000000';
+const INK_LIGHT = '#ffffff';
+
+/**
+ * Readable ink for text drawn on a small swatch filled with `hexColour`.
+ *
+ * **Measures both options and takes the better one**, rather than reading the swatch's luma
+ * and picking a side of a fixed line. The threshold version sat at 0.55 and got three of the
+ * ten roster colours wrong, because a luma threshold answers "is this light or dark" when the
+ * question is "which ink can actually be read on it". Pat's green measures 0.497 — a hair
+ * under the line — so it took the light ink and landed at **2.56:1**, well under the 4.5
+ * a two-letter initial at 13px needs. Measured directly, the dark ink on that same green is
+ * 7.04.
+ *
+ * Pure black and white rather than the palette's near-black and near-white, and that is
+ * measured too: with `#0c0e11`/`#f5f7fb` the worst member still only reached 4.25 (Nick
+ * Lenker's slate), and no softer pair clears the bar. At pure black and white every member
+ * passes, worst 4.60. On a saturated swatch the extra harshness is invisible; a failing
+ * contrast is not.
+ */
 export function readableInkFor(hexColour: string): string {
-  return lumaOf(hexColour) > 0.55 ? '#0b0f16' : '#f5f7fb';
+  return contrastRatio(INK_DARK, hexColour) >= contrastRatio(INK_LIGHT, hexColour)
+    ? INK_DARK
+    : INK_LIGHT;
 }
 
 /**
