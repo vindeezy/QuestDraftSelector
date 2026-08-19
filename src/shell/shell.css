@@ -2227,3 +2227,114 @@ button {
     display: none;
   }
 }
+
+/* ==========================================================================================
+   TIER 1 ATMOSPHERE MOCK — LANDING ONLY. Reversible: delete this block and `shell/fonts/`.
+
+   A trial of the industrial-venue direction on one screen: palette, display face, and
+   lighting falloff. Deliberately NOT the whole brief — no grain, no drifting smoke, no
+   hazard stripes, no combat-reactive response. Those are later tiers, and mixing them in
+   here would make it impossible to tell which change bought which part of the feeling.
+
+   Scoped entirely under `.screen-landing`. The other eighteen beats keep the shipped look,
+   so this can be compared against them side by side and abandoned without a trace.
+
+   The light source question this answers: the brief lights the page from the arena, and
+   sixteen of the nineteen beats have no arena. Here the light falls on the CONTENT — a pool
+   around the title, dropping to blackened steel at the edges. That generalises: every screen
+   has something that matters most, and that is what the venue lights.
+   ========================================================================================== */
+
+@font-face {
+  font-family: 'Anton';
+  font-style: normal;
+  font-weight: 400;
+  /* `swap`, so the title is readable in the fallback from the first frame and simply
+     improves, rather than being invisible while a download decides. */
+  font-display: swap;
+  src: url('./fonts/anton-latin.woff2') format('woff2');
+}
+
+.screen-landing {
+  /* Charcoal and gunmetal, never pure black — the brief's first instruction, and the one
+     that does most of the work. Black reads as "unstyled dark mode"; charcoal reads as a
+     room with the lights off. The pool of light sits slightly above centre, where the title
+     is, so the page has a source rather than an even wash. */
+  background:
+    radial-gradient(58% 42% at 50% 38%, #262b32 0%, #1b1f24 42%, #101317 74%, #0a0c0e 100%),
+    #0a0c0e;
+}
+
+/* The original cyan bloom, retuned. Cool white with the faintest warm core: an industrial
+   work light, not a neon sign. Kept as one soft source rather than the two-colour wash the
+   shipped landing uses, because two coloured glows read as decoration and one reads as a
+   lamp. */
+.screen-landing .landing-glow {
+  background: radial-gradient(
+    30% 26% at 50% 40%,
+    rgb(255 236 214 / 0.1) 0%,
+    rgb(214 224 236 / 0.055) 45%,
+    transparent 74%
+  );
+}
+
+/* Blackened-steel vignette over the top, so the room gets darker toward the edges. Sits
+   above the background and below the content, and is inert to the pointer. */
+.screen-landing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(70% 58% at 50% 42%, transparent 40%, rgb(6 7 9 / 0.72) 100%);
+  z-index: 0;
+}
+
+.screen-landing .landing-content {
+  position: relative;
+  z-index: 1;
+}
+
+.screen-landing .landing-title {
+  font-family: 'Anton', var(--font-sans);
+  /* Anton is drawn tight and heavy, so it needs none of the compensations the system face
+     did: no extra weight, and tracking opened slightly rather than closed, because a
+     condensed face set this large closes up on its own. */
+  font-weight: 400;
+  letter-spacing: 0.012em;
+  text-transform: uppercase;
+  font-size: clamp(3.2rem, 8.5vw, 6rem);
+  line-height: 0.92;
+  color: #f2f5f8;
+  /* Lit from the front by a cool source, with an ember rim beneath — the warm accent the
+     brief asks for, used as LIGHT on the type rather than as coloured text. Gradient text
+     would be the lazy version of this and reads as a web trick, not a venue. */
+  text-shadow:
+    0 1px 0 rgb(255 255 255 / 0.16),
+    0 0 34px rgb(226 236 248 / 0.16),
+    0 6px 30px rgb(255 106 31 / 0.14);
+}
+
+.screen-landing .landing-tagline {
+  color: #a9b3bf;
+  font-size: 1.08rem;
+  letter-spacing: 0.005em;
+}
+
+/* Ember, and only here. The shipped button is a cyan gradient; this is the same shape lit
+   by a different room. Warm border, warm bloom, cool-white label so the text stays the
+   brightest thing on the button rather than competing with the glow. */
+.screen-landing .btn-primary {
+  background: linear-gradient(180deg, #3a2417 0%, #24170e 100%);
+  border-color: #8a4a22;
+  color: #fdf1e6;
+  box-shadow:
+    0 0 0 1px rgb(255 138 61 / 0.16) inset,
+    0 14px 30px -16px rgb(255 106 31 / 0.5);
+}
+
+.screen-landing .btn-primary:hover {
+  border-color: #ff8a3d;
+  box-shadow:
+    0 0 0 1px rgb(255 138 61 / 0.3) inset,
+    0 18px 38px -14px rgb(255 106 31 / 0.66);
+}
