@@ -1,6 +1,6 @@
 # Project status
 
-Last updated: 2026-08-18
+Last updated: 2026-08-19
 
 **Deadline: end of August 2026.** The league needs a working draft-order experience.
 
@@ -26,6 +26,9 @@ Last updated: 2026-08-18
 | Sprites | Done. Five chassis and six weapons, generated then cropped, brightness-normalised and converted by `tools/convert-sprites.py` (12.4 MB of PNG to 471 KB of WebP for the weapons alone). Drawn on the build reveal AND in the arena; `?vectorbots` falls back to the vector machines. |
 | Weapon motion | Done. Blades spin, vertical spinners present edge then face, flamethrowers jet, hammers crush — the lift and smash projected for a top-down camera and timed off `nextAttackTick` so the blow lands on the beat. |
 | Hazard art | Done. Toothed saws, flame jets sharing the flamethrower's fire, recoiling cannons with lit iron shot, slamming crushers. Button-triggered hazards stay hidden until sprung. |
+| Atmosphere | **Done, tiers 1–4a.** Palette rebuilt on charcoal and ember, self-hosted Anton display face, vignette, grain, drifting haze, steel separators folded into `--shadow-lift`, and a reactive glow that lights the room around the arena on eliminations and dims as the floor empties. Grain and reactive light are deliberately kept OFF the arena canvas and the Forge board: the fight surface stays exactly as it was. **Tier 4b — hazard stripes, warning labels, technical markings, rivets — was assessed and cut on 19 August**, not deferred. Everything in the atmosphere layer is *light*; rivets and stripes would have been the first literal ornament, which reads as an industrial theme rather than an industrial place. |
+| Landing | **Done, 19 August.** Domain-warped fractal noise drawn as slow smoke on a 2D canvas at ~9,800 pixels and stretched over the viewport, plus a lub-dub pulse on Begin. Reimplemented rather than copied — the 21st.dev reference's shader is behind an authenticated registry. |
+| Draft-order fireworks | **Done, 19 August.** Every pick sends up a shell in that member's own colour as their name lands; first pick gets a nine-shell barrage. Seeded from the event seed, so a replay puts up the same show. Shells launch one reveal-interval early because flight to apex (1.57–1.79 s) exceeds the 1500 ms cadence. |
 
 ## Commands
 
@@ -246,6 +249,32 @@ Recorded because each one cost hours and none is obvious from the code.
   count is single digits and the standard deviation is about 2.7 wins. A ratio between two
   small counts is not a signal. Compare each part against fair value in standard deviations
   before believing a change did anything.
+- **One sample of a moving background is not a measurement, and this nearly shipped
+  unreadable text — twice.** Sampling the composite behind the landing's type at intervals
+  returned 6.25 on one run and 6.37 on the next for byte-identical CSS; it was missing the
+  bright moments. Bounding it the other way — by the brightest pixel anywhere on the canvas —
+  gave 2.56, which is pessimistic nonsense, because those pixels are lit background out at
+  the margins where the scrim never reaches. The honest figure is the **per-point temporal
+  maximum**: for every point in the text box, the brightest that point ever gets, watched over
+  ~20 seconds of real motion. On the draft order the same mistake was nearly fatal — one
+  nine-second sample read 4.96:1 behind the member names and passed; a second sample of the
+  *same build* caught a peak nearly twice as bright, which is white text on near-white gold at
+  about **1.45:1**. The names were not marginal, they were periodically unreadable. **Never
+  clear a contrast threshold on one pass over something that moves.**
+- **`lighter` compositing makes a background brighter than the colour you set.** The landing's
+  first version drew lines at 0.22 alpha and measured **0.71** under the tagline, because
+  crossings add. Whatever peak opacity a canvas layer is given is a floor, not a ceiling, as
+  soon as anything overlaps.
+- **Source order only decides paint order between siblings in the same positioning class.** A
+  positioned element paints above every static one regardless of where it sits in the markup,
+  so prepending an absolutely-positioned canvas does *not* put it behind a static table
+  written after it. This cost a pass on the draft order, where the fireworks rained over the
+  names. The fix is to make the content positioned too, not to reach for z-index.
+- **A determinism test can pass while comparing nothing.** The fireworks' "same seed, same
+  show" test ran for 1.4 s, which is before a shell reaches its apex, so it compared two empty
+  arrays and passed. Its sibling — "different seed, different show" — is what caught it, by
+  failing on those same two empty arrays. **Assert the collection is non-empty before
+  asserting anything about its contents.**
 
 ## Known issues, unfixed by choice
 
@@ -256,6 +285,13 @@ Recorded because each one cost hours and none is obvious from the code.
 - **A zone notice margin of 220 units** in `perception.ts` was chosen by eye, never measured.
 - **The eliminations tiebreak resolves fewer cases than it used to** now that kills feed
   points directly, but it still fires most often of the three.
+- **A PixiJS `Filter` throws while being destroyed**, on the screens that mount a renderer:
+  `Cannot read properties of undefined (reading 'push')`. Nothing visible breaks, because
+  `runTeardown` in `router.ts` exists precisely for this class of bug and swallows it — that
+  guard was written for an earlier one of these (`_cancelResize is not a function`) which
+  stranded viewers on the previous screen permanently. Left alone this close to the deadline:
+  it is noise in the console, not a fault on the screen. Confirmed not to come from the
+  landing or the draft order, whose teardowns are pure DOM and throw nothing.
 
 ## Queued decisions — after the three arenas are locked
 
@@ -297,6 +333,16 @@ drama depends on pits.**
 
 Blender-baked sprite art, sound design, arenas 4 and 5, the Arena Builder, interior
 obstacles, the three-component weapon model. All are next year's.
+
+**Atmosphere tier 4b** — hazard stripes, warning labels, technical markings, rivets in the
+chrome — is cut on its merits rather than for time. Every existing atmosphere element is
+light: the vignette, the haze, the reactive glow, the ember on the buttons, the smoke on the
+landing. None of it pretends to be a physical object, which is why the site reads as a venue
+rather than as a theme. Rivets and stripes would be the first literal ornament, and they carry
+a scale trap with no good answer — small enough to be quiet is small enough to be invisible,
+and large enough to read pulls the eye to the corners of panels whose job is a column of names
+and numbers. If any of it is ever revisited, technical markings are the one worth having,
+because they add texture through information rather than decoration.
 
 ## Where the reasoning lives
 
